@@ -8,9 +8,10 @@ import {
   type ServerSaveRow,
 } from "../api";
 import {
-  attackEnemy,
   createInitialBattle,
   isValidSave,
+  menuMeleeAttack,
+  menuTactic,
   moveSelected,
   selectPlayerUnit,
   skipOrEndIfStuck,
@@ -18,7 +19,12 @@ import {
 } from "../game/battle";
 import type { BattleState } from "../game/types";
 import { LOCAL_SAVES_KEY } from "../game/types";
-import GameBattle from "./GameBattle";
+import GameBattle, { type MenuAction } from "./GameBattle";
+
+function normalizeLoadedBattle(b: BattleState): BattleState {
+  if ((b.phase as string) === "act") return { ...b, phase: "menu" };
+  return b;
+}
 
 type LocalSaveEntry = { slotName: string; updatedAt: string; payload: BattleState };
 
@@ -33,7 +39,7 @@ function readLocalSaves(): LocalSaveEntry[] {
         return {
           slotName,
           updatedAt: v.updatedAt || "",
-          payload: v.payload as BattleState,
+          payload: normalizeLoadedBattle(v.payload as BattleState),
         };
       })
       .filter((x): x is LocalSaveEntry => x !== null)
@@ -107,17 +113,22 @@ export default function GamePage() {
   const onUnitClick = useCallback((unitId: string, side: "player" | "enemy") => {
     setBattle((s) => {
       if (side === "player") return selectPlayerUnit(s, unitId);
-      if (s.turn === "player" && (s.phase === "move" || s.phase === "act")) {
-        return attackEnemy(s, unitId);
-      }
       return s;
+    });
+  }, []);
+
+  const onMenuAction = useCallback((action: MenuAction) => {
+    setBattle((s) => {
+      if (action === "attack") return menuMeleeAttack(s);
+      if (action === "tactic") return menuTactic(s);
+      return waitAfterMove(s);
     });
   }, []);
 
   const onWait = useCallback(() => {
     setBattle((s) => {
       if (s.phase === "move") return skipOrEndIfStuck(s);
-      if (s.phase === "act") return waitAfterMove(s);
+      if (s.phase === "menu") return waitAfterMove(s);
       return s;
     });
   }, []);
@@ -164,7 +175,7 @@ export default function GamePage() {
         setMessage("云端存档格式无效");
         return;
       }
-      setBattle(row.payload);
+      setBattle(normalizeLoadedBattle(row.payload as BattleState));
       setSlotName(row.slotName);
       setMessage(`已读取云端：${row.slotName}`);
     },
@@ -279,7 +290,12 @@ export default function GamePage() {
         </ul>
       </aside>
       <main className="game-main">
-        <GameBattle battle={battle} onCellClick={onCellClick} onUnitClick={onUnitClick} />
+        <GameBattle
+          battle={battle}
+          onCellClick={onCellClick}
+          onUnitClick={onUnitClick}
+          onMenuAction={onMenuAction}
+        />
         <div className="battle-log">
           <h3>战报</h3>
           <ol reversed>

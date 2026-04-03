@@ -184,10 +184,13 @@ export function selectPlayerUnit(state: BattleState, unitId: string): BattleStat
   if (u.moved && !u.acted) {
     return {
       ...state,
-      phase: "act",
+      phase: "menu",
       selectedId: unitId,
       moveTargets: [],
-      log: state.selectedId === unitId ? state.log : [...state.log, `选择 ${u.name}（攻击或待机）。`],
+      log:
+        state.selectedId === unitId
+          ? state.log
+          : [...state.log, `选择 ${u.name}，请选择行动。`],
     };
   }
   const reachable = getReachable(u, state.units, state.gridW, state.gridH);
@@ -228,50 +231,91 @@ export function moveSelected(state: BattleState, tx: number, ty: number): Battle
     moveTargets: [],
     log: [...state.log, `${u.name} 移动至 (${tx + 1},${ty + 1})。`],
   };
-  next = tryPromptAttack(next, id);
+  next = afterMoveOpenMenu(next, id);
   return checkOutcome(next);
 }
 
-function adjacent(a: Unit, b: Unit) {
+export function adjacent(a: Unit, b: Unit) {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y) === 1;
 }
 
-function tryPromptAttack(state: BattleState, attackerId: string): BattleState {
+function manhattan(a: Unit, b: Unit) {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+/** 是否与任意存活敌军贴邻（可发动攻击） */
+export function canMeleeAttack(attacker: Unit, units: Unit[]): boolean {
+  return units.some((x) => x.side === "enemy" && x.hp > 0 && adjacent(attacker, x));
+}
+
+/** 是否与任意存活敌军曼哈顿距离 ≤2（可使用计策） */
+export function canUseTactic(attacker: Unit, units: Unit[]): boolean {
+  return units.some((x) => x.side === "enemy" && x.hp > 0 && manhattan(attacker, x) <= 2);
+}
+
+function afterMoveOpenMenu(state: BattleState, attackerId: string): BattleState {
   const attacker = state.units.find((x) => x.id === attackerId);
   if (!attacker || attacker.acted) {
     return maybeEndPlayerTurn({ ...state, phase: "select", selectedId: null, moveTargets: [] });
   }
-  const foe = state.units.find(
-    (x) => x.side === "enemy" && x.hp > 0 && adjacent(attacker, x)
-  );
-  if (!foe) {
-    return {
-      ...state,
-      phase: "act",
-      selectedId: attackerId,
-      moveTargets: [],
-      log: [...state.log, `${attacker.name} 移动完毕，可攻击邻近敌军或待机。`],
-    };
-  }
-  return attackEnemy(state, foe.id);
+  return {
+    ...state,
+    phase: "menu",
+    selectedId: attackerId,
+    moveTargets: [],
+    log: [...state.log, `${attacker.name} 移动完毕，请选择行动。`],
+  };
 }
 
-export function attackEnemy(state: BattleState, enemyId: string): BattleState {
-  if (state.outcome !== "playing" || state.turn !== "player") return state;
-  if (state.phase !== "move" && state.phase !== "act") return state;
+/** 菜单：发动攻击（须贴邻；多目标时打 HP 最低的敌军） */
+export function menuMeleeAttack(state: BattleState): BattleState {
+  if (state.outcome !== "playing" || state.turn !== "player" || state.phase !== "menu") return state;
   const aid = state.selectedId;
   if (!aid) return state;
   const attacker = state.units.find((x) => x.id === aid);
+  if (!attacker || attacker.acted || !attacker.moved) return state;
+  if (!canMeleeAttack(attacker, state.units)) return state;
+  const foes = state.units.filter(
+    (x) => x.side === "enemy" && x.hp > 0 && adjacent(attacker, x)
+  );
+  if (foes.length === 0) return state;
+  const target = foes.reduce((a, b) => (a.hp <= b.hp ? a : b));
+  return applyPlayerDamage(state, aid, target.id, attacker.atk, "melee");
+}
+
+/** 菜单：使用计策（距离 ≤2；多目标时选 HP 最低） */
+export function menuTactic(state: BattleState): BattleState {
+  if (state.outcome !== "playing" || state.turn !== "player" || state.phase !== "menu") return state;
+  const aid = state.selectedId;
+  if (!aid) return state;
+  const attacker = state.units.find((x) => x.id === aid);
+  if (!attacker || attacker.acted || !attacker.moved) return state;
+  if (!canUseTactic(attacker, state.units)) return state;
+  const foes = state.units.filter(
+    (x) => x.side === "enemy" && x.hp > 0 && manhattan(attacker, x) <= 2
+  );
+  if (foes.length === 0) return state;
+  const target = foes.reduce((a, b) => (a.hp <= b.hp ? a : b));
+  const dmg = Math.max(1, Math.floor(attacker.atk * 0.55));
+  return applyPlayerDamage(state, aid, target.id, dmg, "tactic");
+}
+
+function applyPlayerDamage(
+  state: BattleState,
+  attackerId: string,
+  enemyId: string,
+  dmg: number,
+  kind: "melee" | "tactic"
+): BattleState {
+  const attacker = state.units.find((x) => x.id === attackerId);
   const target = state.units.find((x) => x.id === enemyId);
-  if (!attacker || !target || target.side !== "enemy" || target.hp <= 0) return state;
-  if (!adjacent(attacker, target)) return state;
-  if (attacker.acted) return state;
-  const dmg = attacker.atk;
+  if (!attacker || !target || target.side !== "enemy") return state;
   const newHp = Math.max(0, target.hp - dmg);
   const units = state.units.map((x) =>
-    x.id === enemyId ? { ...x, hp: newHp } : x.id === aid ? { ...x, acted: true } : x
+    x.id === enemyId ? { ...x, hp: newHp } : x.id === attackerId ? { ...x, acted: true } : x
   );
-  let log = [...state.log, `${attacker.name} 攻击 ${target.name}，造成 ${dmg} 伤害。`];
+  const verb = kind === "melee" ? "攻击" : "施展计策";
+  let log = [...state.log, `${attacker.name} ${verb} ${target.name}，造成 ${dmg} 伤害。`];
   if (newHp <= 0) log = [...log, `${target.name} 被击退！`];
   let next: BattleState = {
     ...state,
@@ -437,9 +481,10 @@ export function skipOrEndIfStuck(state: BattleState): BattleState {
   return maybeEndPlayerTurn(next);
 }
 
-/** 移动后待机（不攻击） */
+/** 菜单或侧栏：移动完毕后待机 */
 export function waitAfterMove(state: BattleState): BattleState {
   if (state.outcome !== "playing" || state.turn !== "player") return state;
+  if (state.phase !== "menu") return state;
   const id = state.selectedId;
   if (!id) return state;
   const u = state.units.find((x) => x.id === id);

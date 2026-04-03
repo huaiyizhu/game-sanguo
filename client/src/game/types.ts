@@ -1,6 +1,6 @@
 export type Side = "player" | "enemy";
 
-export type BattlePhase = "select" | "move" | "act" | "enemy";
+export type BattlePhase = "select" | "move" | "menu" | "enemy";
 
 export interface Unit {
   id: string;
