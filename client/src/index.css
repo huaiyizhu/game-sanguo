@@ -344,10 +344,13 @@ a:hover {
 
 .battle-grid {
   --cell: min(52px, 7.5vw);
+  position: relative;
+  z-index: 0;
   display: grid;
   gap: 2px;
   width: fit-content;
   margin: 0 auto;
+  isolation: isolate;
 }
 
 .cell {
@@ -357,9 +360,15 @@ a:hover {
   align-items: center;
   justify-content: center;
   position: relative;
+  z-index: 0;
   border-radius: 4px;
   background: var(--tile);
   overflow: visible;
+}
+
+/* 行动菜单溢出到邻格时，必须压过后续格子（同网格内靠后的 DOM 会默认盖住溢出层） */
+.cell.cell-menu-open {
+  z-index: 100;
 }
 
 .cell.even {
@@ -493,7 +502,7 @@ a:hover {
   left: calc(100% + 6px);
   top: 50%;
   transform: translateY(-50%);
-  z-index: 30;
+  z-index: 200;
   display: flex;
   flex-direction: column;
   gap: 4px;

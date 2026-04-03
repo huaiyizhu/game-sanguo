@@ -174,6 +174,7 @@ export default function GameBattle({
                 isMove ? "move-hint" : "",
                 u ? "has-unit" : "",
                 canClickTile ? "clickable-tile" : "",
+                showMenu ? "cell-menu-open" : "",
               ]
                 .filter(Boolean)
                 .join(" ")}
