@@ -19,6 +19,7 @@ import {
   menuTactic,
   pickTargetFocusEnemy,
   pickTargetNavigate,
+  processSingleEnemyStep,
   selectPlayerUnit,
   skipOrEndIfStuck,
   waitAfterMove,
@@ -26,6 +27,9 @@ import {
 import type { BattleState } from "../game/types";
 import { LOCAL_SAVES_KEY } from "../game/types";
 import GameBattle, { type MenuAction } from "./GameBattle";
+
+/** 敌军每名单位行动之间的间隔（毫秒）；队列中第一名立即行动 */
+const ENEMY_ACTION_GAP_MS = 2000;
 
 function normalizeLoadedBattle(b: BattleState): BattleState {
   let s = ensureBattleFields(b);
@@ -114,6 +118,28 @@ export default function GamePage() {
   useEffect(() => {
     void refreshRemote();
   }, [refreshRemote]);
+
+  useEffect(() => {
+    if (battle.outcome !== "playing") return;
+    if (battle.turn !== "enemy" || battle.phase !== "enemy") return;
+    const q = battle.enemyTurnQueue;
+    if (!q?.length) return;
+    const c = battle.enemyTurnCursor;
+    if (c >= q.length) return;
+
+    const delay = c === 0 ? 0 : ENEMY_ACTION_GAP_MS;
+    const tid = window.setTimeout(() => {
+      setBattle((s) => processSingleEnemyStep(s));
+    }, delay);
+
+    return () => window.clearTimeout(tid);
+  }, [
+    battle.outcome,
+    battle.turn,
+    battle.phase,
+    battle.enemyTurnCursor,
+    battle.enemyTurnQueue?.join(","),
+  ]);
 
   const onCellClick = useCallback((x: number, y: number) => {
     setBattle((s) => {

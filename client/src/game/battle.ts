@@ -121,6 +121,8 @@ export function createInitialBattle(): BattleState {
     outcome: "playing",
     pickTarget: null,
     playerTurnStart: {},
+    enemyTurnQueue: null,
+    enemyTurnCursor: 0,
   });
 }
 
@@ -138,6 +140,8 @@ function checkOutcome(state: BattleState): BattleState {
       selectedId: null,
       moveTargets: [],
       pickTarget: null,
+      enemyTurnQueue: null,
+      enemyTurnCursor: 0,
       log: [...state.log, "敌军全灭，战斗胜利！"],
     };
   }
@@ -150,6 +154,8 @@ function checkOutcome(state: BattleState): BattleState {
       selectedId: null,
       moveTargets: [],
       pickTarget: null,
+      enemyTurnQueue: null,
+      enemyTurnCursor: 0,
       log: [...state.log, "我军全灭……"],
     };
   }
@@ -515,56 +521,19 @@ function startEnemyTurn(state: BattleState): BattleState {
   const refreshed = state.units.map((u) =>
     u.side === "enemy" && u.hp > 0 ? { ...u, moved: false, acted: false } : u
   );
-  return runEnemyAi({ ...state, units: refreshed });
+  const queue = refreshed.filter((u) => u.side === "enemy" && u.hp > 0).map((u) => u.id);
+  const base = {
+    ...state,
+    units: refreshed,
+    enemyTurnQueue: queue,
+    enemyTurnCursor: 0,
+  };
+  if (queue.length === 0) return finishEnemyTurnAndStartPlayer(base);
+  return base;
 }
 
-function runEnemyAi(state: BattleState): BattleState {
-  let s = { ...state };
-  const enemies = s.units.filter((u) => u.side === "enemy" && u.hp > 0);
-  for (const e of enemies) {
-    if (s.outcome !== "playing") break;
-    const players = s.units.filter((u) => u.side === "player" && u.hp > 0);
-    if (players.length === 0) break;
-    let eu = s.units.find((x) => x.id === e.id)!;
-    const adj = players.find((p) => adjacent(eu, p));
-    if (adj) {
-      const dmg = eu.atk;
-      const newHp = Math.max(0, adj.hp - dmg);
-      s = {
-        ...s,
-        units: s.units.map((x) => (x.id === adj.id ? { ...x, hp: newHp } : x)),
-        log: [...s.log, `${eu.name} 反击 ${adj.name}，造成 ${dmg} 伤害。`],
-      };
-      s = checkOutcome(s);
-      continue;
-    }
-    const target = players.reduce((a, b) => {
-      const da = Math.abs(eu.x - a.x) + Math.abs(eu.y - a.y);
-      const db = Math.abs(eu.x - b.x) + Math.abs(eu.y - b.y);
-      return da <= db ? a : b;
-    });
-    const step = firstStepToward(eu, target, s.units, s.gridW, s.gridH);
-    if (step) {
-      s = {
-        ...s,
-        units: s.units.map((x) => (x.id === eu.id ? { ...x, x: step.x, y: step.y } : x)),
-        log: [...s.log, `${eu.name} 逼近我军。`],
-      };
-      eu = s.units.find((x) => x.id === e.id)!;
-    }
-    const adj2 = s.units.find((u) => u.side === "player" && u.hp > 0 && adjacent(eu, u));
-    if (adj2) {
-      const dmg = eu.atk;
-      const newHp = Math.max(0, adj2.hp - dmg);
-      s = {
-        ...s,
-        units: s.units.map((x) => (x.id === adj2.id ? { ...x, hp: newHp } : x)),
-        log: [...s.log, `${eu.name} 攻击 ${adj2.name}，造成 ${dmg} 伤害。`],
-      };
-      s = checkOutcome(s);
-    }
-  }
-  if (s.outcome !== "playing") return s;
+/** 结束敌军回合，进入我军回合并刷新快照 */
+function finishEnemyTurnAndStartPlayer(s: BattleState): BattleState {
   const next: BattleState = {
     ...s,
     turn: "player",
@@ -572,12 +541,94 @@ function runEnemyAi(state: BattleState): BattleState {
     selectedId: null,
     moveTargets: [],
     pickTarget: null,
+    enemyTurnQueue: null,
+    enemyTurnCursor: 0,
     units: s.units.map((u) =>
       u.side === "player" && u.hp > 0 ? { ...u, moved: false, acted: false } : u
     ),
     log: [...s.log, "—— 我军回合 ——"],
   };
   return withTurnSnapshot(next);
+}
+
+/** 单名敌军一次完整 AI（贴邻则攻，否则逼近一步再视情况攻） */
+function executeEnemyUnitAction(state: BattleState, eid: string): BattleState {
+  let s = state;
+  const players = s.units.filter((u) => u.side === "player" && u.hp > 0);
+  if (players.length === 0) return s;
+  const euFound = s.units.find((x) => x.id === eid);
+  if (!euFound || euFound.side !== "enemy" || euFound.hp <= 0) return s;
+  let eu: Unit = euFound;
+
+  const adj = players.find((p) => adjacent(eu, p));
+  if (adj) {
+    const dmg = eu.atk;
+    const newHp = Math.max(0, adj.hp - dmg);
+    s = {
+      ...s,
+      units: s.units.map((x) => (x.id === adj.id ? { ...x, hp: newHp } : x)),
+      log: [...s.log, `${eu.name} 反击 ${adj.name}，造成 ${dmg} 伤害。`],
+    };
+    return checkOutcome(s);
+  }
+  const target = players.reduce((a, b) => {
+    const da = Math.abs(eu.x - a.x) + Math.abs(eu.y - a.y);
+    const db = Math.abs(eu.x - b.x) + Math.abs(eu.y - b.y);
+    return da <= db ? a : b;
+  });
+  const step = firstStepToward(eu, target, s.units, s.gridW, s.gridH);
+  if (step) {
+    s = {
+      ...s,
+      units: s.units.map((x) => (x.id === eu.id ? { ...x, x: step.x, y: step.y } : x)),
+      log: [...s.log, `${eu.name} 逼近我军。`],
+    };
+    eu = s.units.find((x) => x.id === eid)!;
+  }
+  const adj2 = s.units.find((u) => u.side === "player" && u.hp > 0 && adjacent(eu, u));
+  if (adj2) {
+    const dmg = eu.atk;
+    const newHp = Math.max(0, adj2.hp - dmg);
+    s = {
+      ...s,
+      units: s.units.map((x) => (x.id === adj2.id ? { ...x, hp: newHp } : x)),
+      log: [...s.log, `${eu.name} 攻击 ${adj2.name}，造成 ${dmg} 伤害。`],
+    };
+    s = checkOutcome(s);
+  }
+  return s;
+}
+
+/** 执行队列中「当前下标」这一名敌军的行动，并推进下标；由界面在每名敌军之间插入延迟 */
+export function processSingleEnemyStep(state: BattleState): BattleState {
+  if (state.turn !== "enemy" || state.phase !== "enemy") return state;
+  const q = state.enemyTurnQueue;
+  if (!q?.length) return state;
+  const c = state.enemyTurnCursor;
+  if (c >= q.length) return finishEnemyTurnAndStartPlayer(state);
+
+  const eid = q[c];
+  const nextC = c + 1;
+
+  const eu0 = state.units.find((x) => x.id === eid);
+  if (!eu0 || eu0.side !== "enemy" || eu0.hp <= 0) {
+    let s = { ...state, enemyTurnCursor: nextC };
+    if (nextC >= q.length) return finishEnemyTurnAndStartPlayer(s);
+    return s;
+  }
+
+  let s = executeEnemyUnitAction(state, eid);
+  s = { ...s, enemyTurnCursor: nextC };
+
+  if (s.outcome !== "playing") {
+    return {
+      ...s,
+      enemyTurnQueue: null,
+      enemyTurnCursor: 0,
+    };
+  }
+  if (nextC >= q.length) return finishEnemyTurnAndStartPlayer(s);
+  return s;
 }
 
 function firstStepToward(
@@ -674,7 +725,12 @@ export function isValidSave(o: unknown): o is BattleState {
 }
 
 export function ensureBattleFields(b: BattleState): BattleState {
-  let s = { ...b, pickTarget: b.pickTarget ?? null };
+  let s = {
+    ...b,
+    pickTarget: b.pickTarget ?? null,
+    enemyTurnQueue: b.enemyTurnQueue ?? null,
+    enemyTurnCursor: b.enemyTurnCursor ?? 0,
+  };
   if (!s.playerTurnStart || Object.keys(s.playerTurnStart).length === 0) {
     s = { ...s, playerTurnStart: buildPlayerTurnStart(s.units) };
   }

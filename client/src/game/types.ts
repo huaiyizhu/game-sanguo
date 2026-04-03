@@ -48,6 +48,10 @@ export interface BattleState {
   pickTarget: PickTargetState | null;
   /** 本回合我军行动前快照（每名我军存活单位） */
   playerTurnStart: PlayerTurnStartMap;
+  /** 敌军回合：按此 id 顺序逐个行动；非敌军回合时为 null */
+  enemyTurnQueue: string[] | null;
+  /** 下一个要行动的敌军在 queue 中的下标 */
+  enemyTurnCursor: number;
 }
 
 export const LOCAL_SAVES_KEY = "sanguo_local_saves";
