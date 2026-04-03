@@ -371,6 +371,24 @@ a:hover {
   z-index: 100;
 }
 
+.cell.cell-pick-candidate {
+  z-index: 40;
+}
+
+.cell.cell-pick-focus {
+  z-index: 50;
+}
+
+.unit-token.pick-target-candidate {
+  outline: 2px dashed rgba(252, 165, 165, 0.75);
+  outline-offset: -1px;
+}
+
+.unit-token.pick-target-focus {
+  outline: 3px solid #fbbf24;
+  box-shadow: 0 0 16px rgba(251, 191, 36, 0.45);
+}
+
 .cell.even {
   background: var(--tile-alt);
 }

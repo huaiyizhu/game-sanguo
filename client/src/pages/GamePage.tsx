@@ -8,11 +8,17 @@ import {
   type ServerSaveRow,
 } from "../api";
 import {
+  cancelPickTarget,
+  confirmPickTarget,
   createInitialBattle,
+  ensureBattleFields,
+  escapeOrRevertUnit,
+  gridCellClick,
   isValidSave,
   menuMeleeAttack,
   menuTactic,
-  moveSelected,
+  pickTargetFocusEnemy,
+  pickTargetNavigate,
   selectPlayerUnit,
   skipOrEndIfStuck,
   waitAfterMove,
@@ -22,8 +28,9 @@ import { LOCAL_SAVES_KEY } from "../game/types";
 import GameBattle, { type MenuAction } from "./GameBattle";
 
 function normalizeLoadedBattle(b: BattleState): BattleState {
-  if ((b.phase as string) === "act") return { ...b, phase: "menu" };
-  return b;
+  let s = ensureBattleFields(b);
+  if ((s.phase as string) === "act") s = { ...s, phase: "menu" };
+  return s;
 }
 
 type LocalSaveEntry = { slotName: string; updatedAt: string; payload: BattleState };
@@ -107,12 +114,24 @@ export default function GamePage() {
   }, [refreshRemote]);
 
   const onCellClick = useCallback((x: number, y: number) => {
-    setBattle((s) => moveSelected(s, x, y));
+    setBattle((s) => {
+      if (s.phase === "pick-target" && s.pickTarget) {
+        const u = s.units.find(
+          (unit) =>
+            unit.x === x && unit.y === y && unit.hp > 0 && unit.side === "enemy"
+        );
+        if (u && s.pickTarget.targetIds.includes(u.id)) return confirmPickTarget(s, u.id);
+      }
+      return gridCellClick(s, x, y);
+    });
   }, []);
 
   const onUnitClick = useCallback((unitId: string, side: "player" | "enemy") => {
     setBattle((s) => {
       if (side === "player") return selectPlayerUnit(s, unitId);
+      if (s.phase === "pick-target" && s.pickTarget?.targetIds.includes(unitId)) {
+        return confirmPickTarget(s, unitId);
+      }
       return s;
     });
   }, []);
@@ -125,8 +144,30 @@ export default function GamePage() {
     });
   }, []);
 
+  const onEscapeOrRevert = useCallback(() => {
+    setBattle((s) => escapeOrRevertUnit(s));
+  }, []);
+
+  const onPickNavigate = useCallback((delta: number) => {
+    setBattle((s) => pickTargetNavigate(s, delta));
+  }, []);
+
+  const onPickConfirmFocused = useCallback(() => {
+    setBattle((s) => {
+      const p = s.pickTarget;
+      if (!p || s.phase !== "pick-target") return s;
+      const id = p.targetIds[p.focusIndex];
+      return confirmPickTarget(s, id);
+    });
+  }, []);
+
+  const onPickHoverEnemy = useCallback((enemyId: string) => {
+    setBattle((s) => pickTargetFocusEnemy(s, enemyId));
+  }, []);
+
   const onWait = useCallback(() => {
     setBattle((s) => {
+      if (s.phase === "pick-target") return cancelPickTarget(s);
       if (s.phase === "move") return skipOrEndIfStuck(s);
       if (s.phase === "menu") return waitAfterMove(s);
       return s;
@@ -295,6 +336,10 @@ export default function GamePage() {
           onCellClick={onCellClick}
           onUnitClick={onUnitClick}
           onMenuAction={onMenuAction}
+          onEscapeOrRevert={onEscapeOrRevert}
+          onPickNavigate={onPickNavigate}
+          onPickConfirmFocused={onPickConfirmFocused}
+          onPickHoverEnemy={onPickHoverEnemy}
         />
         <div className="battle-log">
           <h3>战报</h3>

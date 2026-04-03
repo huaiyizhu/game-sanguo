@@ -1,4 +1,4 @@
-import type { BattleState, Side, Unit } from "./types";
+import type { BattleState, PickTargetState, PlayerTurnStartMap, Side, Unit } from "./types";
 
 const key = (x: number, y: number) => `${x},${y}`;
 
@@ -8,6 +8,20 @@ function occupantMap(units: Unit[]): Map<string, Unit> {
     if (u.hp > 0) m.set(key(u.x, u.y), u);
   }
   return m;
+}
+
+function buildPlayerTurnStart(units: Unit[]): PlayerTurnStartMap {
+  const playerTurnStart: PlayerTurnStartMap = {};
+  for (const u of units) {
+    if (u.side === "player" && u.hp > 0) {
+      playerTurnStart[u.id] = { x: u.x, y: u.y, moved: u.moved, acted: u.acted };
+    }
+  }
+  return playerTurnStart;
+}
+
+function withTurnSnapshot(state: BattleState): BattleState {
+  return { ...state, playerTurnStart: buildPlayerTurnStart(state.units) };
 }
 
 export function createInitialBattle(): BattleState {
@@ -92,7 +106,7 @@ export function createInitialBattle(): BattleState {
     },
   ];
 
-  return {
+  return withTurnSnapshot({
     version: 1,
     scenarioId: "prologue_zhangjiao",
     scenarioTitle: "序章 · 讨伐黄巾",
@@ -105,7 +119,9 @@ export function createInitialBattle(): BattleState {
     units,
     log: ["刘备举义兵讨伐黄巾，与关羽、张飞共赴战场。"],
     outcome: "playing",
-  };
+    pickTarget: null,
+    playerTurnStart: {},
+  });
 }
 
 function alive(units: Unit[], side: Side) {
@@ -121,6 +137,7 @@ function checkOutcome(state: BattleState): BattleState {
       phase: "select",
       selectedId: null,
       moveTargets: [],
+      pickTarget: null,
       log: [...state.log, "敌军全灭，战斗胜利！"],
     };
   }
@@ -132,6 +149,7 @@ function checkOutcome(state: BattleState): BattleState {
       phase: "select",
       selectedId: null,
       moveTargets: [],
+      pickTarget: null,
       log: [...state.log, "我军全灭……"],
     };
   }
@@ -176,17 +194,47 @@ export function getReachable(
   return reachable;
 }
 
+/** 点击格子：若在移动阶段点自己脚下，原地打开菜单；否则尝试移动 */
+export function gridCellClick(state: BattleState, x: number, y: number): BattleState {
+  if (state.outcome !== "playing" || state.turn !== "player") return state;
+  if (state.phase === "move" && state.selectedId) {
+    const u = state.units.find((z) => z.id === state.selectedId);
+    if (u && !u.moved && u.x === x && u.y === y) return openMenuInPlace(state);
+  }
+  return moveSelected(state, x, y);
+}
+
+export function openMenuInPlace(state: BattleState): BattleState {
+  if (state.outcome !== "playing" || state.turn !== "player" || state.phase !== "move") return state;
+  const id = state.selectedId;
+  if (!id) return state;
+  const u = state.units.find((x) => x.id === id);
+  if (!u || u.moved || u.acted) return state;
+  return {
+    ...state,
+    phase: "menu",
+    moveTargets: [],
+    pickTarget: null,
+    units: state.units.map((x) => (x.id === id ? { ...x, moved: true } : x)),
+    log: [...state.log, `${u.name} 原地待命，请选择行动。`],
+  };
+}
+
 export function selectPlayerUnit(state: BattleState, unitId: string): BattleState {
   if (state.outcome !== "playing" || state.turn !== "player") return state;
   const u = state.units.find((x) => x.id === unitId);
   if (!u || u.side !== "player" || u.hp <= 0) return state;
   if (u.moved && u.acted) return state;
+  if (state.phase === "move" && state.selectedId === unitId) {
+    return openMenuInPlace(state);
+  }
   if (u.moved && !u.acted) {
     return {
       ...state,
       phase: "menu",
       selectedId: unitId,
       moveTargets: [],
+      pickTarget: null,
       log:
         state.selectedId === unitId
           ? state.log
@@ -203,6 +251,7 @@ export function selectPlayerUnit(state: BattleState, unitId: string): BattleStat
     phase: "move",
     selectedId: unitId,
     moveTargets,
+    pickTarget: null,
     log:
       state.selectedId === unitId
         ? state.log
@@ -229,6 +278,7 @@ export function moveSelected(state: BattleState, tx: number, ty: number): Battle
     ...state,
     units,
     moveTargets: [],
+    pickTarget: null,
     log: [...state.log, `${u.name} 移动至 (${tx + 1},${ty + 1})。`],
   };
   next = afterMoveOpenMenu(next, id);
@@ -253,21 +303,49 @@ export function canUseTactic(attacker: Unit, units: Unit[]): boolean {
   return units.some((x) => x.side === "enemy" && x.hp > 0 && manhattan(attacker, x) <= 2);
 }
 
+function sortMeleeTargets(foes: Unit[]): Unit[] {
+  return [...foes].sort((a, b) => a.hp - b.hp || a.y - b.y || a.x - b.x || a.id.localeCompare(b.id));
+}
+
+function sortTacticTargets(foes: Unit[]): Unit[] {
+  return [...foes].sort((a, b) => a.hp - b.hp || a.y - b.y || a.x - b.x || a.id.localeCompare(b.id));
+}
+
 function afterMoveOpenMenu(state: BattleState, attackerId: string): BattleState {
   const attacker = state.units.find((x) => x.id === attackerId);
   if (!attacker || attacker.acted) {
-    return maybeEndPlayerTurn({ ...state, phase: "select", selectedId: null, moveTargets: [] });
+    return maybeEndPlayerTurn({
+      ...state,
+      phase: "select",
+      selectedId: null,
+      moveTargets: [],
+      pickTarget: null,
+    });
   }
   return {
     ...state,
     phase: "menu",
     selectedId: attackerId,
     moveTargets: [],
+    pickTarget: null,
     log: [...state.log, `${attacker.name} 移动完毕，请选择行动。`],
   };
 }
 
-/** 菜单：发动攻击（须贴邻；多目标时打 HP 最低的敌军） */
+function toPickState(
+  kind: "melee" | "tactic",
+  attackerId: string,
+  sortedFoes: Unit[]
+): PickTargetState {
+  return {
+    kind,
+    attackerId,
+    targetIds: sortedFoes.map((f) => f.id),
+    focusIndex: 0,
+  };
+}
+
+/** 菜单：发动攻击；多目标则进入 pick-target */
 export function menuMeleeAttack(state: BattleState): BattleState {
   if (state.outcome !== "playing" || state.turn !== "player" || state.phase !== "menu") return state;
   const aid = state.selectedId;
@@ -279,11 +357,19 @@ export function menuMeleeAttack(state: BattleState): BattleState {
     (x) => x.side === "enemy" && x.hp > 0 && adjacent(attacker, x)
   );
   if (foes.length === 0) return state;
-  const target = foes.reduce((a, b) => (a.hp <= b.hp ? a : b));
-  return applyPlayerDamage(state, aid, target.id, attacker.atk, "melee");
+  const sorted = sortMeleeTargets(foes);
+  if (sorted.length === 1) {
+    return applyPlayerDamage(state, aid, sorted[0].id, attacker.atk, "melee");
+  }
+  return {
+    ...state,
+    phase: "pick-target",
+    pickTarget: toPickState("melee", aid, sorted),
+    log: [...state.log, "选择攻击目标（方向键切换，Enter 确认）。"],
+  };
 }
 
-/** 菜单：使用计策（距离 ≤2；多目标时选 HP 最低） */
+/** 菜单：使用计策；多目标则进入 pick-target */
 export function menuTactic(state: BattleState): BattleState {
   if (state.outcome !== "playing" || state.turn !== "player" || state.phase !== "menu") return state;
   const aid = state.selectedId;
@@ -295,9 +381,17 @@ export function menuTactic(state: BattleState): BattleState {
     (x) => x.side === "enemy" && x.hp > 0 && manhattan(attacker, x) <= 2
   );
   if (foes.length === 0) return state;
-  const target = foes.reduce((a, b) => (a.hp <= b.hp ? a : b));
+  const sorted = sortTacticTargets(foes);
   const dmg = Math.max(1, Math.floor(attacker.atk * 0.55));
-  return applyPlayerDamage(state, aid, target.id, dmg, "tactic");
+  if (sorted.length === 1) {
+    return applyPlayerDamage(state, aid, sorted[0].id, dmg, "tactic");
+  }
+  return {
+    ...state,
+    phase: "pick-target",
+    pickTarget: toPickState("tactic", aid, sorted),
+    log: [...state.log, "选择计策目标（方向键切换，Enter 确认）。"],
+  };
 }
 
 function applyPlayerDamage(
@@ -323,11 +417,78 @@ function applyPlayerDamage(
     selectedId: null,
     phase: "select",
     moveTargets: [],
+    pickTarget: null,
     log,
   };
   next = checkOutcome(next);
   if (next.outcome !== "playing") return next;
   return maybeEndPlayerTurn(next);
+}
+
+export function confirmPickTarget(state: BattleState, enemyId: string): BattleState {
+  const p = state.pickTarget;
+  if (!p || state.phase !== "pick-target") return state;
+  if (!p.targetIds.includes(enemyId)) return state;
+  const attacker = state.units.find((u) => u.id === p.attackerId);
+  const target = state.units.find((u) => u.id === enemyId);
+  if (!attacker || attacker.acted || !target || target.side !== "enemy" || target.hp <= 0) {
+    return state;
+  }
+  if (p.kind === "melee" && !adjacent(attacker, target)) return state;
+  if (p.kind === "tactic" && manhattan(attacker, target) > 2) return state;
+  const dmg =
+    p.kind === "melee"
+      ? attacker.atk
+      : Math.max(1, Math.floor(attacker.atk * 0.55));
+  return applyPlayerDamage({ ...state, pickTarget: null }, p.attackerId, enemyId, dmg, p.kind);
+}
+
+export function pickTargetNavigate(state: BattleState, delta: number): BattleState {
+  const p = state.pickTarget;
+  if (!p || state.phase !== "pick-target" || p.targetIds.length === 0) return state;
+  const n = p.targetIds.length;
+  const focusIndex = (((p.focusIndex + delta) % n) + n) % n;
+  return { ...state, pickTarget: { ...p, focusIndex } };
+}
+
+export function pickTargetFocusEnemy(state: BattleState, enemyId: string): BattleState {
+  const p = state.pickTarget;
+  if (!p || state.phase !== "pick-target") return state;
+  const idx = p.targetIds.indexOf(enemyId);
+  if (idx < 0 || idx === p.focusIndex) return state;
+  return { ...state, pickTarget: { ...p, focusIndex: idx } };
+}
+
+export function cancelPickTarget(state: BattleState): BattleState {
+  if (state.phase !== "pick-target") return state;
+  return {
+    ...state,
+    phase: "menu",
+    pickTarget: null,
+  };
+}
+
+/** Esc / 右键：选目标阶段回到菜单；菜单阶段将当前武将恢复至本回合开始状态 */
+export function escapeOrRevertUnit(state: BattleState): BattleState {
+  if (state.outcome !== "playing" || state.turn !== "player") return state;
+  if (state.phase === "pick-target") return cancelPickTarget(state);
+  if (state.phase !== "menu" || !state.selectedId) return state;
+  const id = state.selectedId;
+  const snap = state.playerTurnStart[id];
+  if (!snap) return state;
+  const name = state.units.find((u) => u.id === id)?.name ?? id;
+  const units = state.units.map((u) =>
+    u.id === id ? { ...u, x: snap.x, y: snap.y, moved: snap.moved, acted: snap.acted } : u
+  );
+  return {
+    ...state,
+    units,
+    phase: "select",
+    selectedId: null,
+    moveTargets: [],
+    pickTarget: null,
+    log: [...state.log, `${name} 取消行动，恢复至回合开始位置。`],
+  };
 }
 
 function allPlayerDone(units: Unit[]) {
@@ -345,6 +506,7 @@ function maybeEndPlayerTurn(state: BattleState): BattleState {
     phase: "enemy",
     selectedId: null,
     moveTargets: [],
+    pickTarget: null,
     log: [...state.log, "—— 敌军回合 ——"],
   });
 }
@@ -403,17 +565,19 @@ function runEnemyAi(state: BattleState): BattleState {
     }
   }
   if (s.outcome !== "playing") return s;
-  return {
+  const next: BattleState = {
     ...s,
     turn: "player",
     phase: "select",
     selectedId: null,
     moveTargets: [],
+    pickTarget: null,
     units: s.units.map((u) =>
       u.side === "player" && u.hp > 0 ? { ...u, moved: false, acted: false } : u
     ),
     log: [...s.log, "—— 我军回合 ——"],
   };
+  return withTurnSnapshot(next);
 }
 
 function firstStepToward(
@@ -476,12 +640,13 @@ export function skipOrEndIfStuck(state: BattleState): BattleState {
     selectedId: null,
     phase: "select",
     moveTargets: [],
+    pickTarget: null,
     log: [...state.log, `${u.name} 待机。`],
   };
   return maybeEndPlayerTurn(next);
 }
 
-/** 菜单或侧栏：移动完毕后待机 */
+/** 菜单或侧栏：待机 */
 export function waitAfterMove(state: BattleState): BattleState {
   if (state.outcome !== "playing" || state.turn !== "player") return state;
   if (state.phase !== "menu") return state;
@@ -496,6 +661,7 @@ export function waitAfterMove(state: BattleState): BattleState {
     selectedId: null,
     phase: "select",
     moveTargets: [],
+    pickTarget: null,
     log: [...state.log, `${u.name} 待机。`],
   };
   return maybeEndPlayerTurn(next);
@@ -505,4 +671,12 @@ export function isValidSave(o: unknown): o is BattleState {
   if (!o || typeof o !== "object") return false;
   const x = o as Record<string, unknown>;
   return x.version === 1 && Array.isArray(x.units) && typeof x.gridW === "number";
+}
+
+export function ensureBattleFields(b: BattleState): BattleState {
+  let s = { ...b, pickTarget: b.pickTarget ?? null };
+  if (!s.playerTurnStart || Object.keys(s.playerTurnStart).length === 0) {
+    s = { ...s, playerTurnStart: buildPlayerTurnStart(s.units) };
+  }
+  return s;
 }
