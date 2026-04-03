@@ -340,6 +340,37 @@ a:hover {
   border: 1px solid var(--border);
   background: #0a0e14;
   padding: 0.75rem;
+  position: relative;
+}
+
+.kill-banner-stack {
+  text-align: center;
+  margin-bottom: 0.5rem;
+  min-height: 0;
+}
+
+.kill-banner-line {
+  margin: 0.2rem 0;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #fecaca;
+  letter-spacing: 0.04em;
+  text-shadow:
+    0 0 14px #7f1d1d,
+    0 2px 8px #000;
+  animation: kill-banner-pop 0.45s ease-out;
+}
+
+@keyframes kill-banner-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 .battle-grid {
@@ -446,6 +477,52 @@ a:hover {
 
 .unit-token.selected {
   box-shadow: 0 0 0 3px #fbbf24;
+}
+
+.unit-token.unit-move-slide {
+  animation: unit-move-slide-in 0.42s cubic-bezier(0.22, 1, 0.32, 1) forwards;
+  z-index: 5;
+}
+
+@keyframes unit-move-slide-in {
+  from {
+    transform: translate(
+      calc(var(--sdx, 0) * (var(--cell) + 2px)),
+      calc(var(--sdy, 0) * (var(--cell) + 2px))
+    );
+  }
+  to {
+    transform: translate(0, 0);
+  }
+}
+
+.death-ghost-cell {
+  pointer-events: none;
+  z-index: 160;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.unit-death-fade {
+  animation: unit-death-fade-out 0.95s ease-out forwards;
+  filter: saturate(1);
+}
+
+@keyframes unit-death-fade-out {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+    filter: brightness(1) saturate(1);
+  }
+  35% {
+    filter: brightness(1.6) saturate(0.35);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.82) translateY(-8px);
+    filter: brightness(0.4) saturate(0);
+  }
 }
 
 .unit-hit {

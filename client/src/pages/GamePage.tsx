@@ -90,6 +90,8 @@ export default function GamePage() {
   const [localList, setLocalList] = useState<LocalSaveEntry[]>(() => readLocalSaves());
   const [remoteList, setRemoteList] = useState<ServerSaveRow[]>([]);
   const [remoteLoading, setRemoteLoading] = useState(false);
+  const [visualEpoch, setVisualEpoch] = useState(0);
+  const bumpVisualEpoch = useCallback(() => setVisualEpoch((n) => n + 1), []);
 
   const refreshLocal = useCallback(() => setLocalList(readLocalSaves()), []);
 
@@ -177,7 +179,8 @@ export default function GamePage() {
   const onNewGame = useCallback(() => {
     setBattle(createInitialBattle());
     setMessage(null);
-  }, []);
+    bumpVisualEpoch();
+  }, [bumpVisualEpoch]);
 
   const saveLocal = useCallback(() => {
     const name = slotName.trim() || "存档1";
@@ -206,8 +209,9 @@ export default function GamePage() {
       setBattle(entry.payload);
       setSlotName(entry.slotName);
       setMessage(`已读取本地：${entry.slotName}`);
+      bumpVisualEpoch();
     },
-    []
+    [bumpVisualEpoch]
   );
 
   const loadRemote = useCallback(
@@ -219,8 +223,9 @@ export default function GamePage() {
       setBattle(normalizeLoadedBattle(row.payload as BattleState));
       setSlotName(row.slotName);
       setMessage(`已读取云端：${row.slotName}`);
+      bumpVisualEpoch();
     },
-    []
+    [bumpVisualEpoch]
   );
 
   const removeLocal = useCallback(
@@ -333,6 +338,7 @@ export default function GamePage() {
       <main className="game-main">
         <GameBattle
           battle={battle}
+          visualEpoch={visualEpoch}
           onCellClick={onCellClick}
           onUnitClick={onUnitClick}
           onMenuAction={onMenuAction}

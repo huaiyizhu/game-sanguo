@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { KeyboardEvent, MouseEvent } from "react";
+import type { CSSProperties, KeyboardEvent, MouseEvent } from "react";
 import {
   canMeleeAttack,
   canUseTactic,
@@ -10,6 +10,8 @@ export type MenuAction = "attack" | "tactic" | "wait";
 
 type Props = {
   battle: BattleState;
+  /** 新游戏 / 读档时递增，避免误判移动与死亡动画 */
+  visualEpoch: number;
   onCellClick: (x: number, y: number) => void;
   onUnitClick: (unitId: string, side: Side) => void;
   onMenuAction: (action: MenuAction) => void;
@@ -35,8 +37,21 @@ function nextEnabledFocus(
   return from;
 }
 
+type UnitSnap = { x: number; y: number; hp: number };
+
+type DyingVisual = {
+  key: number;
+  x: number;
+  y: number;
+  name: string;
+  side: Side;
+};
+
+type KillBanner = { key: number; text: string };
+
 export default function GameBattle({
   battle,
+  visualEpoch,
   onCellClick,
   onUnitClick,
   onMenuAction,
@@ -54,8 +69,24 @@ export default function GameBattle({
     amount: number;
     key: number;
   } | null>(null);
+  const [moveSlide, setMoveSlide] = useState<Record<string, { dx: number; dy: number }>>({});
+  const [dyingVisuals, setDyingVisuals] = useState<DyingVisual[]>([]);
+  const [killBanners, setKillBanners] = useState<KillBanner[]>([]);
   const prevHpRef = useRef<Record<string, number> | null>(null);
+  const prevSnapRef = useRef<Record<string, UnitSnap> | null>(null);
+  const prevEpochRef = useRef(visualEpoch);
   const prevPhaseRef = useRef<BattlePhase | null>(null);
+
+  useEffect(() => {
+    if (prevEpochRef.current === visualEpoch) return;
+    prevEpochRef.current = visualEpoch;
+    prevHpRef.current = null;
+    prevSnapRef.current = null;
+    setMoveSlide({});
+    setDyingVisuals([]);
+    setKillBanners([]);
+    setDmgFx(null);
+  }, [visualEpoch]);
 
   const selectedUnit = selectedId ? units.find((u) => u.id === selectedId) : undefined;
   const attackOk =
@@ -85,19 +116,67 @@ export default function GameBattle({
   }, [phase, selectedId, units]);
 
   useEffect(() => {
-    if (!prevHpRef.current) {
-      prevHpRef.current = Object.fromEntries(units.map((u) => [u.id, u.hp]));
+    if (!prevSnapRef.current || !prevHpRef.current) {
+      const snap: Record<string, UnitSnap> = {};
+      const hpMap: Record<string, number> = {};
+      for (const u of units) {
+        snap[u.id] = { x: u.x, y: u.y, hp: u.hp };
+        hpMap[u.id] = u.hp;
+      }
+      prevSnapRef.current = snap;
+      prevHpRef.current = hpMap;
       return;
     }
+
     for (const u of units) {
-      const prev = prevHpRef.current[u.id];
-      if (prev !== undefined && u.hp < prev) {
+      const prevHp = prevHpRef.current[u.id];
+      if (prevHp !== undefined && u.hp < prevHp && u.hp > 0) {
         setDmgFx({
           unitId: u.id,
-          amount: prev - u.hp,
+          amount: prevHp - u.hp,
           key: Date.now() + Math.random(),
         });
       }
+
+      const old = prevSnapRef.current[u.id];
+      if (old) {
+        if (old.hp > 0 && u.hp <= 0) {
+          const k = Date.now() + Math.random();
+          setDyingVisuals((list) => [
+            ...list,
+            {
+              key: k,
+              x: old.x,
+              y: old.y,
+              name: u.name,
+              side: u.side,
+            },
+          ]);
+          setKillBanners((list) =>
+            [...list, { key: k, text: `${u.name}被斩于阵前` }].slice(-8)
+          );
+          window.setTimeout(() => {
+            setDyingVisuals((list) => list.filter((d) => d.key !== k));
+          }, 980);
+          window.setTimeout(() => {
+            setKillBanners((list) => list.filter((b) => b.key !== k));
+          }, 3200);
+        } else if (old.hp > 0 && u.hp > 0 && (old.x !== u.x || old.y !== u.y)) {
+          const id = u.id;
+          const dx = old.x - u.x;
+          const dy = old.y - u.y;
+          setMoveSlide((prev) => ({ ...prev, [id]: { dx, dy } }));
+          window.setTimeout(() => {
+            setMoveSlide((prev) => {
+              const next = { ...prev };
+              delete next[id];
+              return next;
+            });
+          }, 460);
+        }
+      }
+
+      prevSnapRef.current[u.id] = { x: u.x, y: u.y, hp: u.hp };
       prevHpRef.current[u.id] = u.hp;
     }
   }, [units]);
@@ -218,6 +297,15 @@ export default function GameBattle({
       aria-label="battlefield"
       onContextMenu={onContextMenu}
     >
+      {killBanners.length > 0 && (
+        <div className="kill-banner-stack" aria-live="polite">
+          {killBanners.map((b) => (
+            <p key={b.key} className="kill-banner-line">
+              {b.text}
+            </p>
+          ))}
+        </div>
+      )}
       <div
         className="battle-grid"
         style={{
@@ -250,6 +338,7 @@ export default function GameBattle({
           const hitActive = dmgFx?.unitId === u?.id;
           const pickCand = u && u.side === "enemy" && isPickCandidate(u.id);
           const pickFocus = u && u.id === focusedEnemyId;
+          const slide = u && moveSlide[u.id];
 
           return (
             <div
@@ -278,6 +367,7 @@ export default function GameBattle({
                   className={[
                     "unit-token",
                     u.side,
+                    slide ? "unit-move-slide" : "",
                     isSelected ? "selected" : "",
                     hitActive ? "unit-hit" : "",
                     pickCand ? "pick-target-candidate" : "",
@@ -293,6 +383,14 @@ export default function GameBattle({
                   ]
                     .filter(Boolean)
                     .join(" ")}
+                  style={
+                    slide
+                      ? ({
+                          "--sdx": String(slide.dx),
+                          "--sdy": String(slide.dy),
+                        } as CSSProperties)
+                      : undefined
+                  }
                   onMouseEnter={() => {
                     if (phase === "pick-target" && u.side === "enemy" && isPickCandidate(u.id)) {
                       onPickHoverEnemy(u.id);
@@ -379,6 +477,19 @@ export default function GameBattle({
             </div>
           );
         })}
+        {dyingVisuals.map((d) => (
+          <div
+            key={d.key}
+            className="death-ghost-cell"
+            style={{ gridColumn: d.x + 1, gridRow: d.y + 1 }}
+            aria-hidden
+          >
+            <div className={`unit-token ${d.side} unit-death-fade`}>
+              <span className="unit-name">{d.name}</span>
+              <span className="unit-hp">0</span>
+            </div>
+          </div>
+        ))}
       </div>
       {phase === "menu" && (
         <p className="menu-hint">
