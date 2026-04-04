@@ -4,6 +4,7 @@ import {
   canAffordTactic,
   canMeleeAttack,
   canUseTactic,
+  TURN_PHASE_BANNER_MS,
 } from "../game/battle";
 import type { BattlePhase, BattleState, Side, TacticKind, Terrain } from "../game/types";
 import { TACTIC_DEF, TERRAIN_LABEL } from "../game/types";
@@ -57,6 +58,7 @@ type DyingVisual = {
   y: number;
   name: string;
   side: Side;
+  level: number;
 };
 
 type KillBanner = { key: number; text: string };
@@ -90,17 +92,58 @@ export default function GameBattle({
   const prevSnapRef = useRef<Record<string, UnitSnap> | null>(null);
   const prevEpochRef = useRef(visualEpoch);
   const prevPhaseRef = useRef<BattlePhase | null>(null);
+  const prevTurnBattleRef = useRef<"player" | "enemy" | undefined>(undefined);
+  const turnBannerTimerRef = useRef<number>(0);
+  const [turnBanner, setTurnBanner] = useState<"player" | "enemy" | null>(null);
+  const [turnBannerSeq, setTurnBannerSeq] = useState(0);
 
   useEffect(() => {
     if (prevEpochRef.current === visualEpoch) return;
     prevEpochRef.current = visualEpoch;
     prevHpRef.current = null;
     prevSnapRef.current = null;
+    prevTurnBattleRef.current = undefined;
+    window.clearTimeout(turnBannerTimerRef.current);
+    setTurnBanner(null);
     setMoveSlide({});
     setDyingVisuals([]);
     setKillBanners([]);
     setDmgFx(null);
   }, [visualEpoch]);
+
+  useEffect(() => {
+    if (battle.outcome !== "playing") {
+      window.clearTimeout(turnBannerTimerRef.current);
+      setTurnBanner(null);
+      prevTurnBattleRef.current = battle.turn;
+      return;
+    }
+    const prev = prevTurnBattleRef.current;
+    const curr = battle.turn;
+    if (prev === curr) return;
+    prevTurnBattleRef.current = curr;
+    window.clearTimeout(turnBannerTimerRef.current);
+    setTurnBanner(curr);
+    setTurnBannerSeq((n) => n + 1);
+    turnBannerTimerRef.current = window.setTimeout(() => {
+      setTurnBanner(null);
+    }, TURN_PHASE_BANNER_MS);
+    return () => window.clearTimeout(turnBannerTimerRef.current);
+  }, [battle.turn, battle.outcome]);
+
+  useEffect(() => {
+    if (!turnBanner) return;
+    const block = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    window.addEventListener("keydown", block, true);
+    window.addEventListener("keyup", block, true);
+    return () => {
+      window.removeEventListener("keydown", block, true);
+      window.removeEventListener("keyup", block, true);
+    };
+  }, [turnBanner]);
 
   const selectedUnit = selectedId ? units.find((u) => u.id === selectedId) : undefined;
   const attackOk =
@@ -175,6 +218,7 @@ export default function GameBattle({
               y: old.y,
               name: u.name,
               side: u.side,
+              level: u.level,
             },
           ]);
           setKillBanners((list) =>
@@ -356,6 +400,9 @@ export default function GameBattle({
   const terrainAt = (x: number, y: number): Terrain => terrain[y]?.[x] ?? "plain";
   const terrainClass = (x: number, y: number) => `terrain-${terrainAt(x, y)}`;
 
+  const turnBannerLabel =
+    turnBanner === "player" ? "我方回合" : turnBanner === "enemy" ? "敌方回合" : "";
+
   return (
     <div
       className="battle-wrap"
@@ -363,6 +410,18 @@ export default function GameBattle({
       aria-label="battlefield"
       onContextMenu={onContextMenu}
     >
+      {turnBanner && (
+        <div
+          className={`turn-phase-banner-root turn-phase-banner-${turnBanner}`}
+          role="status"
+          aria-live="polite"
+          aria-label={turnBannerLabel}
+        >
+          <p key={turnBannerSeq} className="turn-phase-banner-text">
+            {turnBannerLabel}
+          </p>
+        </div>
+      )}
       {killBanners.length > 0 && (
         <div className="kill-banner-stack" aria-live="polite">
           {killBanners.map((b) => (
@@ -492,6 +551,9 @@ export default function GameBattle({
                     }
                   }}
                 >
+                  <span className="unit-level-badge" aria-label={`等级 ${u.level}`}>
+                    Lv.{u.level}
+                  </span>
                   {hitActive && dmgFx && (
                     <span className="dmg-float" key={dmgFx.key}>
                       -{dmgFx.amount}
@@ -610,6 +672,9 @@ export default function GameBattle({
             aria-hidden
           >
             <div className={`unit-token ${d.side} unit-death-fade`}>
+              <span className="unit-level-badge" aria-hidden>
+                Lv.{d.level}
+              </span>
               <span className="unit-name">{d.name}</span>
               <span className="unit-hp">0</span>
             </div>

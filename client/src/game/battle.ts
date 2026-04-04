@@ -8,9 +8,19 @@ import type {
   Terrain,
   Unit,
 } from "./types";
-import { TACTIC_DEF, tacticMaxFromIntel } from "./types";
+import {
+  TACTIC_DEF,
+  expToNextLevel,
+  isArmyPreferredTerrain,
+  PREFERRED_TERRAIN_ATK_MUL,
+  PREFERRED_TERRAIN_DEF_BONUS,
+  tacticMaxForUnit,
+} from "./types";
 
 const key = (x: number, y: number) => `${x},${y}`;
+
+/** 回合转场字幕时长（毫秒），须与 CSS 中字幕动画时长一致 */
+export const TURN_PHASE_BANNER_MS = 1000;
 
 function terrainAt(state: BattleState, x: number, y: number): Terrain {
   const row = state.terrain[y];
@@ -32,6 +42,93 @@ function occupantMap(units: Unit[]): Map<string, Unit> {
   return m;
 }
 
+function effectiveMightOnTerrain(state: BattleState, u: Unit): number {
+  let v = u.might;
+  const t = terrainAt(state, u.x, u.y);
+  if (isArmyPreferredTerrain(u.armyType, t)) v = Math.floor(v * PREFERRED_TERRAIN_ATK_MUL);
+  return v;
+}
+
+function effectiveIntelOnTerrain(state: BattleState, u: Unit): number {
+  let v = u.intel;
+  const t = terrainAt(state, u.x, u.y);
+  if (isArmyPreferredTerrain(u.armyType, t)) v = Math.floor(v * PREFERRED_TERRAIN_ATK_MUL);
+  return v;
+}
+
+function effectiveDefenseOnTerrain(state: BattleState, u: Unit): number {
+  let v = u.defense;
+  const t = terrainAt(state, u.x, u.y);
+  if (isArmyPreferredTerrain(u.armyType, t)) v += PREFERRED_TERRAIN_DEF_BONUS;
+  return v;
+}
+
+function meleeDamageDealt(state: BattleState, attacker: Unit, target: Unit): number {
+  const atk = effectiveMightOnTerrain(state, attacker);
+  const def = effectiveDefenseOnTerrain(state, target);
+  return Math.max(1, atk - def);
+}
+
+function tacticDamageDealt(
+  state: BattleState,
+  attacker: Unit,
+  target: Unit,
+  tacticKind: TacticKind
+): number {
+  const intl = effectiveIntelOnTerrain(state, attacker);
+  let raw = Math.max(1, Math.floor(intl * 0.55 * TACTIC_DEF[tacticKind].dmgMul));
+  const defPart = Math.floor(effectiveDefenseOnTerrain(state, target) * 0.45);
+  return Math.max(1, raw - defPart);
+}
+
+function terrainCombatHint(state: BattleState, atk: Unit, def: Unit): string {
+  const a = isArmyPreferredTerrain(atk.armyType, terrainAt(state, atk.x, atk.y));
+  const d = isArmyPreferredTerrain(def.armyType, terrainAt(state, def.x, def.y));
+  if (a && d) return "（双方地利）";
+  if (a) return "（攻方地利）";
+  if (d) return "（守方地利）";
+  return "";
+}
+
+function xpForDamage(
+  damage: number,
+  killed: boolean,
+  attackerLevel: number,
+  targetLevel: number
+): number {
+  const diff = targetLevel - attackerLevel;
+  let mult = 1 + diff * 0.1;
+  mult = Math.max(0.42, Math.min(2.1, mult));
+  let base = damage * 0.52;
+  if (killed) base += 24 + targetLevel * 5;
+  return Math.max(1, Math.floor(base * mult));
+}
+
+const HP_PER_LEVEL = 12;
+const TACTIC_BONUS_ON_LEVELUP = 5;
+
+/** 我军获得经验并可能升级（仅修改武将自身字段） */
+function applyExpAndLevelUps(u: Unit, gain: number, logOut: string[]): Unit {
+  if (u.side !== "player" || gain <= 0) return u;
+  let next = { ...u, exp: u.exp + gain };
+  logOut.push(`${u.name} 获得 ${gain} 点经验。`);
+  for (;;) {
+    const need = expToNextLevel(next.level);
+    if (next.exp < need) break;
+    next.exp -= need;
+    next.level += 1;
+    next.maxHp += HP_PER_LEVEL;
+    next.hp = Math.min(next.maxHp, next.hp + HP_PER_LEVEL);
+    next.defense += 1;
+    next.tacticMax = tacticMaxForUnit(next.intel, next.level);
+    next.tacticPoints = Math.min(next.tacticMax, next.tacticPoints + TACTIC_BONUS_ON_LEVELUP);
+    logOut.push(
+      `${next.name} 升至 Lv.${next.level}！兵力上限+${HP_PER_LEVEL}、防御+1、计策上限提升。`
+    );
+  }
+  return next;
+}
+
 function buildPlayerTurnStart(units: Unit[]): PlayerTurnStartMap {
   const playerTurnStart: PlayerTurnStartMap = {};
   for (const u of units) {
@@ -41,7 +138,13 @@ function buildPlayerTurnStart(units: Unit[]): PlayerTurnStartMap {
         y: u.y,
         moved: u.moved,
         acted: u.acted,
+        hp: u.hp,
+        maxHp: u.maxHp,
+        level: u.level,
+        exp: u.exp,
+        defense: u.defense,
         tacticPoints: u.tacticPoints,
+        tacticMax: u.tacticMax,
       };
     }
   }
@@ -50,6 +153,15 @@ function buildPlayerTurnStart(units: Unit[]): PlayerTurnStartMap {
 
 function withTurnSnapshot(state: BattleState): BattleState {
   return { ...state, playerTurnStart: buildPlayerTurnStart(state.units) };
+}
+
+/** 关卡顺序；最后一关胜利后回到序章 */
+export const SCENARIO_IDS = ["prologue_zhangjiao", "ch1_pursuit"] as const;
+
+export function getNextScenarioId(currentId: string): string | null {
+  const idx = SCENARIO_IDS.indexOf(currentId as (typeof SCENARIO_IDS)[number]);
+  if (idx < 0 || idx >= SCENARIO_IDS.length - 1) return null;
+  return SCENARIO_IDS[idx + 1];
 }
 
 function createPrologueTerrain(gridW: number, gridH: number): Terrain[][] {
@@ -70,12 +182,8 @@ function createPrologueTerrain(gridW: number, gridH: number): Terrain[][] {
   return rows;
 }
 
-export function createInitialBattle(): BattleState {
-  const gridW = 12;
-  const gridH = 8;
-  const terrain = createPrologueTerrain(gridW, gridH);
-
-  const units: Unit[] = [
+function defaultPlayerRoster(): Unit[] {
+  return [
     {
       id: "p1",
       name: "刘备",
@@ -84,11 +192,14 @@ export function createInitialBattle(): BattleState {
       y: 6,
       hp: 120,
       maxHp: 120,
+      level: 1,
+      exp: 0,
       might: 28,
       intel: 72,
+      defense: 12,
       armyType: "ping",
-      tacticMax: tacticMaxFromIntel(72),
-      tacticPoints: tacticMaxFromIntel(72),
+      tacticMax: tacticMaxForUnit(72, 1),
+      tacticPoints: tacticMaxForUnit(72, 1),
       move: 4,
       moved: false,
       acted: false,
@@ -101,11 +212,14 @@ export function createInitialBattle(): BattleState {
       y: 6,
       hp: 110,
       maxHp: 110,
-      might: 95,
+      level: 1,
+      exp: 0,
+      might: 32,
       intel: 68,
+      defense: 14,
       armyType: "ping",
-      tacticMax: tacticMaxFromIntel(68),
-      tacticPoints: tacticMaxFromIntel(68),
+      tacticMax: tacticMaxForUnit(68, 1),
+      tacticPoints: tacticMaxForUnit(68, 1),
       move: 3,
       moved: false,
       acted: false,
@@ -118,15 +232,27 @@ export function createInitialBattle(): BattleState {
       y: 6,
       hp: 130,
       maxHp: 130,
-      might: 92,
+      level: 1,
+      exp: 0,
+      might: 30,
       intel: 38,
+      defense: 13,
       armyType: "shan",
-      tacticMax: tacticMaxFromIntel(38),
-      tacticPoints: tacticMaxFromIntel(38),
+      tacticMax: tacticMaxForUnit(38, 1),
+      tacticPoints: tacticMaxForUnit(38, 1),
       move: 3,
       moved: false,
       acted: false,
     },
+  ];
+}
+
+function buildPrologueBattle(): BattleState {
+  const gridW = 12;
+  const gridH = 8;
+  const terrain = createPrologueTerrain(gridW, gridH);
+  const units: Unit[] = [
+    ...defaultPlayerRoster(),
     {
       id: "e1",
       name: "黄巾贼",
@@ -135,8 +261,11 @@ export function createInitialBattle(): BattleState {
       y: 5,
       hp: 70,
       maxHp: 70,
+      level: 2,
+      exp: 0,
       might: 22,
       intel: 30,
+      defense: 8,
       armyType: "shui",
       tacticMax: 0,
       tacticPoints: 0,
@@ -152,8 +281,11 @@ export function createInitialBattle(): BattleState {
       y: 2,
       hp: 65,
       maxHp: 65,
+      level: 2,
+      exp: 0,
       might: 21,
       intel: 28,
+      defense: 7,
       armyType: "ping",
       tacticMax: 0,
       tacticPoints: 0,
@@ -169,8 +301,11 @@ export function createInitialBattle(): BattleState {
       y: 3,
       hp: 95,
       maxHp: 95,
+      level: 4,
+      exp: 0,
       might: 26,
       intel: 42,
+      defense: 11,
       armyType: "shan",
       tacticMax: 0,
       tacticPoints: 0,
@@ -180,7 +315,7 @@ export function createInitialBattle(): BattleState {
     },
   ];
 
-  return withTurnSnapshot({
+  return {
     version: 2,
     scenarioId: "prologue_zhangjiao",
     scenarioTitle: "序章 · 讨伐黄巾",
@@ -198,7 +333,166 @@ export function createInitialBattle(): BattleState {
     playerTurnStart: {},
     enemyTurnQueue: null,
     enemyTurnCursor: 0,
+  };
+}
+
+function buildChapter1Battle(): BattleState {
+  const gridW = 12;
+  const gridH = 8;
+  const terrain = createPrologueTerrain(gridW, gridH);
+  const units: Unit[] = [
+    ...defaultPlayerRoster(),
+    {
+      id: "e1",
+      name: "西凉斥候",
+      side: "enemy",
+      x: 3,
+      y: 1,
+      hp: 58,
+      maxHp: 58,
+      level: 3,
+      exp: 0,
+      might: 24,
+      intel: 22,
+      defense: 9,
+      armyType: "ping",
+      tacticMax: 0,
+      tacticPoints: 0,
+      move: 3,
+      moved: false,
+      acted: false,
+    },
+    {
+      id: "e2",
+      name: "西凉斥候",
+      side: "enemy",
+      x: 8,
+      y: 1,
+      hp: 58,
+      maxHp: 58,
+      level: 3,
+      exp: 0,
+      might: 24,
+      intel: 22,
+      defense: 9,
+      armyType: "ping",
+      tacticMax: 0,
+      tacticPoints: 0,
+      move: 3,
+      moved: false,
+      acted: false,
+    },
+    {
+      id: "e3",
+      name: "西凉精兵",
+      side: "enemy",
+      x: 5,
+      y: 0,
+      hp: 88,
+      maxHp: 88,
+      level: 5,
+      exp: 0,
+      might: 29,
+      intel: 26,
+      defense: 12,
+      armyType: "shan",
+      tacticMax: 0,
+      tacticPoints: 0,
+      move: 3,
+      moved: false,
+      acted: false,
+    },
+    {
+      id: "e4",
+      name: "西凉队率",
+      side: "enemy",
+      x: 6,
+      y: 2,
+      hp: 102,
+      maxHp: 102,
+      level: 6,
+      exp: 0,
+      might: 31,
+      intel: 35,
+      defense: 13,
+      armyType: "ping",
+      tacticMax: 0,
+      tacticPoints: 0,
+      move: 2,
+      moved: false,
+      acted: false,
+    },
+  ];
+
+  return {
+    version: 2,
+    scenarioId: "ch1_pursuit",
+    scenarioTitle: "第一章 · 乘胜追击",
+    gridW,
+    gridH,
+    terrain,
+    turn: "player",
+    phase: "select",
+    selectedId: null,
+    moveTargets: [],
+    units,
+    log: ["黄巾溃兵未远，追歼残敌，却遇西凉军斥候……"],
+    outcome: "playing",
+    pickTarget: null,
+    playerTurnStart: {},
+    enemyTurnQueue: null,
+    enemyTurnCursor: 0,
+  };
+}
+
+/** 新建指定关卡（我军为默认数值，用于新游戏/读档兜底） */
+export function createBattleForScenario(scenarioId: string): BattleState {
+  if (scenarioId === "ch1_pursuit") {
+    return withTurnSnapshot(buildChapter1Battle());
+  }
+  return withTurnSnapshot(buildPrologueBattle());
+}
+
+export function createInitialBattle(): BattleState {
+  return createBattleForScenario(SCENARIO_IDS[0]);
+}
+
+/** 胜利后进入下一关：继承上一关存活我军（回满兵力、回满计策）；无下一关则回到序章 */
+export function createNextBattleAfterVictory(prev: BattleState): BattleState {
+  const nextId = getNextScenarioId(prev.scenarioId);
+  const carried = prev.units.filter((u) => u.side === "player" && u.hp > 0);
+  const template = createBattleForScenario(nextId ?? SCENARIO_IDS[0]);
+  if (!nextId) {
+    return template;
+  }
+  return withTurnSnapshot(mergeCarriedPlayers(template, carried));
+}
+
+function mergeCarriedPlayers(template: BattleState, carried: Unit[]): BattleState {
+  const carriedById = new Map(carried.map((u) => [u.id, u]));
+  const units = template.units.map((u) => {
+    if (u.side !== "player") return u;
+    const c = carriedById.get(u.id);
+    if (!c) return u;
+    const tm = tacticMaxForUnit(c.intel, c.level);
+    return {
+      ...u,
+      hp: c.maxHp,
+      maxHp: c.maxHp,
+      level: c.level,
+      exp: c.exp,
+      might: c.might,
+      intel: c.intel,
+      defense: c.defense,
+      armyType: c.armyType,
+      move: c.move,
+      tacticMax: tm,
+      tacticPoints: tm,
+      moved: false,
+      acted: false,
+    };
   });
+  return { ...template, units };
 }
 
 function alive(units: Unit[], side: Side) {
@@ -231,7 +525,7 @@ function checkOutcome(state: BattleState): BattleState {
       pickTarget: null,
       enemyTurnQueue: null,
       enemyTurnCursor: 0,
-      log: [...state.log, "我军全灭……"],
+      log: [...state.log, "我方全部阵亡"],
     };
   }
   return state;
@@ -514,7 +808,7 @@ export function menuMeleeAttack(state: BattleState): BattleState {
   if (foes.length === 0) return state;
   const sorted = sortMeleeTargets(foes);
   if (sorted.length === 1) {
-    return applyPlayerDamage(state, aid, sorted[0].id, attacker.might, "melee");
+    return applyPlayerMeleeDamage(state, aid, sorted[0].id);
   }
   return {
     ...state,
@@ -584,9 +878,42 @@ export function tacticMenuChoose(state: BattleState, tacticKind: TacticKind): Ba
   };
 }
 
-function tacticDamageAmount(attacker: Unit, tacticKind: TacticKind): number {
-  const base = Math.max(1, Math.floor(attacker.intel * 0.55));
-  return Math.max(1, Math.floor(base * TACTIC_DEF[tacticKind].dmgMul));
+function applyPlayerMeleeDamage(
+  state: BattleState,
+  attackerId: string,
+  enemyId: string
+): BattleState {
+  const attacker = state.units.find((x) => x.id === attackerId);
+  const target = state.units.find((x) => x.id === enemyId);
+  if (!attacker || !target || target.side !== "enemy") return state;
+  const dmg = meleeDamageDealt(state, attacker, target);
+  const newHp = Math.max(0, target.hp - dmg);
+  const killed = newHp <= 0;
+  const xp = xpForDamage(dmg, killed, attacker.level, target.level);
+  const hint = terrainCombatHint(state, attacker, target);
+  const lines: string[] = [];
+  lines.push(
+    `${attacker.name} 攻击 ${target.name}，造成 ${dmg} 点伤害${hint ? ` ${hint}` : ""}。`
+  );
+  if (killed) lines.push(`${target.name} 被击退！`);
+  const attackerAfter = applyExpAndLevelUps({ ...attacker, acted: true }, xp, lines);
+  const units = state.units.map((x) => {
+    if (x.id === enemyId) return { ...x, hp: newHp };
+    if (x.id === attackerId) return attackerAfter;
+    return x;
+  });
+  let next: BattleState = {
+    ...state,
+    units,
+    selectedId: null,
+    phase: "select",
+    moveTargets: [],
+    pickTarget: null,
+    log: [...state.log, ...lines],
+  };
+  next = checkOutcome(next);
+  if (next.outcome !== "playing") return next;
+  return maybeEndPlayerTurn(next);
 }
 
 function applyPlayerTacticDamage(
@@ -603,24 +930,28 @@ function applyPlayerTacticDamage(
   if (!tacticValidOnTarget(state, tacticKind, target)) return state;
   if (manhattan(attacker, target) > 2) return state;
 
-  const dmg = tacticDamageAmount(attacker, tacticKind);
+  const dmg = tacticDamageDealt(state, attacker, target, tacticKind);
   const newHp = Math.max(0, target.hp - dmg);
+  const killed = newHp <= 0;
+  const xp = xpForDamage(dmg, killed, attacker.level, target.level);
+  const hint = terrainCombatHint(state, attacker, target);
+  const def = TACTIC_DEF[tacticKind];
+  const lines: string[] = [];
+  lines.push(
+    `${attacker.name} 施展${def.name}打击 ${target.name}，造成 ${dmg} 点伤害（-${cost} 计策）${hint ? ` ${hint}` : ""}。`
+  );
+  if (killed) lines.push(`${target.name} 被击退！`);
+  const atkBase = {
+    ...attacker,
+    acted: true,
+    tacticPoints: attacker.tacticPoints - cost,
+  };
+  const attackerAfter = applyExpAndLevelUps(atkBase, xp, lines);
   const units = state.units.map((x) => {
     if (x.id === enemyId) return { ...x, hp: newHp };
-    if (x.id === attackerId)
-      return {
-        ...x,
-        acted: true,
-        tacticPoints: x.tacticPoints - cost,
-      };
+    if (x.id === attackerId) return attackerAfter;
     return x;
   });
-  const def = TACTIC_DEF[tacticKind];
-  let log = [
-    ...state.log,
-    `${attacker.name} 施展${def.name}打击 ${target.name}，造成 ${dmg} 伤害（-${cost} 计策）。`,
-  ];
-  if (newHp <= 0) log = [...log, `${target.name} 被击退！`];
   let next: BattleState = {
     ...state,
     units,
@@ -628,38 +959,7 @@ function applyPlayerTacticDamage(
     phase: "select",
     moveTargets: [],
     pickTarget: null,
-    log,
-  };
-  next = checkOutcome(next);
-  if (next.outcome !== "playing") return next;
-  return maybeEndPlayerTurn(next);
-}
-
-function applyPlayerDamage(
-  state: BattleState,
-  attackerId: string,
-  enemyId: string,
-  dmg: number,
-  kind: "melee" | "tactic"
-): BattleState {
-  const attacker = state.units.find((x) => x.id === attackerId);
-  const target = state.units.find((x) => x.id === enemyId);
-  if (!attacker || !target || target.side !== "enemy") return state;
-  const newHp = Math.max(0, target.hp - dmg);
-  const units = state.units.map((x) =>
-    x.id === enemyId ? { ...x, hp: newHp } : x.id === attackerId ? { ...x, acted: true } : x
-  );
-  const verb = kind === "melee" ? "攻击" : "施展计策";
-  let log = [...state.log, `${attacker.name} ${verb} ${target.name}，造成 ${dmg} 伤害。`];
-  if (newHp <= 0) log = [...log, `${target.name} 被击退！`];
-  let next: BattleState = {
-    ...state,
-    units,
-    selectedId: null,
-    phase: "select",
-    moveTargets: [],
-    pickTarget: null,
-    log,
+    log: [...state.log, ...lines],
   };
   next = checkOutcome(next);
   if (next.outcome !== "playing") return next;
@@ -691,8 +991,7 @@ export function confirmPickTarget(state: BattleState, enemyId: string): BattleSt
       cost
     );
   }
-  const dmg = attacker.might;
-  return applyPlayerDamage({ ...state, pickTarget: null }, p.attackerId, enemyId, dmg, p.kind);
+  return applyPlayerMeleeDamage({ ...state, pickTarget: null }, p.attackerId, enemyId);
 }
 
 export function pickTargetNavigate(state: BattleState, delta: number): BattleState {
@@ -739,8 +1038,14 @@ export function escapeOrRevertUnit(state: BattleState): BattleState {
           y: snap.y,
           moved: snap.moved,
           acted: snap.acted,
+          hp: snap.hp ?? u.hp,
+          maxHp: snap.maxHp ?? u.maxHp,
+          level: snap.level ?? u.level,
+          exp: snap.exp ?? u.exp,
+          defense: snap.defense ?? u.defense,
           tacticPoints:
             typeof snap.tacticPoints === "number" ? snap.tacticPoints : u.tacticPoints,
+          tacticMax: snap.tacticMax ?? u.tacticMax,
         }
       : u
   );
@@ -793,7 +1098,7 @@ function startEnemyTurn(state: BattleState): BattleState {
 function refreshPlayerTacticPools(units: Unit[]): Unit[] {
   return units.map((u) => {
     if (u.side !== "player" || u.hp <= 0) return u;
-    const max = tacticMaxFromIntel(u.intel);
+    const max = tacticMaxForUnit(u.intel, u.level);
     return { ...u, tacticMax: max, tacticPoints: max };
   });
 }
@@ -827,12 +1132,13 @@ function executeEnemyUnitAction(state: BattleState, eid: string): BattleState {
 
   const adj = players.find((p) => adjacent(eu, p));
   if (adj) {
-    const dmg = eu.might;
+    const dmg = meleeDamageDealt(s, eu, adj);
+    const hint = terrainCombatHint(s, eu, adj);
     const newHp = Math.max(0, adj.hp - dmg);
     s = {
       ...s,
       units: s.units.map((x) => (x.id === adj.id ? { ...x, hp: newHp } : x)),
-      log: [...s.log, `${eu.name} 攻击 ${adj.name}，造成 ${dmg} 伤害。`],
+      log: [...s.log, `${eu.name} 攻击 ${adj.name}，造成 ${dmg} 点伤害${hint ? ` ${hint}` : ""}。`],
     };
     return checkOutcome(s);
   }
@@ -852,12 +1158,13 @@ function executeEnemyUnitAction(state: BattleState, eid: string): BattleState {
   }
   const adj2 = s.units.find((u) => u.side === "player" && u.hp > 0 && adjacent(eu, u));
   if (adj2) {
-    const dmg = eu.might;
+    const dmg = meleeDamageDealt(s, eu, adj2);
+    const hint = terrainCombatHint(s, eu, adj2);
     const newHp = Math.max(0, adj2.hp - dmg);
     s = {
       ...s,
       units: s.units.map((x) => (x.id === adj2.id ? { ...x, hp: newHp } : x)),
-      log: [...s.log, `${eu.name} 攻击 ${adj2.name}，造成 ${dmg} 伤害。`],
+      log: [...s.log, `${eu.name} 攻击 ${adj2.name}，造成 ${dmg} 点伤害${hint ? ` ${hint}` : ""}。`],
     };
     s = checkOutcome(s);
   }
@@ -983,7 +1290,10 @@ function migrateV1Unit(raw: Record<string, unknown>): Unit {
   const intel = typeof raw.intel === "number" ? raw.intel : 50;
   const might = typeof raw.might === "number" ? raw.might : atk;
   const armyType = (raw.armyType as ArmyType) || "ping";
-  const max = tacticMaxFromIntel(intel);
+  const level = 1;
+  const exp = 0;
+  const defense = Math.max(5, Math.floor(might * 0.4));
+  const tm = tacticMaxForUnit(intel, level);
   return {
     id: String(raw.id),
     name: String(raw.name),
@@ -992,12 +1302,15 @@ function migrateV1Unit(raw: Record<string, unknown>): Unit {
     y: Number(raw.y),
     hp: Number(raw.hp),
     maxHp: Number(raw.maxHp),
+    level,
+    exp,
     might,
     intel,
+    defense,
     armyType: ["ping", "shan", "shui"].includes(armyType) ? armyType : "ping",
-    tacticMax: typeof raw.tacticMax === "number" ? raw.tacticMax : max,
+    tacticMax: typeof raw.tacticMax === "number" ? Math.max(raw.tacticMax as number, tm) : tm,
     tacticPoints:
-      typeof raw.tacticPoints === "number" ? raw.tacticPoints : max,
+      typeof raw.tacticPoints === "number" ? (raw.tacticPoints as number) : tm,
     move: Number(raw.move),
     moved: Boolean(raw.moved),
     acted: Boolean(raw.acted),
@@ -1015,10 +1328,20 @@ export function isValidSave(o: unknown): o is BattleState {
 
 function ensureUnitShape(u: Unit | Record<string, unknown>): Unit {
   const r = u as Record<string, unknown>;
-  if (typeof r.might === "number" && typeof r.intel === "number" && r.armyType) {
-    return u as Unit;
+  if (typeof r.might !== "number" || typeof r.intel !== "number" || !r.armyType) {
+    return migrateV1Unit(r);
   }
-  return migrateV1Unit(r);
+  let base = { ...(u as Unit) };
+  if (typeof base.level !== "number") base.level = 1;
+  if (typeof base.exp !== "number") base.exp = 0;
+  if (typeof base.defense !== "number") {
+    base.defense = Math.max(5, Math.floor(base.might * 0.4));
+  }
+  const tm = tacticMaxForUnit(base.intel, base.level);
+  if (typeof base.tacticMax !== "number") base.tacticMax = tm;
+  base.tacticMax = Math.max(base.tacticMax, tm);
+  base.tacticPoints = Math.min(base.tacticMax, base.tacticPoints ?? base.tacticMax);
+  return base;
 }
 
 export function ensureBattleFields(b: BattleState): BattleState {
@@ -1056,11 +1379,25 @@ export function ensureBattleFields(b: BattleState): BattleState {
       playerTurnStart: Object.fromEntries(
         Object.entries(s.playerTurnStart).map(([id, snap]) => {
           const u = s.units.find((x) => x.id === id);
-          const tp =
-            typeof snap.tacticPoints === "number"
-              ? snap.tacticPoints
-              : (u?.tacticPoints ?? 0);
-          return [id, { ...snap, tacticPoints: tp }];
+          return [
+            id,
+            {
+              x: snap.x,
+              y: snap.y,
+              moved: snap.moved,
+              acted: snap.acted,
+              hp: snap.hp ?? u?.hp ?? 0,
+              maxHp: snap.maxHp ?? u?.maxHp ?? 0,
+              level: snap.level ?? u?.level ?? 1,
+              exp: snap.exp ?? u?.exp ?? 0,
+              defense: snap.defense ?? u?.defense ?? 5,
+              tacticPoints:
+                typeof snap.tacticPoints === "number"
+                  ? snap.tacticPoints
+                  : (u?.tacticPoints ?? 0),
+              tacticMax: snap.tacticMax ?? u?.tacticMax ?? 0,
+            },
+          ];
         })
       ) as PlayerTurnStartMap,
     };
@@ -1068,7 +1405,7 @@ export function ensureBattleFields(b: BattleState): BattleState {
   s = {
     ...s,
     units: s.units.map((u) => {
-      const max = tacticMaxFromIntel(u.intel);
+      const max = tacticMaxForUnit(u.intel, u.level);
       if (u.tacticMax !== max || u.tacticPoints > max) {
         return { ...u, tacticMax: max, tacticPoints: Math.min(u.tacticPoints, max) };
       }

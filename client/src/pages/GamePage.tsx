@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import {
@@ -12,7 +12,9 @@ import {
   cancelTacticMenu,
   confirmPickTarget,
   createInitialBattle,
+  createNextBattleAfterVictory,
   ensureBattleFields,
+  getNextScenarioId,
   escapeOrRevertUnit,
   gridCellClick,
   isValidSave,
@@ -24,10 +26,17 @@ import {
   selectPlayerUnit,
   skipOrEndIfStuck,
   tacticMenuChoose,
+  TURN_PHASE_BANNER_MS,
   waitAfterMove,
 } from "../game/battle";
 import type { BattleState, Terrain } from "../game/types";
-import { ARMY_TYPE_LABEL, TERRAIN_LABEL, type TacticKind } from "../game/types";
+import {
+  ARMY_TYPE_LABEL,
+  expToNextLevel,
+  isArmyPreferredTerrain,
+  TERRAIN_LABEL,
+  type TacticKind,
+} from "../game/types";
 
 const TERRAIN_LEGEND: { id: Terrain; ch: string }[] = [
   { id: "plain", ch: "陆" },
@@ -41,6 +50,9 @@ import GameBattle, { type MenuAction } from "./GameBattle";
 
 /** 敌军每名单位行动之间的间隔（毫秒）；队列中第一名立即行动 */
 const ENEMY_ACTION_GAP_MS = 2000;
+
+/** 胜负全屏提示展示时长（毫秒），之后自动下一关或重开 */
+const OUTCOME_TRANSITION_MS = 2800;
 
 function normalizeLoadedBattle(b: BattleState): BattleState {
   let s = ensureBattleFields(b);
@@ -147,6 +159,64 @@ export default function GamePage() {
     void refreshRemote();
   }, [refreshRemote]);
 
+  const enemyIntroDeadlineRef = useRef(0);
+  const prevTurnForEnemyIntroRef = useRef<"player" | "enemy">("player");
+  const battleRef = useRef(battle);
+  battleRef.current = battle;
+
+  const outcomeScheduledRef = useRef(false);
+  useEffect(() => {
+    if (battle.outcome !== "won" && battle.outcome !== "lost") {
+      outcomeScheduledRef.current = false;
+      return;
+    }
+    if (outcomeScheduledRef.current) return;
+    outcomeScheduledRef.current = true;
+    const tid = window.setTimeout(() => {
+      setBattle((b) => {
+        if (b.outcome === "won") {
+          const hadNext = getNextScenarioId(b.scenarioId) !== null;
+          const next = createNextBattleAfterVictory(b);
+          if (hadNext) {
+            setMessage(`进入：${next.scenarioTitle}`);
+          } else {
+            setMessage("已通关全部关卡，从序章重新开始。");
+          }
+          return next;
+        }
+        if (b.outcome === "lost") {
+          setMessage("已重新开始游戏");
+          return createInitialBattle();
+        }
+        return b;
+      });
+      bumpVisualEpoch();
+      setInspectUnitId(null);
+      outcomeScheduledRef.current = false;
+    }, OUTCOME_TRANSITION_MS);
+    return () => {
+      window.clearTimeout(tid);
+      outcomeScheduledRef.current = false;
+    };
+  }, [battle.outcome, bumpVisualEpoch]);
+
+  useEffect(() => {
+    enemyIntroDeadlineRef.current = 0;
+    prevTurnForEnemyIntroRef.current = battleRef.current.turn;
+  }, [visualEpoch]);
+
+  useEffect(() => {
+    if (battle.outcome !== "playing") {
+      prevTurnForEnemyIntroRef.current = battle.turn;
+      return;
+    }
+    const prev = prevTurnForEnemyIntroRef.current;
+    if (battle.turn === "enemy" && prev !== "enemy") {
+      enemyIntroDeadlineRef.current = Date.now() + TURN_PHASE_BANNER_MS;
+    }
+    prevTurnForEnemyIntroRef.current = battle.turn;
+  }, [battle.turn, battle.outcome]);
+
   useEffect(() => {
     if (battle.outcome !== "playing") return;
     if (battle.turn !== "enemy" || battle.phase !== "enemy") return;
@@ -155,7 +225,9 @@ export default function GamePage() {
     const c = battle.enemyTurnCursor;
     if (c >= q.length) return;
 
-    const delay = c === 0 ? 0 : ENEMY_ACTION_GAP_MS;
+    const introWait =
+      c === 0 ? Math.max(0, enemyIntroDeadlineRef.current - Date.now()) : 0;
+    const delay = introWait + (c === 0 ? 0 : ENEMY_ACTION_GAP_MS);
     const tid = window.setTimeout(() => {
       setBattle((s) => processSingleEnemyStep(s));
     }, delay);
@@ -330,13 +402,20 @@ export default function GamePage() {
     return t ? TERRAIN_LABEL[t] : null;
   }, [battle.terrain, inspectedUnit]);
 
+  const inspectedOnPreferredTerrain = useMemo(() => {
+    if (!inspectedUnit) return false;
+    const t = battle.terrain[inspectedUnit.y]?.[inspectedUnit.x];
+    if (!t) return false;
+    return isArmyPreferredTerrain(inspectedUnit.armyType, t);
+  }, [battle.terrain, inspectedUnit]);
+
   return (
     <div className="page game-layout">
       <div className="game-left-stack">
         <aside className="unit-inspect" aria-label="武将信息">
           <h3>武将信息</h3>
           {!inspectedUnit && (
-            <p className="muted small">点击场上武将查看兵力、武力、智力与计策值。</p>
+            <p className="muted small">点击场上武将查看等级、防御、兵力与计策值。</p>
           )}
           {inspectedUnit && (
             <dl className="unit-inspect-dl">
@@ -344,6 +423,16 @@ export default function GamePage() {
               <dd>{inspectedUnit.name}</dd>
               <dt>阵营</dt>
               <dd>{inspectedUnit.side === "player" ? "我军" : "敌军"}</dd>
+              <dt>等级</dt>
+              <dd>Lv.{inspectedUnit.level}</dd>
+              {inspectedUnit.side === "player" && (
+                <>
+                  <dt>经验</dt>
+                  <dd>
+                    {inspectedUnit.exp} / {expToNextLevel(inspectedUnit.level)}
+                  </dd>
+                </>
+              )}
               <dt>兵力</dt>
               <dd>
                 {inspectedUnit.hp} / {inspectedUnit.maxHp}
@@ -352,6 +441,8 @@ export default function GamePage() {
               <dd>{ARMY_TYPE_LABEL[inspectedUnit.armyType]}</dd>
               <dt>武力</dt>
               <dd>{inspectedUnit.might}</dd>
+              <dt>防御</dt>
+              <dd>{inspectedUnit.defense}</dd>
               <dt>智力</dt>
               <dd>{inspectedUnit.intel}</dd>
               {inspectedUnit.side === "player" && (
@@ -362,12 +453,17 @@ export default function GamePage() {
                   </dd>
                 </>
               )}
-              {inspectedTerrain && (
-                <>
-                  <dt>脚下地形</dt>
-                  <dd>{inspectedTerrain}</dd>
-                </>
-              )}
+                {inspectedTerrain && (
+                  <>
+                    <dt>脚下地形</dt>
+                    <dd>
+                      {inspectedTerrain}
+                      {inspectedOnPreferredTerrain && (
+                        <span className="terrain-bonus-tag"> 兵种优势（攻防↑）</span>
+                      )}
+                    </dd>
+                  </>
+                )}
             </dl>
           )}
           <div className="terrain-legend">
@@ -508,6 +604,13 @@ export default function GamePage() {
       </div>
 
       <main className="game-main">
+        {(battle.outcome === "won" || battle.outcome === "lost") && (
+          <div className="outcome-flash-layer" role="alert" aria-live="assertive">
+            <p className={`outcome-flash-text outcome-flash-text--${battle.outcome}`}>
+              {battle.outcome === "won" ? "敌军全灭，战斗胜利！" : "我方全部阵亡"}
+            </p>
+          </div>
+        )}
         <GameBattle
           battle={battle}
           visualEpoch={visualEpoch}

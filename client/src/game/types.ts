@@ -25,15 +25,21 @@ export interface Unit {
   y: number;
   hp: number;
   maxHp: number;
+  /** 等级 */
+  level: number;
+  /** 当前经验值（累积至升级） */
+  exp: number;
   /** 武力（近战伤害） */
   might: number;
   /** 智力（影响计策伤害与计策上限） */
   intel: number;
+  /** 防御（减免受到的物理/计策伤害） */
+  defense: number;
   /** 兵种 */
   armyType: ArmyType;
   /** 当前计策值 */
   tacticPoints: number;
-  /** 计策值上限（由智力推导，每回合我军开始时回满） */
+  /** 计策值上限（智力 + 等级，每回合我军开始时回满） */
   tacticMax: number;
   move: number;
   moved: boolean;
@@ -48,7 +54,13 @@ export type PlayerTurnStartMap = Record<
     y: number;
     moved: boolean;
     acted: boolean;
+    hp: number;
+    maxHp: number;
+    level: number;
+    exp: number;
+    defense: number;
     tacticPoints: number;
+    tacticMax: number;
   }
 >;
 
@@ -108,9 +120,32 @@ export const TACTIC_DEF: Record<
   },
 };
 
+/** 计策上限中由智力贡献的部分 */
 export function tacticMaxFromIntel(intel: number): number {
   return 10 + Math.floor(intel / 2);
 }
+
+/** 计策上限 = 智力基数 + 每级 +2 */
+export function tacticMaxForUnit(intel: number, level: number): number {
+  return tacticMaxFromIntel(intel) + level * 2;
+}
+
+/** 升到下一级所需经验（当前等级为 L 时） */
+export function expToNextLevel(level: number): number {
+  return 36 + level * 24 + level * level * 2;
+}
+
+/** 兵种是否在优势地形（攻防加成） */
+export function isArmyPreferredTerrain(army: ArmyType, t: Terrain): boolean {
+  if (army === "ping") return t === "plain" || t === "forest" || t === "desert";
+  if (army === "shan") return t === "mountain";
+  return army === "shui" && t === "water";
+}
+
+/** 优势地形：攻击力倍率 */
+export const PREFERRED_TERRAIN_ATK_MUL = 1.15;
+/** 优势地形：额外防御（减免） */
+export const PREFERRED_TERRAIN_DEF_BONUS = 6;
 
 export const ARMY_TYPE_LABEL: Record<ArmyType, string> = {
   ping: "平军",
