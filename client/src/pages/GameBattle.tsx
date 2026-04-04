@@ -120,16 +120,36 @@ export default function GameBattle({
     }
     const prev = prevTurnBattleRef.current;
     const curr = battle.turn;
-    if (prev === curr) return;
-    prevTurnBattleRef.current = curr;
+    const turnChanged = prev !== curr;
+    if (turnChanged) {
+      prevTurnBattleRef.current = curr;
+      setTurnBanner(curr);
+      setTurnBannerSeq((n) => n + 1);
+    }
+    /* 每次 effect 执行都重新挂载关闭定时器，避免 Strict Mode cleanup 或合盖休眠后定时器丢失导致字幕层逻辑上“永远不关” */
     window.clearTimeout(turnBannerTimerRef.current);
-    setTurnBanner(curr);
-    setTurnBannerSeq((n) => n + 1);
     turnBannerTimerRef.current = window.setTimeout(() => {
       setTurnBanner(null);
     }, TURN_PHASE_BANNER_MS);
     return () => window.clearTimeout(turnBannerTimerRef.current);
   }, [battle.turn, battle.outcome]);
+
+  const tabWasHiddenRef = useRef(false);
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "hidden") {
+        tabWasHiddenRef.current = true;
+        return;
+      }
+      if (document.visibilityState === "visible" && tabWasHiddenRef.current) {
+        tabWasHiddenRef.current = false;
+        window.clearTimeout(turnBannerTimerRef.current);
+        setTurnBanner(null);
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
 
   useEffect(() => {
     if (!turnBanner) return;
@@ -321,6 +341,17 @@ export default function GameBattle({
     ]
   );
 
+  const onMovePhaseKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (phase !== "move" || outcome !== "playing" || turn !== "player") return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onEscapeOrRevert();
+      }
+    },
+    [phase, outcome, turn, onEscapeOrRevert]
+  );
+
   const onPickKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (phase !== "pick-target" || outcome !== "playing" || turn !== "player") return;
@@ -363,10 +394,22 @@ export default function GameBattle({
       window.removeEventListener("keydown", onPickKeyDown as unknown as EventListener);
   }, [phase, onPickKeyDown]);
 
+  useEffect(() => {
+    if (phase !== "move") return;
+    window.addEventListener("keydown", onMovePhaseKeyDown as unknown as EventListener);
+    return () =>
+      window.removeEventListener("keydown", onMovePhaseKeyDown as unknown as EventListener);
+  }, [phase, onMovePhaseKeyDown]);
+
   const onContextMenu = useCallback(
     (e: MouseEvent) => {
       if (outcome !== "playing" || turn !== "player") return;
-      if (phase === "menu" || phase === "tactic-menu" || phase === "pick-target") {
+      if (
+        phase === "move" ||
+        phase === "menu" ||
+        phase === "tactic-menu" ||
+        phase === "pick-target"
+      ) {
         e.preventDefault();
         onEscapeOrRevert();
       }
@@ -403,6 +446,13 @@ export default function GameBattle({
   const turnBannerLabel =
     turnBanner === "player" ? "我方回合" : turnBanner === "enemy" ? "敌方回合" : "";
 
+  const showMoveRange =
+    outcome === "playing" &&
+    turn === "player" &&
+    phase === "move" &&
+    Boolean(selectedId) &&
+    moveTargets.length > 0;
+
   return (
     <div
       className="battle-wrap"
@@ -432,7 +482,9 @@ export default function GameBattle({
         </div>
       )}
       <div
-        className="battle-grid"
+        className={["battle-grid", showMoveRange ? "battle-grid--move-preview" : ""]
+          .filter(Boolean)
+          .join(" ")}
         style={{
           gridTemplateColumns: `repeat(${gridW}, var(--cell))`,
         }}

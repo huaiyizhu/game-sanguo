@@ -109,6 +109,27 @@ function deleteLocalSave(slotName: string) {
   }
 }
 
+function applyTerminalOutcomeTransition(
+  b: BattleState,
+  setMessage: (msg: string | null) => void
+): BattleState {
+  if (b.outcome === "won") {
+    const hadNext = getNextScenarioId(b.scenarioId) !== null;
+    const next = createNextBattleAfterVictory(b);
+    if (hadNext) {
+      setMessage(`进入：${next.scenarioTitle}`);
+    } else {
+      setMessage("已通关全部关卡，从序章重新开始。");
+    }
+    return next;
+  }
+  if (b.outcome === "lost") {
+    setMessage("已重新开始游戏");
+    return createInitialBattle();
+  }
+  return b;
+}
+
 export default function GamePage() {
   const { user, token } = useAuth();
   const [battle, setBattle] = useState<BattleState>(() => createInitialBattle());
@@ -165,6 +186,7 @@ export default function GamePage() {
   battleRef.current = battle;
 
   const outcomeScheduledRef = useRef(false);
+  const tabWasHiddenRef = useRef(false);
   useEffect(() => {
     if (battle.outcome !== "won" && battle.outcome !== "lost") {
       outcomeScheduledRef.current = false;
@@ -173,23 +195,7 @@ export default function GamePage() {
     if (outcomeScheduledRef.current) return;
     outcomeScheduledRef.current = true;
     const tid = window.setTimeout(() => {
-      setBattle((b) => {
-        if (b.outcome === "won") {
-          const hadNext = getNextScenarioId(b.scenarioId) !== null;
-          const next = createNextBattleAfterVictory(b);
-          if (hadNext) {
-            setMessage(`进入：${next.scenarioTitle}`);
-          } else {
-            setMessage("已通关全部关卡，从序章重新开始。");
-          }
-          return next;
-        }
-        if (b.outcome === "lost") {
-          setMessage("已重新开始游戏");
-          return createInitialBattle();
-        }
-        return b;
-      });
+      setBattle((b) => applyTerminalOutcomeTransition(b, setMessage));
       bumpVisualEpoch();
       setInspectUnitId(null);
       outcomeScheduledRef.current = false;
@@ -199,6 +205,25 @@ export default function GamePage() {
       outcomeScheduledRef.current = false;
     };
   }, [battle.outcome, bumpVisualEpoch]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "hidden") {
+        tabWasHiddenRef.current = true;
+        return;
+      }
+      if (document.visibilityState !== "visible" || !tabWasHiddenRef.current) return;
+      tabWasHiddenRef.current = false;
+      const o = battleRef.current.outcome;
+      if (o !== "won" && o !== "lost") return;
+      setBattle((b) => applyTerminalOutcomeTransition(b, setMessage));
+      bumpVisualEpoch();
+      setInspectUnitId(null);
+      outcomeScheduledRef.current = false;
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [bumpVisualEpoch]);
 
   useEffect(() => {
     enemyIntroDeadlineRef.current = 0;

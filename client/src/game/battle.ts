@@ -1025,6 +1025,18 @@ export function escapeOrRevertUnit(state: BattleState): BattleState {
   if (state.outcome !== "playing" || state.turn !== "player") return state;
   if (state.phase === "tactic-menu") return cancelTacticMenu(state);
   if (state.phase === "pick-target") return cancelPickTarget(state);
+  if (state.phase === "move") {
+    const id = state.selectedId;
+    const name = id ? (state.units.find((u) => u.id === id)?.name ?? id) : "";
+    return {
+      ...state,
+      phase: "select",
+      selectedId: null,
+      moveTargets: [],
+      pickTarget: null,
+      log: id ? [...state.log, `已取消选择 ${name}。`] : state.log,
+    };
+  }
   if (state.phase !== "menu" || !state.selectedId) return state;
   const id = state.selectedId;
   const snap = state.playerTurnStart[id];
