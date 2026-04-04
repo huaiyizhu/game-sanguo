@@ -6,6 +6,31 @@
 
 ## 2026-04-03
 
+### 战斗节奏、受击反馈与 Azure CI/CD（晚间）
+
+**移动与敌军 AI**
+
+- 我军 / 敌军移动改为 **沿路逐格推进**（`pendingMove` + `GamePage` 定时调用 `advancePendingMove`），避免一帧瞬移到终点。
+- 敌军移动与 **本回合移动力、地形消耗** 对齐：用 Dijkstra 建路径并逐格执行；移除错误的单步逼近逻辑，避免超距移动与表现异常。
+
+**回合转场与可操作时机**
+
+- 「我方回合」「敌方回合」字幕在 **上一方行动动画（位移、受击等）结束后再出现**（与 `POST_ACTION_TURN_BANNER_DELAY_MS` 等时长对齐）。
+- 字幕流程未结束前 **锁定战场操作与敌军 AI**（`turnIntroLocked`、遮罩拦截点击与键盘、侧栏待机按钮等），避免抢操作。
+
+**Bug：受击动画打在己方身上**
+
+- 原因：用「前后帧 HP 差」推断受伤单位时，与攻击方升级等 **同一帧内多单位状态变化** 冲突，导致 `setDmgFx` 指向错误。
+- 修复：在 `BattleState` 增加 **`damagePulse`（受害者 id + 伤害量）**，由 `applyPlayerMeleeDamage` / 计策伤害 / 敌军攻击等路径写入；`GameBattle` 消费后清空；不再用 HP 差推断飘字与 `unit-hit`。
+
+**Azure 与 GitHub Actions**
+
+- 新增 **`.github/workflows/azure-app-service.yml`**：PR 构建校验；推 `main`/`master` 打包 `server` + `client/dist` 并 **部署到 Azure App Service（Linux / Node 20）**。
+- **`infra/azure/`**：`create-resources.sh` / `.ps1` 创建资源组、计划、Web 应用、启动命令、HTTPS、非免费档 Always On；**自动注册 `Microsoft.Web` 提供程序**；**自动开启 SCM / FTP 基本发布凭据**（`basicPublishingCredentialsPolicies`），便于发布配置文件部署；脚本内提示为英文。
+- **README**（含故障排除：发布配置与 `app-name`、可选门户下载发布配置等）；工作流内对 **`AZURE_WEBAPP_NAME` trim**、对发布配置 Secret 做长度与 XML 关键字检查。
+
+---
+
 ### 胜负与关卡流转
 
 - 敌军全灭时：显示文案 **「敌军全灭，战斗胜利！」**，随后 **进入下一关**；若无下一关则从序章重新开始。
