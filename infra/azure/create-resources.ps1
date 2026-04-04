@@ -61,6 +61,18 @@ az webapp update `
     --name $AppName `
     --https-only true
 
+# GitHub Actions (publish profile) requires SCM basic auth; FTP policy is enabled as well (Azure expects SCM before FTP).
+$webAppId = (az webapp show --resource-group $ResourceGroup --name $AppName --query id -o tsv).Trim()
+if ($LASTEXITCODE -ne 0 -or -not $webAppId) { throw "az webapp show failed" }
+foreach ($policy in @("scm", "ftp")) {
+    Write-Host "==> Enabling basic publishing credentials policy: $policy"
+    az resource update `
+        --ids "$webAppId/basicPublishingCredentialsPolicies/$policy" `
+        --set properties.allow=true `
+        --output none
+    if ($LASTEXITCODE -ne 0) { throw "az resource update failed for $policy (exit $LASTEXITCODE)" }
+}
+
 if ($Sku -notin @("F1", "FREE")) {
     az webapp config set `
         --resource-group $ResourceGroup `

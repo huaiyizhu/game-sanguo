@@ -47,6 +47,16 @@ az webapp update \
   --name "$APP_NAME" \
   --https-only true
 
+# GitHub Actions (publish profile / webapps-deploy) needs SCM basic auth. FTP policy is enabled too (required after SCM per Azure).
+WEBAPP_ID="$(az webapp show --resource-group "$RESOURCE_GROUP" --name "$APP_NAME" --query id -o tsv | tr -d '\r')"
+for policy in scm ftp; do
+  echo "==> Enabling basic publishing credentials policy: $policy"
+  az resource update \
+    --ids "${WEBAPP_ID}/basicPublishingCredentialsPolicies/${policy}" \
+    --set properties.allow=true \
+    --output none
+done
+
 if [[ "$SKU" != "F1" && "$SKU" != "FREE" ]]; then
   az webapp config set \
     --resource-group "$RESOURCE_GROUP" \

@@ -32,6 +32,8 @@
    # 可传参：-Location japaneast -Sku B1 -AppName myuniqueappname
    ```
 
+脚本在创建 Web 应用后会自动将 **`basicPublishingCredentialsPolicies`** 中的 **SCM** 与 **FTP** 发布基本身份验证设为允许（`properties.allow=true`），以便 **GitHub Actions 使用发布配置文件（`webapps-deploy`）** 部署，一般无需再在门户里打开 SCM/FTP Basic Auth。
+
 脚本会输出 **发布配置文件 XML**。将其完整复制到 GitHub：
 
 - 仓库 → **Settings** → **Secrets and variables** → **Actions**
@@ -55,10 +57,9 @@
 3. **Secret 名称必须与工作流一致**  
    应为 `AZURE_WEBAPP_PUBLISH_PROFILE`（不是 `AZURE_PUBLISH_PROFILE` 等拼写变体）。
 
-4. **启用 SCM 基本身份验证（很常见原因）**  
-   若关闭了发布用的基本身份验证，发布配置会无效或行为异常。请在门户中检查：  
-   **应用服务 → 配置 → 常规设置** 中与 **SCM / FTP / 基本身份验证** 相关的选项，确保允许通过发布凭据部署（具体名称随门户版本可能为 *Basic auth* / *FTP* / *SCM* 等，以你当前界面为准）。  
-   修改后建议 **重新下载发布配置文件** 并更新 GitHub Secret。
+4. **SCM / FTP 基本身份验证**  
+   使用本仓库 **`create-resources` 脚本** 创建的应用已自动开启。若你在门户 **手动关闭**、或订阅 **Azure Policy** 强制关闭基本身份验证，发布配置部署会失败；请在 **配置 → 常规设置** 中重新允许 **SCM / FTP Basic Auth Publishing Credentials**，或执行与脚本相同的 `az resource update ... basicPublishingCredentialsPolicies/scm|ftp`。  
+   修改凭据或策略后建议 **重新下载发布配置文件** 并更新 GitHub Secret。
 
 5. **订阅或应用是否一致**  
    发布配置文件必须来自 **当前要部署的这一个** Web 应用；换了应用或重置过凭据后，要重新下载并更新 Secret。
