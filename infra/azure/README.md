@@ -14,7 +14,7 @@
 
 ## 一键创建 Azure 资源
 
-1. 安装 [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli)，执行 `az login`，确认订阅：`az account show`。
+1. 安装 [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli)，执行 `az login`，确认订阅：`az account show`。若订阅尚未注册 **`Microsoft.Web`**，脚本会在创建资源前自动执行 `az provider register --namespace Microsoft.Web --wait`（已注册则跳过）。
 2. **Linux / macOS / Git Bash：**
 
    ```bash

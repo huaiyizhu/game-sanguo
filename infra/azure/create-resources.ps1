@@ -22,6 +22,21 @@ if (-not $AppName) {
 
 Write-Host "==> RG: $ResourceGroup | Location: $Location | App: $AppName | SKU: $Sku"
 
+# App Service requires the Microsoft.Web resource provider on the subscription.
+$rs = ""
+$showOut = az provider show --namespace Microsoft.Web --query registrationState -o tsv 2>$null
+if ($LASTEXITCODE -eq 0 -and $showOut) { $rs = $showOut.Trim() }
+if ($rs -ne "Registered") {
+    $stateLabel = if ($rs) { $rs } else { "unknown" }
+    Write-Host "==> Registering resource provider Microsoft.Web (current state: $stateLabel)..."
+    az provider register --namespace Microsoft.Web --wait
+    if ($LASTEXITCODE -ne 0) { throw "az provider register failed (exit $LASTEXITCODE)" }
+    Write-Host "==> Microsoft.Web is registered."
+}
+else {
+    Write-Host "==> Microsoft.Web provider already registered."
+}
+
 az group create --name $ResourceGroup --location $Location
 
 az appservice plan create `

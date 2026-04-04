@@ -12,6 +12,16 @@ SKU="${SKU:-B1}"
 
 echo "==> Resource group: $RESOURCE_GROUP | Region: $LOCATION | App name: $APP_NAME | Plan SKU: $SKU"
 
+# App Service requires the Microsoft.Web resource provider on the subscription.
+RS="$(az provider show --namespace Microsoft.Web --query registrationState -o tsv 2>/dev/null || true)"
+if [[ "${RS:-}" != "Registered" ]]; then
+  echo "==> Registering resource provider Microsoft.Web (current state: ${RS:-unknown})..."
+  az provider register --namespace Microsoft.Web --wait
+  echo "==> Microsoft.Web is registered."
+else
+  echo "==> Microsoft.Web provider already registered."
+fi
+
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
 
 az appservice plan create \
