@@ -1,6 +1,7 @@
 # Stack: Azure App Service (Linux) + Node 20 — same as local Express serving client/dist on one port.
-# Secrets: AZURE_WEBAPP_NAME, AZURE_WEBAPP_PUBLISH_PROFILE (portal: Get publish profile).
-# App settings: set JWT_SECRET and NODE_ENV=production in Azure (see infra/azure/README.md).
+# Secrets: AZURE_WEBAPP_NAME, AZURE_WEBAPP_PUBLISH_PROFILE (portal: Download publish profile).
+# If deploy fails with "Publish profile is invalid...", see infra/azure/README.md → troubleshooting.
+# App settings: JWT_SECRET, NODE_ENV=production (see infra/azure/README.md).
 
 name: CI/CD — Azure App Service
 
@@ -66,9 +67,45 @@ jobs:
           cd "$STAGE"
           zip -qr "${{ runner.temp }}/app.zip" .
 
+      # azure/webapps-deploy validates app-name against the userName in the publish profile (segment before __).
+      # Trim whitespace/newlines from secrets — trailing \n on AZURE_WEBAPP_NAME is a common cause of
+      # "Publish profile is invalid for app-name and slot-name provided".
+      - name: Normalize Azure app name (trim secret)
+        id: azure_app
+        env:
+          RAW_APP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
+        run: |
+          python3 << 'PY'
+          import os
+          name = os.environ["RAW_APP_NAME"].strip()
+          if not name:
+              raise SystemExit("AZURE_WEBAPP_NAME is empty after trim")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write("name<<EOF\n")
+              f.write(name + "\n")
+              f.write("EOF\n")
+          PY
+
+      - name: Verify publish profile secret size
+        env:
+          PROFILE: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+        run: |
+          python3 << 'PY'
+          import os
+          p = os.environ.get("PROFILE", "").strip()
+          if len(p) < 200:
+              raise SystemExit(
+                  "AZURE_WEBAPP_PUBLISH_PROFILE is too short — paste the FULL .PublishSettings XML "
+                  "(Portal: your Web App → Overview → Download publish profile)."
+              )
+          if "publishProfile" not in p and "publishData" not in p:
+              raise SystemExit("AZURE_WEBAPP_PUBLISH_PROFILE does not look like publish settings XML.")
+          print("Publish profile length OK:", len(p))
+          PY
+
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
-          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+          app-name: ${{ steps.azure_app.outputs.name }}
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
           package: ${{ runner.temp }}/app.zip

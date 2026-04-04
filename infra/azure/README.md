@@ -38,6 +38,31 @@
 - `AZURE_WEBAPP_NAME` = Web 应用名称（脚本结束处有提示）
 - `AZURE_WEBAPP_PUBLISH_PROFILE` = 整段 XML
 
+### 故障排除：`Publish profile is invalid for app-name and slot-name provided`
+
+`azure/webapps-deploy` 会用 **发布配置文件里的 `userName`**（去掉开头的 `$` 后按 `__` 分段）和你在 **`AZURE_WEBAPP_NAME`** 里填的名字做比对，不一致就会报这个错。日志里的 `Failed to get app runtime OS` 往往也是后续校验/调用失败的表现。
+
+请逐项核对：
+
+1. **`AZURE_WEBAPP_NAME` 必须是资源名称本身**  
+   正确：`my-game-app`  
+   错误：`my-game-app.azurewebsites.net`、`https://...`、前后空格或换行（工作流已对名称做 **trim**，但请避免 Secret 里故意带换行）。
+
+2. **发布配置要用「完整 XML」**  
+   推荐在 Azure 门户打开该 Web 应用 → **概览** → **下载发布配置文件**，用文本编辑器打开 `.PublishSettings`，**整份**复制到 `AZURE_WEBAPP_PUBLISH_PROFILE`。  
+   不要只复制其中一段；内容应包含 `publishProfile` / `publishData` 等节点（工作流会检查长度与关键字）。
+
+3. **Secret 名称必须与工作流一致**  
+   应为 `AZURE_WEBAPP_PUBLISH_PROFILE`（不是 `AZURE_PUBLISH_PROFILE` 等拼写变体）。
+
+4. **启用 SCM 基本身份验证（很常见原因）**  
+   若关闭了发布用的基本身份验证，发布配置会无效或行为异常。请在门户中检查：  
+   **应用服务 → 配置 → 常规设置** 中与 **SCM / FTP / 基本身份验证** 相关的选项，确保允许通过发布凭据部署（具体名称随门户版本可能为 *Basic auth* / *FTP* / *SCM* 等，以你当前界面为准）。  
+   修改后建议 **重新下载发布配置文件** 并更新 GitHub Secret。
+
+5. **订阅或应用是否一致**  
+   发布配置文件必须来自 **当前要部署的这一个** Web 应用；换了应用或重置过凭据后，要重新下载并更新 Secret。
+
 ## GitHub Actions
 
 工作流：`.github/workflows/azure-app-service.yml`
