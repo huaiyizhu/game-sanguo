@@ -1,6 +1,6 @@
-# 技术栈：Azure App Service（Linux）+ Node 20，与本地「Express 同端口托管 client/dist」一致。
-# Secrets：AZURE_WEBAPP_NAME、AZURE_WEBAPP_PUBLISH_PROFILE（门户 → 获取发布配置文件）
-# 应用设置：在 Azure 配置 JWT_SECRET、NODE_ENV=production（见 infra/azure/README.md）
+# Stack: Azure App Service (Linux) + Node 20 — same as local Express serving client/dist on one port.
+# Secrets: AZURE_WEBAPP_NAME, AZURE_WEBAPP_PUBLISH_PROFILE (portal: Get publish profile).
+# App settings: set JWT_SECRET and NODE_ENV=production in Azure (see infra/azure/README.md).
 
 name: CI/CD — Azure App Service
 

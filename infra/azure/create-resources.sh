@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# 使用 Azure CLI 创建：资源组、Linux 应用服务计划、Web 应用（Node 20）
-# 前置：已安装 az 并已 az login；订阅正确（az account show）
+# Creates resource group, Linux App Service plan, and Web App (Node 20) via Azure CLI.
+# Prerequisites: Azure CLI installed, `az login`, correct subscription (`az account show`).
 set -euo pipefail
 
 LOCATION="${LOCATION:-eastasia}"
 RESOURCE_GROUP="${RESOURCE_GROUP:-rg-game-sanguo-prod}"
 PLAN_NAME="${PLAN_NAME:-plan-game-sanguo-linux}"
-# 全局唯一，请改成自己的前缀（小写字母与数字，2–60 字符）
+# Must be globally unique; override APP_NAME with your own prefix (2–60 chars, alphanumeric).
 APP_NAME="${APP_NAME:-game-sanguo-$(openssl rand -hex 4)}"
 SKU="${SKU:-B1}"
 
-echo "==> 资源组: $RESOURCE_GROUP | 区域: $LOCATION | 应用名: $APP_NAME | 计划 SKU: $SKU"
+echo "==> Resource group: $RESOURCE_GROUP | Region: $LOCATION | App name: $APP_NAME | Plan SKU: $SKU"
 
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
 
@@ -26,7 +26,7 @@ az webapp create \
   --name "$APP_NAME" \
   --runtime "NODE:20-lts"
 
-# 与 GitHub Actions 上传的 zip 布局一致：wwwroot 下为 server/ 与 client/
+# Matches GitHub Actions zip layout: wwwroot contains server/ and client/
 az webapp config set \
   --resource-group "$RESOURCE_GROUP" \
   --name "$APP_NAME" \
@@ -45,7 +45,7 @@ if [[ "$SKU" != "F1" && "$SKU" != "FREE" ]]; then
 fi
 
 echo ""
-echo "请输入生产环境 JWT_SECRET（留空则跳过，稍后在门户里配置）："
+echo "Enter production JWT_SECRET (leave empty to skip; configure later in the portal):"
 read -r JWT_SECRET || true
 if [[ -n "${JWT_SECRET:-}" ]]; then
   az webapp config appsettings set \
@@ -53,16 +53,16 @@ if [[ -n "${JWT_SECRET:-}" ]]; then
     --name "$APP_NAME" \
     --settings NODE_ENV=production JWT_SECRET="$JWT_SECRET" \
     --output none
-  echo "已写入 NODE_ENV、JWT_SECRET。"
+  echo "Set NODE_ENV and JWT_SECRET."
 else
-  echo "未设置 JWT_SECRET。部署前务必在 Azure 门户 → 配置 → 应用程序设置 中添加 JWT_SECRET。"
+  echo "JWT_SECRET not set. Add it under Configuration > Application settings before going live."
 fi
 
 echo ""
-echo "========== 下一步 =========="
-echo "1) GitHub 仓库 → Settings → Secrets → Actions，新增："
+echo "========== Next steps =========="
+echo "1) In the GitHub repo: Settings > Secrets and variables > Actions, add:"
 echo "   AZURE_WEBAPP_NAME = $APP_NAME"
-echo "2) 将下方发布配置文件完整 XML 粘贴到 Secret：AZURE_WEBAPP_PUBLISH_PROFILE"
+echo "2) Paste the full publish profile XML below into secret AZURE_WEBAPP_PUBLISH_PROFILE"
 echo ""
 az webapp deployment list-publishing-profiles \
   --name "$APP_NAME" \
@@ -70,8 +70,8 @@ az webapp deployment list-publishing-profiles \
   --xml
 
 echo ""
-echo "3) 推送 main 分支触发部署，或手动运行 workflow。"
-echo "4) 应用 URL: https://${APP_NAME}.azurewebsites.net"
+echo "3) Push to main (or master) to deploy, or run the workflow manually."
+echo "4) App URL: https://${APP_NAME}.azurewebsites.net"
 echo ""
-echo "（可选）持久化存档：默认 store.json 在容器本地盘，重启可能丢失。"
-echo "    见本目录 README.md — 挂载 Azure Files。"
+echo "(Optional) Persistence: default store.json lives on local container disk and may be lost on recycle."
+echo "    See README.md in this folder for Azure Files mount."
