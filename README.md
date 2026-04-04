@@ -71,3 +71,7 @@ npm run preview
 
 - **本地**：保存在浏览器 `localStorage`，不登录也可使用。
 - **云端**：登录后写入服务器，数据文件为 `server/data/store.json`（目录已用 `.gitignore` 忽略内容，仅保留占位文件）。
+
+## Azure 部署与 CI/CD
+
+使用 GitHub Actions 部署到 **Azure App Service（Linux / Node 20）** 的步骤、资源创建脚本与持久化说明见 **[infra/azure/README.md](infra/azure/README.md)**。

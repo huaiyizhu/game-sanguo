@@ -1,0 +1,74 @@
+# 技术栈：Azure App Service（Linux）+ Node 20，与本地「Express 同端口托管 client/dist」一致。
+# Secrets：AZURE_WEBAPP_NAME、AZURE_WEBAPP_PUBLISH_PROFILE（门户 → 获取发布配置文件）
+# 应用设置：在 Azure 配置 JWT_SECRET、NODE_ENV=production（见 infra/azure/README.md）
+
+name: CI/CD — Azure App Service
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: azure-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install & build
+        run: |
+          npm ci
+          npm run build -w client
+
+      - name: Check Vite output
+        run: test -f client/dist/index.html
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install & build client
+        run: |
+          npm ci
+          npm run build -w client
+
+      - name: Stage deployment package
+        run: |
+          set -e
+          STAGE="${{ runner.temp }}/deploy"
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE/client/dist" "$STAGE/server"
+          cp -r client/dist/* "$STAGE/client/dist/"
+          cp -r server/src server/package.json "$STAGE/server/"
+          cd "$STAGE/server"
+          npm install --omit=dev
+          cd "$STAGE"
+          zip -qr "${{ runner.temp }}/app.zip" .
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: ${{ runner.temp }}/app.zip
