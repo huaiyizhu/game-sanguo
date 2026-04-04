@@ -1,20 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, MouseEvent } from "react";
 import {
+  canAffordTactic,
   canMeleeAttack,
   canUseTactic,
 } from "../game/battle";
-import type { BattlePhase, BattleState, Side } from "../game/types";
+import type { BattlePhase, BattleState, Side, TacticKind, Terrain } from "../game/types";
+import { TACTIC_DEF, TERRAIN_LABEL } from "../game/types";
 
 export type MenuAction = "attack" | "tactic" | "wait";
 
+const TACTIC_ORDER: TacticKind[] = ["fire", "water", "trap"];
+
 type Props = {
   battle: BattleState;
-  /** 新游戏 / 读档时递增，避免误判移动与死亡动画 */
   visualEpoch: number;
   onCellClick: (x: number, y: number) => void;
   onUnitClick: (unitId: string, side: Side) => void;
   onMenuAction: (action: MenuAction) => void;
+  onTacticPick: (kind: TacticKind) => void;
   onEscapeOrRevert: () => void;
   onPickNavigate: (delta: number) => void;
   onPickConfirmFocused: () => void;
@@ -31,6 +35,14 @@ function nextEnabledFocus(
 ): number {
   const enabled = [attackOk, tacticOk, true];
   for (let step = 1; step <= 3; step++) {
+    const i = (((from + delta * step) % 3) + 3) % 3;
+    if (enabled[i]) return i;
+  }
+  return from;
+}
+
+function nextTacticFocus(from: number, delta: 1 | -1, enabled: boolean[]): number {
+  for (let step = 1; step <= 4; step++) {
     const i = (((from + delta * step) % 3) + 3) % 3;
     if (enabled[i]) return i;
   }
@@ -55,15 +67,17 @@ export default function GameBattle({
   onCellClick,
   onUnitClick,
   onMenuAction,
+  onTacticPick,
   onEscapeOrRevert,
   onPickNavigate,
   onPickConfirmFocused,
   onPickHoverEnemy,
 }: Props) {
-  const { gridW, gridH, units, moveTargets, selectedId, turn, phase, outcome, pickTarget } =
+  const { gridW, gridH, units, moveTargets, selectedId, turn, phase, outcome, pickTarget, terrain } =
     battle;
   const moveSet = new Set(moveTargets.map((t) => `${t.x},${t.y}`));
   const [menuFocus, setMenuFocus] = useState(0);
+  const [tacticFocus, setTacticFocus] = useState(0);
   const [dmgFx, setDmgFx] = useState<{
     unitId: string;
     amount: number;
@@ -94,9 +108,12 @@ export default function GameBattle({
       ? canMeleeAttack(selectedUnit, units)
       : false;
   const tacticOk =
-    phase === "menu" && selectedUnit
-      ? canUseTactic(selectedUnit, units)
-      : false;
+    phase === "menu" && selectedUnit ? canUseTactic(selectedUnit, battle) : false;
+
+  const tacticEnabled =
+    phase === "tactic-menu" && selectedUnit
+      ? TACTIC_ORDER.map((k) => canAffordTactic(selectedUnit, k, battle))
+      : [false, false, false];
 
   const focusedEnemyId =
     phase === "pick-target" && pickTarget && pickTarget.targetIds.length > 0
@@ -106,14 +123,22 @@ export default function GameBattle({
   useEffect(() => {
     const prev = prevPhaseRef.current;
     const enteredMenu = phase === "menu" && prev !== "menu";
+    const enteredTactic = phase === "tactic-menu" && prev !== "tactic-menu";
     prevPhaseRef.current = phase;
+    if (enteredTactic) {
+      const en = TACTIC_ORDER.map((k) =>
+        selectedUnit ? canAffordTactic(selectedUnit, k, battle) : false
+      );
+      const first = en.findIndex(Boolean);
+      setTacticFocus(first >= 0 ? first : 0);
+    }
     if (!enteredMenu || !selectedId) return;
     const su = units.find((u) => u.id === selectedId);
     if (!su) return;
     if (canMeleeAttack(su, units)) setMenuFocus(0);
-    else if (canUseTactic(su, units)) setMenuFocus(1);
+    else if (canUseTactic(su, battle)) setMenuFocus(1);
     else setMenuFocus(2);
-  }, [phase, selectedId, units]);
+  }, [phase, selectedId, units, battle, selectedUnit]);
 
   useEffect(() => {
     if (!prevSnapRef.current || !prevHpRef.current) {
@@ -221,6 +246,37 @@ export default function GameBattle({
     ]
   );
 
+  const onTacticMenuKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (phase !== "tactic-menu" || outcome !== "playing" || turn !== "player") return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onEscapeOrRevert();
+        return;
+      }
+      if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+        e.preventDefault();
+        setTacticFocus((f) => nextTacticFocus(f, 1, tacticEnabled));
+      } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        setTacticFocus((f) => nextTacticFocus(f, -1, tacticEnabled));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        const k = TACTIC_ORDER[tacticFocus];
+        if (tacticEnabled[tacticFocus]) onTacticPick(k);
+      }
+    },
+    [
+      phase,
+      outcome,
+      turn,
+      tacticFocus,
+      tacticEnabled,
+      onTacticPick,
+      onEscapeOrRevert,
+    ]
+  );
+
   const onPickKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (phase !== "pick-target" || outcome !== "playing" || turn !== "player") return;
@@ -250,6 +306,13 @@ export default function GameBattle({
   }, [phase, onMenuKeyDown]);
 
   useEffect(() => {
+    if (phase !== "tactic-menu") return;
+    window.addEventListener("keydown", onTacticMenuKeyDown as unknown as EventListener);
+    return () =>
+      window.removeEventListener("keydown", onTacticMenuKeyDown as unknown as EventListener);
+  }, [phase, onTacticMenuKeyDown]);
+
+  useEffect(() => {
     if (phase !== "pick-target") return;
     window.addEventListener("keydown", onPickKeyDown as unknown as EventListener);
     return () =>
@@ -259,7 +322,7 @@ export default function GameBattle({
   const onContextMenu = useCallback(
     (e: MouseEvent) => {
       if (outcome !== "playing" || turn !== "player") return;
-      if (phase === "menu" || phase === "pick-target") {
+      if (phase === "menu" || phase === "tactic-menu" || phase === "pick-target") {
         e.preventDefault();
         onEscapeOrRevert();
       }
@@ -290,6 +353,9 @@ export default function GameBattle({
       ? (id: string) => pickTarget.targetIds.includes(id)
       : () => false;
 
+  const terrainAt = (x: number, y: number): Terrain => terrain[y]?.[x] ?? "plain";
+  const terrainClass = (x: number, y: number) => `terrain-${terrainAt(x, y)}`;
+
   return (
     <div
       className="battle-wrap"
@@ -316,6 +382,7 @@ export default function GameBattle({
           const u = byPos.get(`${x},${y}`);
           const isMove = moveSet.has(`${x},${y}`);
           const isSelected = u && u.id === selectedId;
+          const turnDone = u && u.hp > 0 && u.moved && u.acted;
           const onOwnCell =
             phase === "move" &&
             selectedId &&
@@ -335,21 +402,35 @@ export default function GameBattle({
             phase === "menu" &&
             outcome === "playing" &&
             turn === "player";
+          const showTacticMenu =
+            u &&
+            u.id === selectedId &&
+            phase === "tactic-menu" &&
+            outcome === "playing" &&
+            turn === "player";
           const hitActive = dmgFx?.unitId === u?.id;
           const pickCand = u && u.side === "enemy" && isPickCandidate(u.id);
           const pickFocus = u && u.id === focusedEnemyId;
           const slide = u && moveSlide[u.id];
+          const pendingSelectionGlow =
+            isSelected &&
+            u &&
+            u.hp > 0 &&
+            !(u.moved && u.acted) &&
+            outcome === "playing" &&
+            turn === "player" &&
+            (phase === "select" || phase === "move" || phase === "menu" || phase === "tactic-menu");
 
           return (
             <div
               key={`${x}-${y}`}
               className={[
                 "cell",
-                (x + y) % 2 === 0 ? "even" : "odd",
+                terrainClass(x, y),
                 isMove ? "move-hint" : "",
                 u ? "has-unit" : "",
                 canClickTile ? "clickable-tile" : "",
-                showMenu ? "cell-menu-open" : "",
+                showMenu || showTacticMenu ? "cell-menu-open" : "",
                 pickCand ? "cell-pick-candidate" : "",
                 pickFocus ? "cell-pick-focus" : "",
               ]
@@ -358,6 +439,7 @@ export default function GameBattle({
               onClick={() => {
                 if (canClickTile) onCellClick(x, y);
               }}
+              title={`${TERRAIN_LABEL[terrainAt(x, y)]} (${x + 1},${y + 1})`}
               role="presentation"
             >
               {u && (
@@ -369,12 +451,14 @@ export default function GameBattle({
                     u.side,
                     slide ? "unit-move-slide" : "",
                     isSelected ? "selected" : "",
+                    turnDone ? "unit-turn-done" : "",
+                    pendingSelectionGlow ? "unit-pending-highlight" : "",
                     hitActive ? "unit-hit" : "",
                     pickCand ? "pick-target-candidate" : "",
                     pickFocus ? "pick-target-focus" : "",
                     outcome === "playing" &&
                     turn === "player" &&
-                    (phase === "move" || phase === "menu") &&
+                    (phase === "move" || phase === "menu" || phase === "tactic-menu") &&
                     u.side === "player" &&
                     u.hp > 0 &&
                     !(u.moved && u.acted)
@@ -472,6 +556,47 @@ export default function GameBattle({
                       </button>
                     </div>
                   )}
+                  {showTacticMenu && (
+                    <div
+                      className="action-menu tactic-submenu"
+                      role="menu"
+                      aria-label="Tactics"
+                      onClick={(e: MouseEvent) => e.stopPropagation()}
+                      onKeyDown={(e: KeyboardEvent) => e.stopPropagation()}
+                    >
+                      {TACTIC_ORDER.map((kind, i) => {
+                        const def = TACTIC_DEF[kind];
+                        const ok = tacticEnabled[i];
+                        return (
+                          <button
+                            key={kind}
+                            type="button"
+                            role="menuitem"
+                            className={[
+                              "action-menu-item",
+                              ok ? "enabled" : "disabled",
+                              tacticFocus === i ? "focused" : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
+                            disabled={!ok}
+                            onMouseEnter={() => setTacticFocus(i)}
+                            onClick={() => ok && onTacticPick(kind)}
+                          >
+                            {def.name}（{def.cost} 计）
+                          </button>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="action-menu-item enabled"
+                        onClick={onEscapeOrRevert}
+                      >
+                        返回
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -496,9 +621,14 @@ export default function GameBattle({
           方向键选择 · Enter 确认 · Esc / 右键 取消并恢复回合初状态
         </p>
       )}
+      {phase === "tactic-menu" && (
+        <p className="menu-hint">
+          方向键选择计策 · Enter 确认 · Esc / 右键 返回行动菜单
+        </p>
+      )}
       {phase === "pick-target" && (
         <p className="menu-hint">
-          方向键切换目标 · Enter 确认 · Esc / 右键 返回菜单
+          方向键切换目标 · Enter 确认 · Esc / 右键 返回上一层
         </p>
       )}
     </div>

@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
 import App from "./App";
 import "./index.css";
+import "./terrain-visuals.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

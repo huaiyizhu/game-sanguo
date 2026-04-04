@@ -1,6 +1,28 @@
-import type { BattleState, PickTargetState, PlayerTurnStartMap, Side, Unit } from "./types";
+import type {
+  ArmyType,
+  BattleState,
+  PickTargetState,
+  PlayerTurnStartMap,
+  Side,
+  TacticKind,
+  Terrain,
+  Unit,
+} from "./types";
+import { TACTIC_DEF, tacticMaxFromIntel } from "./types";
 
 const key = (x: number, y: number) => `${x},${y}`;
+
+function terrainAt(state: BattleState, x: number, y: number): Terrain {
+  const row = state.terrain[y];
+  return row?.[x] ?? "plain";
+}
+
+/** 走入该格消耗的移动力；Infinity 表示不可进入 */
+export function stepCostForUnit(u: Unit, t: Terrain): number {
+  if (t === "water") return u.armyType === "shui" ? 1 : Infinity;
+  if (t === "mountain") return u.armyType === "shan" ? 1 : 2;
+  return 1;
+}
 
 function occupantMap(units: Unit[]): Map<string, Unit> {
   const m = new Map<string, Unit>();
@@ -14,7 +36,13 @@ function buildPlayerTurnStart(units: Unit[]): PlayerTurnStartMap {
   const playerTurnStart: PlayerTurnStartMap = {};
   for (const u of units) {
     if (u.side === "player" && u.hp > 0) {
-      playerTurnStart[u.id] = { x: u.x, y: u.y, moved: u.moved, acted: u.acted };
+      playerTurnStart[u.id] = {
+        x: u.x,
+        y: u.y,
+        moved: u.moved,
+        acted: u.acted,
+        tacticPoints: u.tacticPoints,
+      };
     }
   }
   return playerTurnStart;
@@ -24,7 +52,29 @@ function withTurnSnapshot(state: BattleState): BattleState {
   return { ...state, playerTurnStart: buildPlayerTurnStart(state.units) };
 }
 
+function createPrologueTerrain(gridW: number, gridH: number): Terrain[][] {
+  const rows: Terrain[][] = [];
+  for (let y = 0; y < gridH; y++) {
+    const row: Terrain[] = [];
+    for (let x = 0; x < gridW; x++) {
+      let t: Terrain = "plain";
+      if (y >= 2 && y <= 4 && x >= 4 && x <= 7) t = "forest";
+      if (y === 5 && x >= 3 && x <= 8) t = "water";
+      if ((x <= 1 || x >= gridW - 2) && y >= 1 && y <= 5) t = "mountain";
+      if (y === gridH - 1 && x >= 2 && x <= 9) t = "desert";
+      if (y === 0 && x >= 3 && x <= 8) t = "plain";
+      row.push(t);
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
 export function createInitialBattle(): BattleState {
+  const gridW = 12;
+  const gridH = 8;
+  const terrain = createPrologueTerrain(gridW, gridH);
+
   const units: Unit[] = [
     {
       id: "p1",
@@ -34,7 +84,11 @@ export function createInitialBattle(): BattleState {
       y: 6,
       hp: 120,
       maxHp: 120,
-      atk: 28,
+      might: 28,
+      intel: 72,
+      armyType: "ping",
+      tacticMax: tacticMaxFromIntel(72),
+      tacticPoints: tacticMaxFromIntel(72),
       move: 4,
       moved: false,
       acted: false,
@@ -47,7 +101,11 @@ export function createInitialBattle(): BattleState {
       y: 6,
       hp: 110,
       maxHp: 110,
-      atk: 32,
+      might: 95,
+      intel: 68,
+      armyType: "ping",
+      tacticMax: tacticMaxFromIntel(68),
+      tacticPoints: tacticMaxFromIntel(68),
       move: 3,
       moved: false,
       acted: false,
@@ -60,7 +118,11 @@ export function createInitialBattle(): BattleState {
       y: 6,
       hp: 130,
       maxHp: 130,
-      atk: 30,
+      might: 92,
+      intel: 38,
+      armyType: "shan",
+      tacticMax: tacticMaxFromIntel(38),
+      tacticPoints: tacticMaxFromIntel(38),
       move: 3,
       moved: false,
       acted: false,
@@ -69,11 +131,15 @@ export function createInitialBattle(): BattleState {
       id: "e1",
       name: "黄巾贼",
       side: "enemy",
-      x: 4,
-      y: 1,
+      x: 5,
+      y: 5,
       hp: 70,
       maxHp: 70,
-      atk: 22,
+      might: 22,
+      intel: 30,
+      armyType: "shui",
+      tacticMax: 0,
+      tacticPoints: 0,
       move: 3,
       moved: false,
       acted: false,
@@ -86,7 +152,11 @@ export function createInitialBattle(): BattleState {
       y: 2,
       hp: 65,
       maxHp: 65,
-      atk: 21,
+      might: 21,
+      intel: 28,
+      armyType: "ping",
+      tacticMax: 0,
+      tacticPoints: 0,
       move: 3,
       moved: false,
       acted: false,
@@ -95,11 +165,15 @@ export function createInitialBattle(): BattleState {
       id: "e3",
       name: "黄巾头目",
       side: "enemy",
-      x: 5,
-      y: 0,
+      x: 1,
+      y: 3,
       hp: 95,
       maxHp: 95,
-      atk: 26,
+      might: 26,
+      intel: 42,
+      armyType: "shan",
+      tacticMax: 0,
+      tacticPoints: 0,
       move: 2,
       moved: false,
       acted: false,
@@ -107,11 +181,12 @@ export function createInitialBattle(): BattleState {
   ];
 
   return withTurnSnapshot({
-    version: 1,
+    version: 2,
     scenarioId: "prologue_zhangjiao",
     scenarioTitle: "序章 · 讨伐黄巾",
-    gridW: 12,
-    gridH: 8,
+    gridW,
+    gridH,
+    terrain,
     turn: "player",
     phase: "select",
     selectedId: null,
@@ -162,45 +237,96 @@ function checkOutcome(state: BattleState): BattleState {
   return state;
 }
 
-export function getReachable(
+function dijkstraReachable(
   u: Unit,
   units: Unit[],
-  gridW: number,
-  gridH: number
+  state: BattleState
 ): Set<string> {
+  const { gridW, gridH } = state;
   const occ = occupantMap(units);
   occ.delete(key(u.x, u.y));
   const start = key(u.x, u.y);
   const dist = new Map<string, number>();
-  const q: { x: number; y: number; d: number }[] = [{ x: u.x, y: u.y, d: 0 }];
   dist.set(start, 0);
-  const reachable = new Set<string>();
+  const heap: { k: string; d: number }[] = [{ k: start, d: 0 }];
   const dirs = [
     [0, 1],
     [0, -1],
     [1, 0],
     [-1, 0],
   ];
-  while (q.length) {
-    const cur = q.shift()!;
-    if (cur.d > 0) reachable.add(key(cur.x, cur.y));
-    if (cur.d >= u.move) continue;
-    for (const [dx, dy] of dirs) {
-      const nx = cur.x + dx;
-      const ny = cur.y + dy;
-      if (nx < 0 || ny < 0 || nx >= gridW || ny >= gridH) continue;
-      const k = key(nx, ny);
-      if (occ.has(k)) continue;
-      const nd = cur.d + 1;
-      if (dist.has(k) && dist.get(k)! <= nd) continue;
-      dist.set(k, nd);
-      q.push({ x: nx, y: ny, d: nd });
+
+  const push = (k: string, d: number) => {
+    heap.push({ k, d });
+    let i = heap.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (heap[p].d <= heap[i].d) break;
+      [heap[p], heap[i]] = [heap[i], heap[p]];
+      i = p;
     }
+  };
+
+  const pop = () => {
+    if (heap.length === 0) return null;
+    const top = heap[0];
+    const last = heap.pop()!;
+    if (heap.length > 0) {
+      heap[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = i * 2 + 1;
+        const r = l + 1;
+        let sm = i;
+        if (l < heap.length && heap[l].d < heap[sm].d) sm = l;
+        if (r < heap.length && heap[r].d < heap[sm].d) sm = r;
+        if (sm === i) break;
+        [heap[i], heap[sm]] = [heap[sm], heap[i]];
+        i = sm;
+      }
+    }
+    return top;
+  };
+
+  while (heap.length) {
+    const cur = pop()!;
+    const d = cur.d;
+    if (dist.get(cur.k)! < d) continue;
+    const [cx, cy] = cur.k.split(",").map(Number);
+    if (d > u.move) continue;
+    for (const [dx, dy] of dirs) {
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= gridW || ny >= gridH) continue;
+      const nk = key(nx, ny);
+      if (occ.has(nk)) continue;
+      const t = terrainAt(state, nx, ny);
+      const step = stepCostForUnit(u, t);
+      if (!Number.isFinite(step)) continue;
+      const nd = d + step;
+      if (nd > u.move) continue;
+      const prev = dist.get(nk);
+      if (prev !== undefined && prev <= nd) continue;
+      dist.set(nk, nd);
+      push(nk, nd);
+    }
+  }
+
+  const reachable = new Set<string>();
+  for (const [k, d] of dist) {
+    if (d > 0 && d <= u.move) reachable.add(k);
   }
   return reachable;
 }
 
-/** 点击格子：若在移动阶段点自己脚下，原地打开菜单；否则尝试移动 */
+export function getReachable(
+  u: Unit,
+  units: Unit[],
+  state: BattleState
+): Set<string> {
+  return dijkstraReachable(u, units, state);
+}
+
 export function gridCellClick(state: BattleState, x: number, y: number): BattleState {
   if (state.outcome !== "playing" || state.turn !== "player") return state;
   if (state.phase === "move" && state.selectedId) {
@@ -247,7 +373,7 @@ export function selectPlayerUnit(state: BattleState, unitId: string): BattleStat
           : [...state.log, `选择 ${u.name}，请选择行动。`],
     };
   }
-  const reachable = getReachable(u, state.units, state.gridW, state.gridH);
+  const reachable = getReachable(u, state.units, state);
   const moveTargets = [...reachable].map((s) => {
     const [xs, ys] = s.split(",").map(Number);
     return { x: xs, y: ys };
@@ -299,14 +425,36 @@ function manhattan(a: Unit, b: Unit) {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
-/** 是否与任意存活敌军贴邻（可发动攻击） */
 export function canMeleeAttack(attacker: Unit, units: Unit[]): boolean {
   return units.some((x) => x.side === "enemy" && x.hp > 0 && adjacent(attacker, x));
 }
 
-/** 是否与任意存活敌军曼哈顿距离 ≤2（可使用计策） */
-export function canUseTactic(attacker: Unit, units: Unit[]): boolean {
-  return units.some((x) => x.side === "enemy" && x.hp > 0 && manhattan(attacker, x) <= 2);
+function foesInTacticRange(attacker: Unit, units: Unit[]): Unit[] {
+  return units.filter((x) => x.side === "enemy" && x.hp > 0 && manhattan(attacker, x) <= 2);
+}
+
+function tacticValidOnTarget(state: BattleState, kind: TacticKind, target: Unit): boolean {
+  const t = terrainAt(state, target.x, target.y);
+  return (TACTIC_DEF[kind].terrains as readonly Terrain[]).includes(t);
+}
+
+/** 某计策是否有合法目标且计策值足够 */
+export function canAffordTactic(
+  attacker: Unit,
+  kind: TacticKind,
+  state: BattleState
+): boolean {
+  const def = TACTIC_DEF[kind];
+  if (attacker.tacticPoints < def.cost) return false;
+  return foesInTacticRange(attacker, state.units).some((f) =>
+    tacticValidOnTarget(state, kind, f)
+  );
+}
+
+export function canUseTactic(attacker: Unit, state: BattleState): boolean {
+  return (
+    (["fire", "water", "trap"] as const).some((k) => canAffordTactic(attacker, k, state))
+  );
 }
 
 function sortMeleeTargets(foes: Unit[]): Unit[] {
@@ -341,17 +489,18 @@ function afterMoveOpenMenu(state: BattleState, attackerId: string): BattleState 
 function toPickState(
   kind: "melee" | "tactic",
   attackerId: string,
-  sortedFoes: Unit[]
+  sortedFoes: Unit[],
+  tacticKind?: TacticKind
 ): PickTargetState {
   return {
     kind,
     attackerId,
+    tacticKind,
     targetIds: sortedFoes.map((f) => f.id),
     focusIndex: 0,
   };
 }
 
-/** 菜单：发动攻击；多目标则进入 pick-target */
 export function menuMeleeAttack(state: BattleState): BattleState {
   if (state.outcome !== "playing" || state.turn !== "player" || state.phase !== "menu") return state;
   const aid = state.selectedId;
@@ -365,7 +514,7 @@ export function menuMeleeAttack(state: BattleState): BattleState {
   if (foes.length === 0) return state;
   const sorted = sortMeleeTargets(foes);
   if (sorted.length === 1) {
-    return applyPlayerDamage(state, aid, sorted[0].id, attacker.atk, "melee");
+    return applyPlayerDamage(state, aid, sorted[0].id, attacker.might, "melee");
   }
   return {
     ...state,
@@ -375,29 +524,115 @@ export function menuMeleeAttack(state: BattleState): BattleState {
   };
 }
 
-/** 菜单：使用计策；多目标则进入 pick-target */
-export function menuTactic(state: BattleState): BattleState {
+/** 菜单进入计策子选单 */
+export function menuOpenTacticMenu(state: BattleState): BattleState {
   if (state.outcome !== "playing" || state.turn !== "player" || state.phase !== "menu") return state;
   const aid = state.selectedId;
   if (!aid) return state;
   const attacker = state.units.find((x) => x.id === aid);
   if (!attacker || attacker.acted || !attacker.moved) return state;
-  if (!canUseTactic(attacker, state.units)) return state;
-  const foes = state.units.filter(
-    (x) => x.side === "enemy" && x.hp > 0 && manhattan(attacker, x) <= 2
+  if (!canUseTactic(attacker, state)) return state;
+  return {
+    ...state,
+    phase: "tactic-menu",
+    pickTarget: null,
+    log: [...state.log, "选择计策种类。"],
+  };
+}
+
+/** 从计策子选单返回行动菜单 */
+export function cancelTacticMenu(state: BattleState): BattleState {
+  if (state.phase !== "tactic-menu") return state;
+  return { ...state, phase: "menu" };
+}
+
+/** 在计策子选单中选择火计/水计/陷阱 */
+export function tacticMenuChoose(state: BattleState, tacticKind: TacticKind): BattleState {
+  if (state.outcome !== "playing" || state.turn !== "player" || state.phase !== "tactic-menu") {
+    return state;
+  }
+  const aid = state.selectedId;
+  if (!aid) return state;
+  const attacker = state.units.find((x) => x.id === aid);
+  if (!attacker || attacker.acted || !attacker.moved) return state;
+  if (!canAffordTactic(attacker, tacticKind, state)) return state;
+
+  const foes = foesInTacticRange(attacker, state.units).filter((f) =>
+    tacticValidOnTarget(state, tacticKind, f)
   );
   if (foes.length === 0) return state;
+
   const sorted = sortTacticTargets(foes);
-  const dmg = Math.max(1, Math.floor(attacker.atk * 0.55));
+  const def = TACTIC_DEF[tacticKind];
   if (sorted.length === 1) {
-    return applyPlayerDamage(state, aid, sorted[0].id, dmg, "tactic");
+    return applyPlayerTacticDamage(
+      state,
+      aid,
+      sorted[0].id,
+      tacticKind,
+      def.cost
+    );
   }
   return {
     ...state,
     phase: "pick-target",
-    pickTarget: toPickState("tactic", aid, sorted),
-    log: [...state.log, "选择计策目标（方向键切换，Enter 确认）。"],
+    pickTarget: toPickState("tactic", aid, sorted, tacticKind),
+    log: [
+      ...state.log,
+      `选择 ${def.name} 目标（方向键切换，Enter 确认）。`,
+    ],
   };
+}
+
+function tacticDamageAmount(attacker: Unit, tacticKind: TacticKind): number {
+  const base = Math.max(1, Math.floor(attacker.intel * 0.55));
+  return Math.max(1, Math.floor(base * TACTIC_DEF[tacticKind].dmgMul));
+}
+
+function applyPlayerTacticDamage(
+  state: BattleState,
+  attackerId: string,
+  enemyId: string,
+  tacticKind: TacticKind,
+  cost: number
+): BattleState {
+  const attacker = state.units.find((x) => x.id === attackerId);
+  const target = state.units.find((x) => x.id === enemyId);
+  if (!attacker || !target || target.side !== "enemy") return state;
+  if (attacker.tacticPoints < cost) return state;
+  if (!tacticValidOnTarget(state, tacticKind, target)) return state;
+  if (manhattan(attacker, target) > 2) return state;
+
+  const dmg = tacticDamageAmount(attacker, tacticKind);
+  const newHp = Math.max(0, target.hp - dmg);
+  const units = state.units.map((x) => {
+    if (x.id === enemyId) return { ...x, hp: newHp };
+    if (x.id === attackerId)
+      return {
+        ...x,
+        acted: true,
+        tacticPoints: x.tacticPoints - cost,
+      };
+    return x;
+  });
+  const def = TACTIC_DEF[tacticKind];
+  let log = [
+    ...state.log,
+    `${attacker.name} 施展${def.name}打击 ${target.name}，造成 ${dmg} 伤害（-${cost} 计策）。`,
+  ];
+  if (newHp <= 0) log = [...log, `${target.name} 被击退！`];
+  let next: BattleState = {
+    ...state,
+    units,
+    selectedId: null,
+    phase: "select",
+    moveTargets: [],
+    pickTarget: null,
+    log,
+  };
+  next = checkOutcome(next);
+  if (next.outcome !== "playing") return next;
+  return maybeEndPlayerTurn(next);
 }
 
 function applyPlayerDamage(
@@ -441,11 +676,22 @@ export function confirmPickTarget(state: BattleState, enemyId: string): BattleSt
     return state;
   }
   if (p.kind === "melee" && !adjacent(attacker, target)) return state;
-  if (p.kind === "tactic" && manhattan(attacker, target) > 2) return state;
-  const dmg =
-    p.kind === "melee"
-      ? attacker.atk
-      : Math.max(1, Math.floor(attacker.atk * 0.55));
+  if (p.kind === "tactic") {
+    if (manhattan(attacker, target) > 2) return state;
+    const tk = p.tacticKind;
+    if (!tk) return state;
+    const cost = TACTIC_DEF[tk].cost;
+    if (attacker.tacticPoints < cost) return state;
+    if (!tacticValidOnTarget(state, tk, target)) return state;
+    return applyPlayerTacticDamage(
+      { ...state, pickTarget: null },
+      p.attackerId,
+      enemyId,
+      tk,
+      cost
+    );
+  }
+  const dmg = attacker.might;
   return applyPlayerDamage({ ...state, pickTarget: null }, p.attackerId, enemyId, dmg, p.kind);
 }
 
@@ -467,16 +713,18 @@ export function pickTargetFocusEnemy(state: BattleState, enemyId: string): Battl
 
 export function cancelPickTarget(state: BattleState): BattleState {
   if (state.phase !== "pick-target") return state;
+  const backToTactic =
+    state.pickTarget?.kind === "tactic" && Boolean(state.pickTarget.tacticKind);
   return {
     ...state,
-    phase: "menu",
+    phase: backToTactic ? "tactic-menu" : "menu",
     pickTarget: null,
   };
 }
 
-/** Esc / 右键：选目标阶段回到菜单；菜单阶段将当前武将恢复至本回合开始状态 */
 export function escapeOrRevertUnit(state: BattleState): BattleState {
   if (state.outcome !== "playing" || state.turn !== "player") return state;
+  if (state.phase === "tactic-menu") return cancelTacticMenu(state);
   if (state.phase === "pick-target") return cancelPickTarget(state);
   if (state.phase !== "menu" || !state.selectedId) return state;
   const id = state.selectedId;
@@ -484,7 +732,17 @@ export function escapeOrRevertUnit(state: BattleState): BattleState {
   if (!snap) return state;
   const name = state.units.find((u) => u.id === id)?.name ?? id;
   const units = state.units.map((u) =>
-    u.id === id ? { ...u, x: snap.x, y: snap.y, moved: snap.moved, acted: snap.acted } : u
+    u.id === id
+      ? {
+          ...u,
+          x: snap.x,
+          y: snap.y,
+          moved: snap.moved,
+          acted: snap.acted,
+          tacticPoints:
+            typeof snap.tacticPoints === "number" ? snap.tacticPoints : u.tacticPoints,
+        }
+      : u
   );
   return {
     ...state,
@@ -532,10 +790,21 @@ function startEnemyTurn(state: BattleState): BattleState {
   return base;
 }
 
-/** 结束敌军回合，进入我军回合并刷新快照 */
+function refreshPlayerTacticPools(units: Unit[]): Unit[] {
+  return units.map((u) => {
+    if (u.side !== "player" || u.hp <= 0) return u;
+    const max = tacticMaxFromIntel(u.intel);
+    return { ...u, tacticMax: max, tacticPoints: max };
+  });
+}
+
 function finishEnemyTurnAndStartPlayer(s: BattleState): BattleState {
+  const withPools = refreshPlayerTacticPools(s.units);
   const next: BattleState = {
     ...s,
+    units: withPools.map((u) =>
+      u.side === "player" && u.hp > 0 ? { ...u, moved: false, acted: false } : u
+    ),
     turn: "player",
     phase: "select",
     selectedId: null,
@@ -543,15 +812,11 @@ function finishEnemyTurnAndStartPlayer(s: BattleState): BattleState {
     pickTarget: null,
     enemyTurnQueue: null,
     enemyTurnCursor: 0,
-    units: s.units.map((u) =>
-      u.side === "player" && u.hp > 0 ? { ...u, moved: false, acted: false } : u
-    ),
     log: [...s.log, "—— 我军回合 ——"],
   };
   return withTurnSnapshot(next);
 }
 
-/** 单名敌军一次完整 AI（贴邻则攻，否则逼近一步再视情况攻） */
 function executeEnemyUnitAction(state: BattleState, eid: string): BattleState {
   let s = state;
   const players = s.units.filter((u) => u.side === "player" && u.hp > 0);
@@ -562,12 +827,12 @@ function executeEnemyUnitAction(state: BattleState, eid: string): BattleState {
 
   const adj = players.find((p) => adjacent(eu, p));
   if (adj) {
-    const dmg = eu.atk;
+    const dmg = eu.might;
     const newHp = Math.max(0, adj.hp - dmg);
     s = {
       ...s,
       units: s.units.map((x) => (x.id === adj.id ? { ...x, hp: newHp } : x)),
-      log: [...s.log, `${eu.name} 反击 ${adj.name}，造成 ${dmg} 伤害。`],
+      log: [...s.log, `${eu.name} 攻击 ${adj.name}，造成 ${dmg} 伤害。`],
     };
     return checkOutcome(s);
   }
@@ -576,7 +841,7 @@ function executeEnemyUnitAction(state: BattleState, eid: string): BattleState {
     const db = Math.abs(eu.x - b.x) + Math.abs(eu.y - b.y);
     return da <= db ? a : b;
   });
-  const step = firstStepToward(eu, target, s.units, s.gridW, s.gridH);
+  const step = firstStepToward(eu, target, s);
   if (step) {
     s = {
       ...s,
@@ -587,7 +852,7 @@ function executeEnemyUnitAction(state: BattleState, eid: string): BattleState {
   }
   const adj2 = s.units.find((u) => u.side === "player" && u.hp > 0 && adjacent(eu, u));
   if (adj2) {
-    const dmg = eu.atk;
+    const dmg = eu.might;
     const newHp = Math.max(0, adj2.hp - dmg);
     s = {
       ...s,
@@ -599,7 +864,6 @@ function executeEnemyUnitAction(state: BattleState, eid: string): BattleState {
   return s;
 }
 
-/** 执行队列中「当前下标」这一名敌军的行动，并推进下标；由界面在每名敌军之间插入延迟 */
 export function processSingleEnemyStep(state: BattleState): BattleState {
   if (state.turn !== "enemy" || state.phase !== "enemy") return state;
   const q = state.enemyTurnQueue;
@@ -631,13 +895,9 @@ export function processSingleEnemyStep(state: BattleState): BattleState {
   return s;
 }
 
-function firstStepToward(
-  eu: Unit,
-  target: Unit,
-  units: Unit[],
-  gridW: number,
-  gridH: number
-): { x: number; y: number } | null {
+function firstStepToward(eu: Unit, target: Unit, state: BattleState): { x: number; y: number } | null {
+  const { gridW, gridH } = state;
+  const units = state.units;
   const occ = occupantMap(units);
   occ.delete(key(eu.x, eu.y));
   const goal = key(target.x, target.y);
@@ -659,6 +919,8 @@ function firstStepToward(
       if (nx < 0 || ny < 0 || nx >= gridW || ny >= gridH) continue;
       const nk = key(nx, ny);
       if (prev.has(nk)) continue;
+      const t = terrainAt(state, nx, ny);
+      if (!Number.isFinite(stepCostForUnit(eu, t))) continue;
       if (occ.has(nk) && nk !== key(eu.x, eu.y)) continue;
       prev.set(nk, cur);
       q.push(nk);
@@ -677,7 +939,6 @@ function firstStepToward(
   return { x: lx, y: ly };
 }
 
-/** 未移动直接待机 */
 export function skipOrEndIfStuck(state: BattleState): BattleState {
   if (state.outcome !== "playing" || state.turn !== "player") return state;
   const id = state.selectedId;
@@ -697,10 +958,9 @@ export function skipOrEndIfStuck(state: BattleState): BattleState {
   return maybeEndPlayerTurn(next);
 }
 
-/** 菜单或侧栏：待机 */
 export function waitAfterMove(state: BattleState): BattleState {
   if (state.outcome !== "playing" || state.turn !== "player") return state;
-  if (state.phase !== "menu") return state;
+  if (state.phase !== "menu" && state.phase !== "tactic-menu") return state;
   const id = state.selectedId;
   if (!id) return state;
   const u = state.units.find((x) => x.id === id);
@@ -718,21 +978,102 @@ export function waitAfterMove(state: BattleState): BattleState {
   return maybeEndPlayerTurn(next);
 }
 
+function migrateV1Unit(raw: Record<string, unknown>): Unit {
+  const atk = typeof raw.atk === "number" ? raw.atk : 25;
+  const intel = typeof raw.intel === "number" ? raw.intel : 50;
+  const might = typeof raw.might === "number" ? raw.might : atk;
+  const armyType = (raw.armyType as ArmyType) || "ping";
+  const max = tacticMaxFromIntel(intel);
+  return {
+    id: String(raw.id),
+    name: String(raw.name),
+    side: raw.side as Side,
+    x: Number(raw.x),
+    y: Number(raw.y),
+    hp: Number(raw.hp),
+    maxHp: Number(raw.maxHp),
+    might,
+    intel,
+    armyType: ["ping", "shan", "shui"].includes(armyType) ? armyType : "ping",
+    tacticMax: typeof raw.tacticMax === "number" ? raw.tacticMax : max,
+    tacticPoints:
+      typeof raw.tacticPoints === "number" ? raw.tacticPoints : max,
+    move: Number(raw.move),
+    moved: Boolean(raw.moved),
+    acted: Boolean(raw.acted),
+  };
+}
+
 export function isValidSave(o: unknown): o is BattleState {
   if (!o || typeof o !== "object") return false;
   const x = o as Record<string, unknown>;
-  return x.version === 1 && Array.isArray(x.units) && typeof x.gridW === "number";
+  const v = x.version;
+  if (v !== 1 && v !== 2) return false;
+  if (!Array.isArray(x.units) || typeof x.gridW !== "number") return false;
+  return true;
+}
+
+function ensureUnitShape(u: Unit | Record<string, unknown>): Unit {
+  const r = u as Record<string, unknown>;
+  if (typeof r.might === "number" && typeof r.intel === "number" && r.armyType) {
+    return u as Unit;
+  }
+  return migrateV1Unit(r);
 }
 
 export function ensureBattleFields(b: BattleState): BattleState {
-  let s = {
-    ...b,
-    pickTarget: b.pickTarget ?? null,
-    enemyTurnQueue: b.enemyTurnQueue ?? null,
-    enemyTurnCursor: b.enemyTurnCursor ?? 0,
+  let s: BattleState = { ...b };
+  if ((s.version as number) === 1) {
+    const gridW = s.gridW;
+    const gridH = s.gridH;
+    const terrain: Terrain[][] = [];
+    for (let y = 0; y < gridH; y++) {
+      terrain.push(Array.from({ length: gridW }, () => "plain" as Terrain));
+    }
+    s = {
+      ...(s as unknown as BattleState),
+      version: 2,
+      terrain,
+      units: (s.units as unknown as Record<string, unknown>[]).map(migrateV1Unit),
+    } as BattleState;
+  }
+  s = {
+    ...s,
+    pickTarget: s.pickTarget ?? null,
+    enemyTurnQueue: s.enemyTurnQueue ?? null,
+    enemyTurnCursor: s.enemyTurnCursor ?? 0,
+    terrain:
+      s.terrain && s.terrain.length === s.gridH && s.terrain[0]?.length === s.gridW
+        ? s.terrain
+        : createPrologueTerrain(s.gridW, s.gridH),
   };
+  s = { ...s, units: s.units.map((u) => ensureUnitShape(u as Unit | Record<string, unknown>)) };
   if (!s.playerTurnStart || Object.keys(s.playerTurnStart).length === 0) {
     s = { ...s, playerTurnStart: buildPlayerTurnStart(s.units) };
+  } else {
+    s = {
+      ...s,
+      playerTurnStart: Object.fromEntries(
+        Object.entries(s.playerTurnStart).map(([id, snap]) => {
+          const u = s.units.find((x) => x.id === id);
+          const tp =
+            typeof snap.tacticPoints === "number"
+              ? snap.tacticPoints
+              : (u?.tacticPoints ?? 0);
+          return [id, { ...snap, tacticPoints: tp }];
+        })
+      ) as PlayerTurnStartMap,
+    };
   }
+  s = {
+    ...s,
+    units: s.units.map((u) => {
+      const max = tacticMaxFromIntel(u.intel);
+      if (u.tacticMax !== max || u.tacticPoints > max) {
+        return { ...u, tacticMax: max, tacticPoints: Math.min(u.tacticPoints, max) };
+      }
+      return u;
+    }),
+  };
   return s;
 }

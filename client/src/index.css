@@ -203,9 +203,9 @@ a:hover {
 
 .game-layout {
   display: grid;
-  grid-template-columns: minmax(240px, 280px) 1fr;
-  gap: 1.5rem;
-  max-width: 1200px;
+  grid-template-columns: minmax(260px, 300px) 1fr;
+  gap: 1.25rem;
+  max-width: 1280px;
   margin: 0 auto;
   padding: 1rem 1rem 2rem;
   align-items: start;
@@ -215,6 +215,94 @@ a:hover {
   .game-layout {
     grid-template-columns: 1fr;
   }
+
+  .game-main {
+    order: -1;
+  }
+}
+
+.game-left-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  position: sticky;
+  top: 0.5rem;
+  align-self: start;
+}
+
+.game-meta-sidebar {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+}
+
+.meta-sidebar-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.meta-sidebar-header .back-link {
+  margin-bottom: 0;
+  font-size: 0.82rem;
+}
+
+.btn-collapse-sidebar {
+  font-family: inherit;
+  font-size: 0.72rem;
+  padding: 0.25rem 0.45rem;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: #1e2838;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.btn-collapse-sidebar:hover {
+  border-color: var(--gold-dim);
+  color: var(--text);
+}
+
+.meta-compact-line {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.meta-compact-line .status-inline {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.sidebar-expand-bar {
+  width: 100%;
+  font-family: inherit;
+  font-size: 0.8rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  background: linear-gradient(180deg, #1e2838 0%, #161d28 100%);
+  color: var(--gold);
+  cursor: pointer;
+  text-align: center;
+}
+
+.sidebar-expand-bar:hover {
+  border-color: var(--gold-dim);
+  background: #243044;
+}
+
+.game-meta-sidebar h3 {
+  margin: 0.65rem 0 0.3rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: 0.02em;
 }
 
 .game-sidebar {
@@ -333,6 +421,93 @@ a:hover {
   gap: 1rem;
 }
 
+.unit-inspect {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem 0.85rem;
+}
+
+.save-list--compact {
+  max-height: 7.5rem;
+  overflow-y: auto;
+  margin: 0;
+  padding-right: 0.15rem;
+}
+
+.save-details {
+  margin: 0.35rem 0 0;
+  border: 1px solid #2a3545;
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.save-details > summary {
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  list-style: none;
+}
+
+.save-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.save-details[open] > summary {
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid #2a3545;
+}
+
+.meta-slot-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+}
+
+.meta-slot-row .slot-input {
+  margin-bottom: 0;
+}
+
+.meta-save-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.meta-save-buttons .btn {
+  padding: 0.4rem 0.65rem;
+  font-size: 0.78rem;
+}
+
+.unit-inspect h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  color: var(--gold-dim);
+}
+
+.unit-inspect-dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.unit-inspect-dl dt {
+  margin: 0;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.unit-inspect-dl dd {
+  margin: 0;
+  color: var(--text);
+}
+
 .battle-wrap {
   overflow-x: auto;
   overflow-y: visible;
@@ -393,7 +568,6 @@ a:hover {
   position: relative;
   z-index: 0;
   border-radius: 4px;
-  background: var(--tile);
   overflow: visible;
 }
 
@@ -420,9 +594,6 @@ a:hover {
   box-shadow: 0 0 16px rgba(251, 191, 36, 0.45);
 }
 
-.cell.even {
-  background: var(--tile-alt);
-}
 
 .cell.move-hint {
   outline: 2px solid #3b82f6;
@@ -476,7 +647,23 @@ a:hover {
 }
 
 .unit-token.selected {
-  box-shadow: 0 0 0 3px #fbbf24;
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.55);
+}
+
+.unit-token.unit-turn-done {
+  filter: grayscale(0.55) brightness(0.78);
+  opacity: 0.88;
+}
+
+.unit-token.unit-pending-highlight {
+  box-shadow:
+    0 0 0 2px #fef3c7,
+    0 0 18px rgba(254, 243, 199, 0.55);
+  filter: brightness(1.12) saturate(1.08);
+}
+
+.unit-token.unit-pending-highlight.selectable:hover {
+  filter: brightness(1.18) saturate(1.1);
 }
 
 .unit-token.unit-move-slide {

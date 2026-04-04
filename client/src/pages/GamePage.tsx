@@ -9,6 +9,7 @@ import {
 } from "../api";
 import {
   cancelPickTarget,
+  cancelTacticMenu,
   confirmPickTarget,
   createInitialBattle,
   ensureBattleFields,
@@ -16,15 +17,25 @@ import {
   gridCellClick,
   isValidSave,
   menuMeleeAttack,
-  menuTactic,
+  menuOpenTacticMenu,
   pickTargetFocusEnemy,
   pickTargetNavigate,
   processSingleEnemyStep,
   selectPlayerUnit,
   skipOrEndIfStuck,
+  tacticMenuChoose,
   waitAfterMove,
 } from "../game/battle";
-import type { BattleState } from "../game/types";
+import type { BattleState, Terrain } from "../game/types";
+import { ARMY_TYPE_LABEL, TERRAIN_LABEL, type TacticKind } from "../game/types";
+
+const TERRAIN_LEGEND: { id: Terrain; ch: string }[] = [
+  { id: "plain", ch: "陆" },
+  { id: "forest", ch: "林" },
+  { id: "water", ch: "水" },
+  { id: "mountain", ch: "山" },
+  { id: "desert", ch: "沙" },
+];
 import { LOCAL_SAVES_KEY } from "../game/types";
 import GameBattle, { type MenuAction } from "./GameBattle";
 
@@ -95,7 +106,24 @@ export default function GamePage() {
   const [remoteList, setRemoteList] = useState<ServerSaveRow[]>([]);
   const [remoteLoading, setRemoteLoading] = useState(false);
   const [visualEpoch, setVisualEpoch] = useState(0);
+  const [inspectUnitId, setInspectUnitId] = useState<string | null>(null);
+  const [metaSidebarCollapsed, setMetaSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("sanguo_meta_sidebar_collapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
   const bumpVisualEpoch = useCallback(() => setVisualEpoch((n) => n + 1), []);
+
+  const setMetaCollapsed = useCallback((collapsed: boolean) => {
+    setMetaSidebarCollapsed(collapsed);
+    try {
+      localStorage.setItem("sanguo_meta_sidebar_collapsed", collapsed ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const refreshLocal = useCallback(() => setLocalList(readLocalSaves()), []);
 
@@ -155,6 +183,7 @@ export default function GamePage() {
   }, []);
 
   const onUnitClick = useCallback((unitId: string, side: "player" | "enemy") => {
+    setInspectUnitId(unitId);
     setBattle((s) => {
       if (side === "player") return selectPlayerUnit(s, unitId);
       if (s.phase === "pick-target" && s.pickTarget?.targetIds.includes(unitId)) {
@@ -167,9 +196,13 @@ export default function GamePage() {
   const onMenuAction = useCallback((action: MenuAction) => {
     setBattle((s) => {
       if (action === "attack") return menuMeleeAttack(s);
-      if (action === "tactic") return menuTactic(s);
+      if (action === "tactic") return menuOpenTacticMenu(s);
       return waitAfterMove(s);
     });
+  }, []);
+
+  const onTacticPick = useCallback((kind: TacticKind) => {
+    setBattle((s) => tacticMenuChoose(s, kind));
   }, []);
 
   const onEscapeOrRevert = useCallback(() => {
@@ -196,6 +229,7 @@ export default function GamePage() {
   const onWait = useCallback(() => {
     setBattle((s) => {
       if (s.phase === "pick-target") return cancelPickTarget(s);
+      if (s.phase === "tactic-menu") return cancelTacticMenu(s);
       if (s.phase === "move") return skipOrEndIfStuck(s);
       if (s.phase === "menu") return waitAfterMove(s);
       return s;
@@ -204,6 +238,7 @@ export default function GamePage() {
 
   const onNewGame = useCallback(() => {
     setBattle(createInitialBattle());
+    setInspectUnitId(null);
     setMessage(null);
     bumpVisualEpoch();
   }, [bumpVisualEpoch]);
@@ -283,84 +318,195 @@ export default function GamePage() {
     return battle.turn === "player" ? "我军回合" : "敌军行动中…";
   }, [battle.outcome, battle.turn]);
 
+  const inspectedUnit = useMemo(() => {
+    if (!inspectUnitId) return null;
+    return battle.units.find((u) => u.id === inspectUnitId && u.hp > 0) ?? null;
+  }, [battle.units, inspectUnitId]);
+
+  const inspectedTerrain = useMemo(() => {
+    if (!inspectedUnit) return null;
+    const row = battle.terrain[inspectedUnit.y];
+    const t = row?.[inspectedUnit.x];
+    return t ? TERRAIN_LABEL[t] : null;
+  }, [battle.terrain, inspectedUnit]);
+
   return (
     <div className="page game-layout">
-      <aside className="game-sidebar">
-        <Link to="/" className="back-link">
-          ← 返回首页
-        </Link>
-        <h2>战局</h2>
-        <p className="scenario-title">{battle.scenarioTitle}</p>
-        <p className="status">{statusLine}</p>
-        {message && <p className="toast-msg">{message}</p>}
-        <div className="sidebar-actions">
-          <button type="button" className="btn" onClick={onNewGame}>
-            新游戏
-          </button>
+      <div className="game-left-stack">
+        <aside className="unit-inspect" aria-label="武将信息">
+          <h3>武将信息</h3>
+          {!inspectedUnit && (
+            <p className="muted small">点击场上武将查看兵力、武力、智力与计策值。</p>
+          )}
+          {inspectedUnit && (
+            <dl className="unit-inspect-dl">
+              <dt>姓名</dt>
+              <dd>{inspectedUnit.name}</dd>
+              <dt>阵营</dt>
+              <dd>{inspectedUnit.side === "player" ? "我军" : "敌军"}</dd>
+              <dt>兵力</dt>
+              <dd>
+                {inspectedUnit.hp} / {inspectedUnit.maxHp}
+              </dd>
+              <dt>兵种</dt>
+              <dd>{ARMY_TYPE_LABEL[inspectedUnit.armyType]}</dd>
+              <dt>武力</dt>
+              <dd>{inspectedUnit.might}</dd>
+              <dt>智力</dt>
+              <dd>{inspectedUnit.intel}</dd>
+              {inspectedUnit.side === "player" && (
+                <>
+                  <dt>计策值</dt>
+                  <dd>
+                    {inspectedUnit.tacticPoints} / {inspectedUnit.tacticMax}
+                  </dd>
+                </>
+              )}
+              {inspectedTerrain && (
+                <>
+                  <dt>脚下地形</dt>
+                  <dd>{inspectedTerrain}</dd>
+                </>
+              )}
+            </dl>
+          )}
+          <div className="terrain-legend">
+            <p className="terrain-legend-title">战场地形</p>
+            <div className="terrain-legend-row">
+              {TERRAIN_LEGEND.map(({ id, ch }) => (
+                <span key={id} className="terrain-legend-item">
+                  <span
+                    className={`terrain-legend-swatch ${id}`}
+                    title={TERRAIN_LABEL[id]}
+                    aria-hidden
+                  >
+                    {ch}
+                  </span>
+                  <span>{TERRAIN_LABEL[id]}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        </aside>
+
+        {metaSidebarCollapsed ? (
           <button
             type="button"
-            className="btn"
-            onClick={onWait}
-            disabled={
-              battle.outcome !== "playing" ||
-              battle.turn !== "player" ||
-              !battle.selectedId ||
-              battle.phase === "enemy"
-            }
+            className="sidebar-expand-bar"
+            onClick={() => setMetaCollapsed(false)}
           >
-            待机
+            展开战局与存档
           </button>
-        </div>
-        <hr className="divider" />
-        <h3>存档槽名称</h3>
-        <input
-          className="slot-input"
-          value={slotName}
-          onChange={(e) => setSlotName(e.target.value)}
-          placeholder="例如：存档1"
-          maxLength={64}
-        />
-        <div className="save-row">
-          <button type="button" className="btn primary" onClick={saveLocal}>
-            保存到本地
-          </button>
-          <button type="button" className="btn" onClick={saveRemote} disabled={!user}>
-            保存到云端
-          </button>
-        </div>
-        {!user && <p className="hint small">登录后可使用云端存档</p>}
-        <h3>本地存档</h3>
-        <ul className="save-list">
-          {localList.length === 0 && <li className="muted">暂无</li>}
-          {localList.map((e) => (
-            <li key={e.slotName}>
-              <button type="button" className="linkish" onClick={() => loadLocal(e)}>
-                {e.slotName}
+        ) : (
+          <aside className="game-meta-sidebar" aria-label="战局与存档">
+            <div className="meta-sidebar-header">
+              <Link to="/" className="back-link">
+                ← 返回首页
+              </Link>
+              <button
+                type="button"
+                className="btn-collapse-sidebar"
+                onClick={() => setMetaCollapsed(true)}
+                title="收起侧栏，腾出空间"
+              >
+                收起
               </button>
-              <span className="muted small">{e.updatedAt.slice(0, 19).replace("T", " ")}</span>
-              <button type="button" className="btn tiny danger" onClick={() => removeLocal(e.slotName)}>
-                删
+            </div>
+            <p className="meta-compact-line">
+              <strong>{battle.scenarioTitle}</strong>
+              <br />
+              <span className="status-inline">{statusLine}</span>
+            </p>
+            {message && <p className="toast-msg">{message}</p>}
+            <div className="sidebar-actions">
+              <button type="button" className="btn" onClick={onNewGame}>
+                新游戏
               </button>
-            </li>
-          ))}
-        </ul>
-        <h3>云端存档 {remoteLoading && <span className="muted">加载中…</span>}</h3>
-        <ul className="save-list">
-          {!token && <li className="muted">未登录</li>}
-          {token && remoteList.length === 0 && !remoteLoading && <li className="muted">暂无</li>}
-          {remoteList.map((r) => (
-            <li key={r.id}>
-              <button type="button" className="linkish" onClick={() => void loadRemote(r)}>
-                {r.slotName}
+              <button
+                type="button"
+                className="btn"
+                onClick={onWait}
+                disabled={
+                  battle.outcome !== "playing" ||
+                  battle.turn !== "player" ||
+                  !battle.selectedId ||
+                  battle.phase === "enemy"
+                }
+              >
+                待机
               </button>
-              <span className="muted small">{r.updatedAt.replace(" ", " ").slice(0, 19)}</span>
-              <button type="button" className="btn tiny danger" onClick={() => void removeRemote(r.slotName)}>
-                删
-              </button>
-            </li>
-          ))}
-        </ul>
-      </aside>
+            </div>
+
+            <details className="save-details" open>
+              <summary>存档</summary>
+              <div className="meta-slot-row">
+                <input
+                  className="slot-input"
+                  value={slotName}
+                  onChange={(e) => setSlotName(e.target.value)}
+                  placeholder="存档槽名称"
+                  maxLength={64}
+                />
+                <div className="meta-save-buttons">
+                  <button type="button" className="btn primary" onClick={saveLocal}>
+                    存本地
+                  </button>
+                  <button type="button" className="btn" onClick={saveRemote} disabled={!user}>
+                    存云端
+                  </button>
+                </div>
+                {!user && <p className="hint small">登录后可云端存档</p>}
+              </div>
+            </details>
+
+            <details className="save-details" open>
+              <summary>本地列表 ({localList.length})</summary>
+              <ul className="save-list save-list--compact">
+                {localList.length === 0 && <li className="muted">暂无</li>}
+                {localList.map((e) => (
+                  <li key={e.slotName}>
+                    <button type="button" className="linkish" onClick={() => loadLocal(e)}>
+                      {e.slotName}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn tiny danger"
+                      onClick={() => removeLocal(e.slotName)}
+                    >
+                      删
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </details>
+
+            <details className="save-details" open>
+              <summary>
+                云端列表 {remoteLoading && <span className="muted">…</span>}
+              </summary>
+              <ul className="save-list save-list--compact">
+                {!token && <li className="muted">未登录</li>}
+                {token && remoteList.length === 0 && !remoteLoading && <li className="muted">暂无</li>}
+                {remoteList.map((r) => (
+                  <li key={r.id}>
+                    <button type="button" className="linkish" onClick={() => void loadRemote(r)}>
+                      {r.slotName}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn tiny danger"
+                      onClick={() => void removeRemote(r.slotName)}
+                    >
+                      删
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          </aside>
+        )}
+      </div>
+
       <main className="game-main">
         <GameBattle
           battle={battle}
@@ -368,6 +514,7 @@ export default function GamePage() {
           onCellClick={onCellClick}
           onUnitClick={onUnitClick}
           onMenuAction={onMenuAction}
+          onTacticPick={onTacticPick}
           onEscapeOrRevert={onEscapeOrRevert}
           onPickNavigate={onPickNavigate}
           onPickConfirmFocused={onPickConfirmFocused}
