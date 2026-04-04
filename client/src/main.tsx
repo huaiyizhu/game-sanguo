@@ -5,6 +5,7 @@ import { AuthProvider } from "./auth/AuthContext";
 import App from "./App";
 import "./index.css";
 import "./terrain-visuals.css";
+import "./troop-visuals.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

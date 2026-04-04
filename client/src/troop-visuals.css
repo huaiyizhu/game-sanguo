@@ -1,0 +1,220 @@
+/**
+ * 将领种类战场呈现：骑兵 / 步兵 / 弓兵
+ * 与 unit-token 的 .player / .enemy 叠加；图腾见 TroopEmblem.tsx
+ */
+
+.unit-troop-emblem {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  pointer-events: none;
+  line-height: 1;
+}
+
+.unit-troop-emblem-svg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(15px, 4.5vw, 20px);
+  height: clamp(13px, 3.9vw, 17px);
+  color: rgba(255, 255, 255, 0.92);
+  filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.85));
+}
+
+.unit-troop-emblem-svg svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.unit-troop-emblem-char {
+  font-size: clamp(0.46rem, 1.45vw, 0.62rem);
+  font-weight: 900;
+  letter-spacing: 0;
+  margin-top: -1px;
+  padding: 0 2px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: #fef9c3;
+  text-shadow: 0 1px 2px #000;
+}
+
+.unit-token.enemy .unit-troop-emblem-char {
+  color: #ffedd5;
+}
+
+/* —— 骑兵：前钝后尖轮廓 + 金边（不用 skew，避免行动菜单变形） —— */
+.unit-token.troop-cavalry {
+  border-radius: 2px 7px 7px 2px;
+}
+
+.unit-token.player.troop-cavalry {
+  background:
+    linear-gradient(118deg, rgba(253, 224, 71, 0.22) 0%, transparent 48%),
+    var(--player);
+  border-color: #eab308;
+  box-shadow:
+    inset 0 -2px 0 rgba(250, 204, 21, 0.4),
+    inset 0 0 0 1px rgba(250, 204, 21, 0.2);
+}
+
+.unit-token.enemy.troop-cavalry {
+  background:
+    linear-gradient(118deg, rgba(254, 215, 170, 0.2) 0%, transparent 48%),
+    var(--enemy);
+  border-color: #f59e0b;
+  box-shadow:
+    inset 0 -2px 0 rgba(251, 191, 36, 0.35),
+    inset 0 0 0 1px rgba(251, 191, 36, 0.18);
+}
+
+.unit-token.troop-cavalry .unit-troop-emblem-char {
+  background: rgba(113, 63, 18, 0.55);
+  border-color: rgba(253, 224, 71, 0.45);
+}
+
+/* —— 步兵：稳重方盾轮廓 + 左侧甲片条 —— */
+.unit-token.troop-infantry {
+  border-radius: 3px;
+  border-left-width: 3px;
+}
+
+.unit-token.player.troop-infantry {
+  border-left-color: #e2e8f0;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0) 28%),
+    var(--player);
+  box-shadow: inset 2px 0 0 rgba(15, 23, 42, 0.35);
+}
+
+.unit-token.enemy.troop-infantry {
+  border-left-color: #fecaca;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 28%),
+    var(--enemy);
+  box-shadow: inset 2px 0 0 rgba(0, 0, 0, 0.35);
+}
+
+.unit-token.troop-infantry .unit-troop-emblem-char {
+  background: rgba(30, 41, 59, 0.55);
+  border-color: rgba(226, 232, 240, 0.4);
+}
+
+.unit-token.enemy.troop-infantry .unit-troop-emblem-char {
+  background: rgba(69, 10, 10, 0.55);
+  border-color: rgba(254, 202, 202, 0.4);
+}
+
+/* —— 弓兵：上弦月式顶边 + 青绿弓弦色 —— */
+.unit-token.troop-archer {
+  border-radius: 5px 5px 3px 3px;
+}
+
+.unit-token.player.troop-archer {
+  border-color: #4ade80;
+  background: var(--player);
+  box-shadow:
+    inset 0 3px 0 rgba(163, 230, 53, 0.5),
+    inset 0 0 0 1px rgba(74, 222, 128, 0.25);
+}
+
+.unit-token.enemy.troop-archer {
+  border-color: #86efac;
+  background: var(--enemy);
+  box-shadow:
+    inset 0 3px 0 rgba(134, 239, 172, 0.35),
+    inset 0 0 0 1px rgba(167, 243, 208, 0.2);
+}
+
+.unit-token.troop-archer .unit-troop-emblem-char {
+  background: rgba(20, 83, 45, 0.55);
+  border-color: rgba(163, 230, 53, 0.45);
+}
+
+.unit-token.enemy.troop-archer .unit-troop-emblem-char {
+  background: rgba(55, 20, 20, 0.6);
+  border-color: rgba(187, 247, 208, 0.4);
+}
+
+/* 与选中 / 可走 高亮共存 */
+.unit-token.troop-cavalry.selectable {
+  box-shadow:
+    0 0 0 2px var(--gold),
+    inset 0 -2px 0 rgba(250, 204, 21, 0.4);
+}
+
+.unit-token.troop-infantry.selectable {
+  box-shadow:
+    0 0 0 2px var(--gold),
+    inset 2px 0 0 rgba(15, 23, 42, 0.35);
+}
+
+.unit-token.enemy.troop-infantry.selectable {
+  box-shadow:
+    0 0 0 2px var(--gold),
+    inset 2px 0 0 rgba(0, 0, 0, 0.35);
+}
+
+.unit-token.troop-archer.selectable {
+  box-shadow:
+    0 0 0 2px var(--gold),
+    inset 0 3px 0 rgba(163, 230, 53, 0.45);
+}
+
+.unit-token.troop-cavalry.selected {
+  box-shadow:
+    0 0 0 2px rgba(251, 191, 36, 0.65),
+    inset 0 -2px 0 rgba(250, 204, 21, 0.35);
+}
+
+.unit-token.troop-infantry.selected {
+  box-shadow:
+    0 0 0 2px rgba(251, 191, 36, 0.65),
+    inset 2px 0 0 rgba(15, 23, 42, 0.35);
+}
+
+.unit-token.enemy.troop-infantry.selected {
+  box-shadow:
+    0 0 0 2px rgba(251, 191, 36, 0.65),
+    inset 2px 0 0 rgba(0, 0, 0, 0.35);
+}
+
+.unit-token.troop-archer.selected {
+  box-shadow:
+    0 0 0 2px rgba(251, 191, 36, 0.65),
+    inset 0 3px 0 rgba(163, 230, 53, 0.4);
+}
+
+.unit-token.troop-cavalry.unit-pending-highlight {
+  box-shadow:
+    0 0 0 2px #fef3c7,
+    0 0 18px rgba(254, 243, 199, 0.55),
+    inset 0 -2px 0 rgba(250, 204, 21, 0.35);
+}
+
+.unit-token.troop-infantry.unit-pending-highlight {
+  box-shadow:
+    0 0 0 2px #fef3c7,
+    0 0 18px rgba(254, 243, 199, 0.55),
+    inset 2px 0 0 rgba(15, 23, 42, 0.3);
+}
+
+.unit-token.enemy.troop-infantry.unit-pending-highlight {
+  box-shadow:
+    0 0 0 2px #fef3c7,
+    0 0 18px rgba(254, 243, 199, 0.55),
+    inset 2px 0 0 rgba(0, 0, 0, 0.3);
+}
+
+.unit-token.troop-archer.unit-pending-highlight {
+  box-shadow:
+    0 0 0 2px #fef3c7,
+    0 0 18px rgba(254, 243, 199, 0.55),
+    inset 0 3px 0 rgba(163, 230, 53, 0.4);
+}

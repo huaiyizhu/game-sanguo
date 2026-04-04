@@ -35,6 +35,7 @@ import {
   expToNextLevel,
   isArmyPreferredTerrain,
   TERRAIN_LABEL,
+  TROOP_KIND_LABEL,
   type TacticKind,
 } from "../game/types";
 
@@ -464,6 +465,13 @@ export default function GamePage() {
               </dd>
               <dt>兵种</dt>
               <dd>{ARMY_TYPE_LABEL[inspectedUnit.armyType]}</dd>
+              <dt>将领种类</dt>
+              <dd>
+                {TROOP_KIND_LABEL[inspectedUnit.troopKind]}
+                {inspectedUnit.troopKind === "archer" && "（普攻射程 2 格）"}
+              </dd>
+              <dt>移动力</dt>
+              <dd>{inspectedUnit.move}</dd>
               <dt>武力</dt>
               <dd>{inspectedUnit.might}</dd>
               <dt>防御</dt>

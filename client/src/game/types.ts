@@ -6,6 +6,9 @@ export type Terrain = "plain" | "forest" | "water" | "mountain" | "desert";
 /** 兵种：平军 / 山军 / 水军，影响涉水与山地移耗 */
 export type ArmyType = "ping" | "shan" | "shui";
 
+/** 将领种类：骑 / 步 / 弓（移动力与普攻射程、兵种相克） */
+export type TroopKind = "cavalry" | "infantry" | "archer";
+
 export type BattlePhase =
   | "select"
   | "move"
@@ -37,6 +40,8 @@ export interface Unit {
   defense: number;
   /** 兵种 */
   armyType: ArmyType;
+  /** 将领种类（骑步弓） */
+  troopKind: TroopKind;
   /** 当前计策值 */
   tacticPoints: number;
   /** 计策值上限（智力 + 等级，每回合我军开始时回满） */
@@ -152,6 +157,56 @@ export const ARMY_TYPE_LABEL: Record<ArmyType, string> = {
   shan: "山军",
   shui: "水军",
 };
+
+export const TROOP_KIND_LABEL: Record<TroopKind, string> = {
+  cavalry: "骑兵",
+  infantry: "步兵",
+  archer: "弓兵",
+};
+
+/** 格子上兵种徽记（与图腾配合，扫一眼可辨） */
+export const TROOP_KIND_BADGE: Record<TroopKind, string> = {
+  cavalry: "骑",
+  infantry: "步",
+  archer: "弓",
+};
+
+/** 各将领种类每回合移动力（可走格消耗仍受地形影响） */
+export function movePointsForTroop(t: TroopKind): number {
+  if (t === "cavalry") return 6;
+  if (t === "archer") return 3;
+  return 4;
+}
+
+/**
+ * 普攻侧克制：攻方种类对守方种类有杀伤优势（骑→步、步→弓、弓→骑）
+ */
+export const TROOP_ATTACK_COUNTERS: Record<TroopKind, TroopKind> = {
+  cavalry: "infantry",
+  infantry: "archer",
+  archer: "cavalry",
+};
+
+/**
+ * 防御侧克制：守方种类对来自该攻方种类的伤害更易减免（步防弓、骑防步、弓防骑）
+ */
+export const TROOP_DEFENSE_COUNTERS: Record<TroopKind, TroopKind> = {
+  archer: "infantry",
+  infantry: "cavalry",
+  cavalry: "archer",
+};
+
+/** 普攻克制：攻方武力等效倍率 */
+export const TROOP_ATK_ADVANTAGE_MUL = 1.22;
+/** 防御克制：守方额外等效防御 */
+export const TROOP_DEF_ADVANTAGE_BONUS = 8;
+
+export function isTroopKind(x: unknown): x is TroopKind {
+  return x === "cavalry" || x === "infantry" || x === "archer";
+}
+
+/** 弓兵普攻最远距离（曼哈顿）；步骑仅相邻 1 */
+export const ARCHER_ATTACK_RANGE = 2;
 
 export const TERRAIN_LABEL: Record<Terrain, string> = {
   plain: "陆地",

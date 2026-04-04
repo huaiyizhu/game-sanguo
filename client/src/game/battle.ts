@@ -9,9 +9,16 @@ import type {
   Unit,
 } from "./types";
 import {
+  ARCHER_ATTACK_RANGE,
   TACTIC_DEF,
+  TROOP_ATK_ADVANTAGE_MUL,
+  TROOP_ATTACK_COUNTERS,
+  TROOP_DEF_ADVANTAGE_BONUS,
+  TROOP_DEFENSE_COUNTERS,
   expToNextLevel,
   isArmyPreferredTerrain,
+  isTroopKind,
+  movePointsForTroop,
   PREFERRED_TERRAIN_ATK_MUL,
   PREFERRED_TERRAIN_DEF_BONUS,
   tacticMaxForUnit,
@@ -64,8 +71,14 @@ function effectiveDefenseOnTerrain(state: BattleState, u: Unit): number {
 }
 
 function meleeDamageDealt(state: BattleState, attacker: Unit, target: Unit): number {
-  const atk = effectiveMightOnTerrain(state, attacker);
-  const def = effectiveDefenseOnTerrain(state, target);
+  let atk = effectiveMightOnTerrain(state, attacker);
+  let def = effectiveDefenseOnTerrain(state, target);
+  if (TROOP_ATTACK_COUNTERS[attacker.troopKind] === target.troopKind) {
+    atk = Math.floor(atk * TROOP_ATK_ADVANTAGE_MUL);
+  }
+  if (TROOP_DEFENSE_COUNTERS[attacker.troopKind] === target.troopKind) {
+    def += TROOP_DEF_ADVANTAGE_BONUS;
+  }
   return Math.max(1, atk - def);
 }
 
@@ -88,6 +101,18 @@ function terrainCombatHint(state: BattleState, atk: Unit, def: Unit): string {
   if (a) return "（攻方地利）";
   if (d) return "（守方地利）";
   return "";
+}
+
+function troopCombatHint(attacker: Unit, defender: Unit): string {
+  const bits: string[] = [];
+  if (TROOP_ATTACK_COUNTERS[attacker.troopKind] === defender.troopKind) bits.push("克");
+  if (TROOP_DEFENSE_COUNTERS[attacker.troopKind] === defender.troopKind) bits.push("守克");
+  if (bits.length === 0) return "";
+  return `（兵种${bits.join("·")}）`;
+}
+
+function combatHints(state: BattleState, atk: Unit, def: Unit): string {
+  return `${terrainCombatHint(state, atk, def)}${troopCombatHint(atk, def)}`.trim();
 }
 
 function xpForDamage(
@@ -198,9 +223,10 @@ function defaultPlayerRoster(): Unit[] {
       intel: 72,
       defense: 12,
       armyType: "ping",
+      troopKind: "infantry",
       tacticMax: tacticMaxForUnit(72, 1),
       tacticPoints: tacticMaxForUnit(72, 1),
-      move: 4,
+      move: movePointsForTroop("infantry"),
       moved: false,
       acted: false,
     },
@@ -218,9 +244,10 @@ function defaultPlayerRoster(): Unit[] {
       intel: 68,
       defense: 14,
       armyType: "ping",
+      troopKind: "cavalry",
       tacticMax: tacticMaxForUnit(68, 1),
       tacticPoints: tacticMaxForUnit(68, 1),
-      move: 3,
+      move: movePointsForTroop("cavalry"),
       moved: false,
       acted: false,
     },
@@ -238,9 +265,10 @@ function defaultPlayerRoster(): Unit[] {
       intel: 38,
       defense: 13,
       armyType: "shan",
+      troopKind: "archer",
       tacticMax: tacticMaxForUnit(38, 1),
       tacticPoints: tacticMaxForUnit(38, 1),
-      move: 3,
+      move: movePointsForTroop("archer"),
       moved: false,
       acted: false,
     },
@@ -267,9 +295,10 @@ function buildPrologueBattle(): BattleState {
       intel: 30,
       defense: 8,
       armyType: "shui",
+      troopKind: "infantry",
       tacticMax: 0,
       tacticPoints: 0,
-      move: 3,
+      move: movePointsForTroop("infantry"),
       moved: false,
       acted: false,
     },
@@ -287,9 +316,10 @@ function buildPrologueBattle(): BattleState {
       intel: 28,
       defense: 7,
       armyType: "ping",
+      troopKind: "archer",
       tacticMax: 0,
       tacticPoints: 0,
-      move: 3,
+      move: movePointsForTroop("archer"),
       moved: false,
       acted: false,
     },
@@ -307,9 +337,10 @@ function buildPrologueBattle(): BattleState {
       intel: 42,
       defense: 11,
       armyType: "shan",
+      troopKind: "cavalry",
       tacticMax: 0,
       tacticPoints: 0,
-      move: 2,
+      move: movePointsForTroop("cavalry"),
       moved: false,
       acted: false,
     },
@@ -356,9 +387,10 @@ function buildChapter1Battle(): BattleState {
       intel: 22,
       defense: 9,
       armyType: "ping",
+      troopKind: "cavalry",
       tacticMax: 0,
       tacticPoints: 0,
-      move: 3,
+      move: movePointsForTroop("cavalry"),
       moved: false,
       acted: false,
     },
@@ -376,9 +408,10 @@ function buildChapter1Battle(): BattleState {
       intel: 22,
       defense: 9,
       armyType: "ping",
+      troopKind: "cavalry",
       tacticMax: 0,
       tacticPoints: 0,
-      move: 3,
+      move: movePointsForTroop("cavalry"),
       moved: false,
       acted: false,
     },
@@ -396,9 +429,10 @@ function buildChapter1Battle(): BattleState {
       intel: 26,
       defense: 12,
       armyType: "shan",
+      troopKind: "infantry",
       tacticMax: 0,
       tacticPoints: 0,
-      move: 3,
+      move: movePointsForTroop("infantry"),
       moved: false,
       acted: false,
     },
@@ -416,9 +450,10 @@ function buildChapter1Battle(): BattleState {
       intel: 35,
       defense: 13,
       armyType: "ping",
+      troopKind: "archer",
       tacticMax: 0,
       tacticPoints: 0,
-      move: 2,
+      move: movePointsForTroop("archer"),
       moved: false,
       acted: false,
     },
@@ -485,7 +520,8 @@ function mergeCarriedPlayers(template: BattleState, carried: Unit[]): BattleStat
       intel: c.intel,
       defense: c.defense,
       armyType: c.armyType,
-      move: c.move,
+      troopKind: c.troopKind,
+      move: movePointsForTroop(c.troopKind),
       tacticMax: tm,
       tacticPoints: tm,
       moved: false,
@@ -719,8 +755,20 @@ function manhattan(a: Unit, b: Unit) {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
+/** 普攻射程：弓兵曼哈顿距离 ≤2，步骑仅相邻 */
+export function inPhysicalAttackRange(attacker: Unit, target: Unit): boolean {
+  const d = manhattan(attacker, target);
+  if (d < 1) return false;
+  if (attacker.troopKind === "archer") return d <= ARCHER_ATTACK_RANGE;
+  return d === 1;
+}
+
+export function physicalAttackMenuLabel(unit: Unit): string {
+  return unit.troopKind === "archer" ? "远程射击" : "近战攻击";
+}
+
 export function canMeleeAttack(attacker: Unit, units: Unit[]): boolean {
-  return units.some((x) => x.side === "enemy" && x.hp > 0 && adjacent(attacker, x));
+  return units.some((x) => x.side === "enemy" && x.hp > 0 && inPhysicalAttackRange(attacker, x));
 }
 
 function foesInTacticRange(attacker: Unit, units: Unit[]): Unit[] {
@@ -803,18 +851,19 @@ export function menuMeleeAttack(state: BattleState): BattleState {
   if (!attacker || attacker.acted || !attacker.moved) return state;
   if (!canMeleeAttack(attacker, state.units)) return state;
   const foes = state.units.filter(
-    (x) => x.side === "enemy" && x.hp > 0 && adjacent(attacker, x)
+    (x) => x.side === "enemy" && x.hp > 0 && inPhysicalAttackRange(attacker, x)
   );
   if (foes.length === 0) return state;
   const sorted = sortMeleeTargets(foes);
   if (sorted.length === 1) {
     return applyPlayerMeleeDamage(state, aid, sorted[0].id);
   }
+  const aimHint = attacker.troopKind === "archer" ? "弓箭" : "攻击";
   return {
     ...state,
     phase: "pick-target",
     pickTarget: toPickState("melee", aid, sorted),
-    log: [...state.log, "选择攻击目标（方向键切换，Enter 确认）。"],
+    log: [...state.log, `选择${aimHint}目标（方向键切换，Enter 确认）。`],
   };
 }
 
@@ -890,10 +939,11 @@ function applyPlayerMeleeDamage(
   const newHp = Math.max(0, target.hp - dmg);
   const killed = newHp <= 0;
   const xp = xpForDamage(dmg, killed, attacker.level, target.level);
-  const hint = terrainCombatHint(state, attacker, target);
+  const hint = combatHints(state, attacker, target);
+  const verb = attacker.troopKind === "archer" ? "箭射" : "攻击";
   const lines: string[] = [];
   lines.push(
-    `${attacker.name} 攻击 ${target.name}，造成 ${dmg} 点伤害${hint ? ` ${hint}` : ""}。`
+    `${attacker.name} ${verb} ${target.name}，造成 ${dmg} 点伤害${hint ? ` ${hint}` : ""}。`
   );
   if (killed) lines.push(`${target.name} 被击退！`);
   const attackerAfter = applyExpAndLevelUps({ ...attacker, acted: true }, xp, lines);
@@ -975,7 +1025,7 @@ export function confirmPickTarget(state: BattleState, enemyId: string): BattleSt
   if (!attacker || attacker.acted || !target || target.side !== "enemy" || target.hp <= 0) {
     return state;
   }
-  if (p.kind === "melee" && !adjacent(attacker, target)) return state;
+  if (p.kind === "melee" && !inPhysicalAttackRange(attacker, target)) return state;
   if (p.kind === "tactic") {
     if (manhattan(attacker, target) > 2) return state;
     const tk = p.tacticKind;
@@ -1142,15 +1192,18 @@ function executeEnemyUnitAction(state: BattleState, eid: string): BattleState {
   if (!euFound || euFound.side !== "enemy" || euFound.hp <= 0) return s;
   let eu: Unit = euFound;
 
-  const adj = players.find((p) => adjacent(eu, p));
+  const adj = sortMeleeTargets(players.filter((p) => inPhysicalAttackRange(eu, p)))[0];
   if (adj) {
     const dmg = meleeDamageDealt(s, eu, adj);
-    const hint = terrainCombatHint(s, eu, adj);
+    const hint = combatHints(s, eu, adj);
     const newHp = Math.max(0, adj.hp - dmg);
     s = {
       ...s,
       units: s.units.map((x) => (x.id === adj.id ? { ...x, hp: newHp } : x)),
-      log: [...s.log, `${eu.name} 攻击 ${adj.name}，造成 ${dmg} 点伤害${hint ? ` ${hint}` : ""}。`],
+      log: [
+        ...s.log,
+        `${eu.name} ${eu.troopKind === "archer" ? "箭射" : "攻击"} ${adj.name}，造成 ${dmg} 点伤害${hint ? ` ${hint}` : ""}。`,
+      ],
     };
     return checkOutcome(s);
   }
@@ -1168,15 +1221,20 @@ function executeEnemyUnitAction(state: BattleState, eid: string): BattleState {
     };
     eu = s.units.find((x) => x.id === eid)!;
   }
-  const adj2 = s.units.find((u) => u.side === "player" && u.hp > 0 && adjacent(eu, u));
+  const adj2 = sortMeleeTargets(
+    s.units.filter((u) => u.side === "player" && u.hp > 0 && inPhysicalAttackRange(eu, u))
+  )[0];
   if (adj2) {
     const dmg = meleeDamageDealt(s, eu, adj2);
-    const hint = terrainCombatHint(s, eu, adj2);
+    const hint = combatHints(s, eu, adj2);
     const newHp = Math.max(0, adj2.hp - dmg);
     s = {
       ...s,
       units: s.units.map((x) => (x.id === adj2.id ? { ...x, hp: newHp } : x)),
-      log: [...s.log, `${eu.name} 攻击 ${adj2.name}，造成 ${dmg} 点伤害${hint ? ` ${hint}` : ""}。`],
+      log: [
+        ...s.log,
+        `${eu.name} ${eu.troopKind === "archer" ? "箭射" : "攻击"} ${adj2.name}，造成 ${dmg} 点伤害${hint ? ` ${hint}` : ""}。`,
+      ],
     };
     s = checkOutcome(s);
   }
@@ -1306,6 +1364,7 @@ function migrateV1Unit(raw: Record<string, unknown>): Unit {
   const exp = 0;
   const defense = Math.max(5, Math.floor(might * 0.4));
   const tm = tacticMaxForUnit(intel, level);
+  const troopKind = isTroopKind(raw.troopKind) ? raw.troopKind : "infantry";
   return {
     id: String(raw.id),
     name: String(raw.name),
@@ -1320,10 +1379,11 @@ function migrateV1Unit(raw: Record<string, unknown>): Unit {
     intel,
     defense,
     armyType: ["ping", "shan", "shui"].includes(armyType) ? armyType : "ping",
+    troopKind,
     tacticMax: typeof raw.tacticMax === "number" ? Math.max(raw.tacticMax as number, tm) : tm,
     tacticPoints:
       typeof raw.tacticPoints === "number" ? (raw.tacticPoints as number) : tm,
-    move: Number(raw.move),
+    move: movePointsForTroop(troopKind),
     moved: Boolean(raw.moved),
     acted: Boolean(raw.acted),
   };
@@ -1353,6 +1413,8 @@ function ensureUnitShape(u: Unit | Record<string, unknown>): Unit {
   if (typeof base.tacticMax !== "number") base.tacticMax = tm;
   base.tacticMax = Math.max(base.tacticMax, tm);
   base.tacticPoints = Math.min(base.tacticMax, base.tacticPoints ?? base.tacticMax);
+  if (!isTroopKind(base.troopKind)) base.troopKind = "infantry";
+  base.move = movePointsForTroop(base.troopKind);
   return base;
 }
 

@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, MouseEvent } from "react";
+import TroopEmblem from "../components/TroopEmblem";
 import {
   canAffordTactic,
   canMeleeAttack,
   canUseTactic,
+  physicalAttackMenuLabel,
   TURN_PHASE_BANNER_MS,
 } from "../game/battle";
-import type { BattlePhase, BattleState, Side, TacticKind, Terrain } from "../game/types";
+import type { BattlePhase, BattleState, Side, TacticKind, Terrain, TroopKind } from "../game/types";
 import { TACTIC_DEF, TERRAIN_LABEL } from "../game/types";
 
 export type MenuAction = "attack" | "tactic" | "wait";
@@ -59,6 +61,7 @@ type DyingVisual = {
   name: string;
   side: Side;
   level: number;
+  troopKind: TroopKind;
 };
 
 type KillBanner = { key: number; text: string };
@@ -239,6 +242,7 @@ export default function GameBattle({
               name: u.name,
               side: u.side,
               level: u.level,
+              troopKind: u.troopKind,
             },
           ]);
           setKillBanners((list) =>
@@ -560,6 +564,7 @@ export default function GameBattle({
                   className={[
                     "unit-token",
                     u.side,
+                    `troop-${u.troopKind}`,
                     slide ? "unit-move-slide" : "",
                     isSelected ? "selected" : "",
                     turnDone ? "unit-turn-done" : "",
@@ -606,6 +611,7 @@ export default function GameBattle({
                   <span className="unit-level-badge" aria-label={`等级 ${u.level}`}>
                     Lv.{u.level}
                   </span>
+                  <TroopEmblem kind={u.troopKind} />
                   {hitActive && dmgFx && (
                     <span className="dmg-float" key={dmgFx.key}>
                       -{dmgFx.amount}
@@ -637,7 +643,7 @@ export default function GameBattle({
                         onMouseEnter={() => setMenuFocus(0)}
                         onClick={() => tryActivateMenu(0)}
                       >
-                        发动攻击
+                        {physicalAttackMenuLabel(u)}
                       </button>
                       <button
                         type="button"
@@ -723,10 +729,11 @@ export default function GameBattle({
             style={{ gridColumn: d.x + 1, gridRow: d.y + 1 }}
             aria-hidden
           >
-            <div className={`unit-token ${d.side} unit-death-fade`}>
+            <div className={`unit-token ${d.side} troop-${d.troopKind} unit-death-fade`}>
               <span className="unit-level-badge" aria-hidden>
                 Lv.{d.level}
               </span>
+              <TroopEmblem kind={d.troopKind} />
               <span className="unit-name">{d.name}</span>
               <span className="unit-hp">0</span>
             </div>
