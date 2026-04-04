@@ -77,6 +77,15 @@ export interface PickTargetState {
   focusIndex: number;
 }
 
+/** 我军/敌军沿路逐格移动中的队列（不含起点，按顺序踩格） */
+export type PendingMove = {
+  unitId: string;
+  path: { x: number; y: number }[];
+  kind: "player" | "enemy";
+  /** 起步格（用于中途取消时还原，可选） */
+  from?: { x: number; y: number };
+};
+
 export interface BattleState {
   version: 2;
   scenarioId: string;
@@ -96,6 +105,13 @@ export interface BattleState {
   playerTurnStart: PlayerTurnStartMap;
   enemyTurnQueue: string[] | null;
   enemyTurnCursor: number;
+  /** 非空时表示单位正在沿路逐格移动，由 UI 定时器调用 advancePendingMove */
+  pendingMove: PendingMove | null;
+  /**
+   * 本帧造成的伤害提示（受害者 id + 数值），供 UI 在正确单位上播放受击/飘字；
+   * 不应写入存档，加载后应为 null；由 GameBattle 消费后清空。
+   */
+  damagePulse: { unitId: string; amount: number; key: number } | null;
 }
 
 export const LOCAL_SAVES_KEY = "sanguo_local_saves";

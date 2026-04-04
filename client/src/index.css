@@ -593,10 +593,25 @@ a:hover {
   position: relative;
 }
 
+/* 回合开场字幕结束前拦截战场点击（须低于 .turn-phase-banner-root 的 z-index） */
+.turn-intro-input-blocker {
+  position: absolute;
+  inset: 0.75rem;
+  z-index: 300;
+  border-radius: 8px;
+  cursor: default;
+}
+
 .kill-banner-stack {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 0.55rem;
+  z-index: 170;
+  width: min(96%, 32rem);
   text-align: center;
-  margin-bottom: 0.5rem;
-  min-height: 0;
+  pointer-events: none;
+  margin: 0;
 }
 
 .kill-banner-line {
@@ -631,7 +646,7 @@ a:hover {
   display: grid;
   gap: 3px;
   width: fit-content;
-  margin: 0 auto;
+  margin: 2.35rem auto 0;
   isolation: isolate;
 }
 
@@ -828,17 +843,25 @@ a:hover {
   }
 }
 
-.death-ghost-cell {
-  pointer-events: none;
-  z-index: 160;
+/* 阵亡残影叠在格内，底层仍是该格地形，不再用独立网格格盖住整块地 */
+.death-overlay-cell {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: none;
+  background: transparent;
+}
+
+.death-overlay-cell .unit-token {
+  position: relative;
+  z-index: 1;
 }
 
 .unit-death-fade {
   animation: unit-death-fade-out 0.95s ease-out forwards;
-  filter: saturate(1);
 }
 
 @keyframes unit-death-fade-out {
@@ -847,13 +870,14 @@ a:hover {
     transform: scale(1);
     filter: brightness(1) saturate(1);
   }
-  35% {
-    filter: brightness(1.6) saturate(0.35);
+  45% {
+    opacity: 0.92;
+    filter: brightness(1.15) saturate(0.55);
   }
   100% {
     opacity: 0;
-    transform: scale(0.82) translateY(-8px);
-    filter: brightness(0.4) saturate(0);
+    transform: scale(0.88) translateY(-6px);
+    filter: brightness(1) saturate(0.35);
   }
 }
 
@@ -982,9 +1006,18 @@ a:hover {
   opacity: 0.68;
 }
 
+/* 固定高度占位，避免进入菜单/选目标时提示行突然出现把网格顶上去 */
+.battle-menu-hint-slot {
+  min-height: 2.65rem;
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .menu-hint {
   text-align: center;
-  margin: 0.65rem 0 0;
+  margin: 0;
   font-size: 0.78rem;
   color: var(--text-muted);
 }

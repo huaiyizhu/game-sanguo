@@ -8,6 +8,7 @@ import {
   type ServerSaveRow,
 } from "../api";
 import {
+  advancePendingMove,
   cancelPickTarget,
   cancelTacticMenu,
   confirmPickTarget,
@@ -20,13 +21,14 @@ import {
   isValidSave,
   menuMeleeAttack,
   menuOpenTacticMenu,
+  MOVE_STEP_MS_ENEMY,
+  MOVE_STEP_MS_PLAYER,
   pickTargetFocusEnemy,
   pickTargetNavigate,
   processSingleEnemyStep,
   selectPlayerUnit,
   skipOrEndIfStuck,
   tacticMenuChoose,
-  TURN_PHASE_BANNER_MS,
   waitAfterMove,
 } from "../game/battle";
 import type { BattleState, Terrain } from "../game/types";
@@ -148,7 +150,21 @@ export default function GamePage() {
       return false;
     }
   });
-  const bumpVisualEpoch = useCallback(() => setVisualEpoch((n) => n + 1), []);
+  const [turnIntroLocked, setTurnIntroLocked] = useState(true);
+  const turnIntroLockedRef = useRef(true);
+  turnIntroLockedRef.current = turnIntroLocked;
+  const onTurnActionReady = useCallback((ready: boolean) => {
+    setTurnIntroLocked(!ready);
+  }, []);
+
+  const onDamagePulseConsumed = useCallback(() => {
+    setBattle((s) => (s.damagePulse ? { ...s, damagePulse: null } : s));
+  }, []);
+
+  const bumpVisualEpoch = useCallback(() => {
+    setTurnIntroLocked(true);
+    setVisualEpoch((n) => n + 1);
+  }, []);
 
   const setMetaCollapsed = useCallback((collapsed: boolean) => {
     setMetaSidebarCollapsed(collapsed);
@@ -181,8 +197,6 @@ export default function GamePage() {
     void refreshRemote();
   }, [refreshRemote]);
 
-  const enemyIntroDeadlineRef = useRef(0);
-  const prevTurnForEnemyIntroRef = useRef<"player" | "enemy">("player");
   const battleRef = useRef(battle);
   battleRef.current = battle;
 
@@ -227,33 +241,37 @@ export default function GamePage() {
   }, [bumpVisualEpoch]);
 
   useEffect(() => {
-    enemyIntroDeadlineRef.current = 0;
-    prevTurnForEnemyIntroRef.current = battleRef.current.turn;
-  }, [visualEpoch]);
-
-  useEffect(() => {
-    if (battle.outcome !== "playing") {
-      prevTurnForEnemyIntroRef.current = battle.turn;
-      return;
-    }
-    const prev = prevTurnForEnemyIntroRef.current;
-    if (battle.turn === "enemy" && prev !== "enemy") {
-      enemyIntroDeadlineRef.current = Date.now() + TURN_PHASE_BANNER_MS;
-    }
-    prevTurnForEnemyIntroRef.current = battle.turn;
-  }, [battle.turn, battle.outcome]);
+    if (battle.pendingMove?.kind !== "player") return;
+    if (turnIntroLocked) return;
+    const tid = window.setTimeout(() => {
+      setBattle((s) => advancePendingMove(s));
+    }, MOVE_STEP_MS_PLAYER);
+    return () => window.clearTimeout(tid);
+  }, [
+    battle.outcome,
+    battle.pendingMove?.kind,
+    battle.pendingMove?.unitId,
+    (battle.pendingMove?.path ?? []).join("|"),
+    turnIntroLocked,
+  ]);
 
   useEffect(() => {
     if (battle.outcome !== "playing") return;
+    if (turnIntroLocked) return;
     if (battle.turn !== "enemy" || battle.phase !== "enemy") return;
     const q = battle.enemyTurnQueue;
     if (!q?.length) return;
     const c = battle.enemyTurnCursor;
     if (c >= q.length) return;
 
-    const introWait =
-      c === 0 ? Math.max(0, enemyIntroDeadlineRef.current - Date.now()) : 0;
-    const delay = introWait + (c === 0 ? 0 : ENEMY_ACTION_GAP_MS);
+    if (battle.pendingMove?.kind === "enemy") {
+      const tid = window.setTimeout(() => {
+        setBattle((s) => advancePendingMove(s));
+      }, MOVE_STEP_MS_ENEMY);
+      return () => window.clearTimeout(tid);
+    }
+
+    const delay = c === 0 ? 0 : ENEMY_ACTION_GAP_MS;
     const tid = window.setTimeout(() => {
       setBattle((s) => processSingleEnemyStep(s));
     }, delay);
@@ -265,9 +283,15 @@ export default function GamePage() {
     battle.phase,
     battle.enemyTurnCursor,
     battle.enemyTurnQueue?.join(","),
+    battle.pendingMove?.kind,
+    battle.pendingMove?.unitId,
+    (battle.pendingMove?.path ?? []).join("|"),
+    turnIntroLocked,
   ]);
 
   const onCellClick = useCallback((x: number, y: number) => {
+    if (battleRef.current.pendingMove) return;
+    if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
     setBattle((s) => {
       if (s.phase === "pick-target" && s.pickTarget) {
         const u = s.units.find(
@@ -281,6 +305,8 @@ export default function GamePage() {
   }, []);
 
   const onUnitClick = useCallback((unitId: string, side: "player" | "enemy") => {
+    if (battleRef.current.pendingMove) return;
+    if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
     setInspectUnitId(unitId);
     setBattle((s) => {
       if (side === "player") return selectPlayerUnit(s, unitId);
@@ -292,6 +318,7 @@ export default function GamePage() {
   }, []);
 
   const onMenuAction = useCallback((action: MenuAction) => {
+    if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
     setBattle((s) => {
       if (action === "attack") return menuMeleeAttack(s);
       if (action === "tactic") return menuOpenTacticMenu(s);
@@ -300,18 +327,22 @@ export default function GamePage() {
   }, []);
 
   const onTacticPick = useCallback((kind: TacticKind) => {
+    if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
     setBattle((s) => tacticMenuChoose(s, kind));
   }, []);
 
   const onEscapeOrRevert = useCallback(() => {
+    if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
     setBattle((s) => escapeOrRevertUnit(s));
   }, []);
 
   const onPickNavigate = useCallback((delta: number) => {
+    if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
     setBattle((s) => pickTargetNavigate(s, delta));
   }, []);
 
   const onPickConfirmFocused = useCallback(() => {
+    if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
     setBattle((s) => {
       const p = s.pickTarget;
       if (!p || s.phase !== "pick-target") return s;
@@ -321,10 +352,12 @@ export default function GamePage() {
   }, []);
 
   const onPickHoverEnemy = useCallback((enemyId: string) => {
+    if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
     setBattle((s) => pickTargetFocusEnemy(s, enemyId));
   }, []);
 
   const onWait = useCallback(() => {
+    if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
     setBattle((s) => {
       if (s.phase === "pick-target") return cancelPickTarget(s);
       if (s.phase === "tactic-menu") return cancelTacticMenu(s);
@@ -559,7 +592,8 @@ export default function GamePage() {
                   battle.outcome !== "playing" ||
                   battle.turn !== "player" ||
                   !battle.selectedId ||
-                  battle.phase === "enemy"
+                  battle.phase === "enemy" ||
+                  turnIntroLocked
                 }
               >
                 待机
@@ -647,6 +681,9 @@ export default function GamePage() {
         <GameBattle
           battle={battle}
           visualEpoch={visualEpoch}
+          turnIntroLocked={turnIntroLocked}
+          onTurnActionReady={onTurnActionReady}
+          onDamagePulseConsumed={onDamagePulseConsumed}
           onCellClick={onCellClick}
           onUnitClick={onUnitClick}
           onMenuAction={onMenuAction}

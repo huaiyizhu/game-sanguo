@@ -1,6 +1,7 @@
 import type {
   ArmyType,
   BattleState,
+  PendingMove,
   PickTargetState,
   PlayerTurnStartMap,
   Side,
@@ -26,8 +27,27 @@ import {
 
 const key = (x: number, y: number) => `${x},${y}`;
 
+let nextDamagePulseKey = 1;
+
+function attachDamagePulse(state: BattleState, unitId: string, amount: number): BattleState {
+  return {
+    ...state,
+    damagePulse: { unitId, amount, key: nextDamagePulseKey++ },
+  };
+}
+
 /** 回合转场字幕时长（毫秒），须与 CSS 中字幕动画时长一致 */
 export const TURN_PHASE_BANNER_MS = 1000;
+
+/**
+ * 回合从一方切到另一方后，再延后这么久才弹出回合字幕（我方↔敌方），
+ * 以便先播完本客户端里位移滑入 / 受击飘字 / 阵亡淡出等效果（见 GameBattle 与 index.css 中的时长）。
+ */
+export const POST_ACTION_TURN_BANNER_DELAY_MS = 1000;
+
+/** 沿路逐格移动时每格间隔（毫秒），供 GamePage 定时器使用 */
+export const MOVE_STEP_MS_PLAYER = 260;
+export const MOVE_STEP_MS_ENEMY = 300;
 
 function terrainAt(state: BattleState, x: number, y: number): Terrain {
   const row = state.terrain[y];
@@ -364,6 +384,8 @@ function buildPrologueBattle(): BattleState {
     playerTurnStart: {},
     enemyTurnQueue: null,
     enemyTurnCursor: 0,
+    pendingMove: null,
+    damagePulse: null,
   };
 }
 
@@ -477,6 +499,8 @@ function buildChapter1Battle(): BattleState {
     playerTurnStart: {},
     enemyTurnQueue: null,
     enemyTurnCursor: 0,
+    pendingMove: null,
+    damagePulse: null,
   };
 }
 
@@ -547,6 +571,8 @@ function checkOutcome(state: BattleState): BattleState {
       pickTarget: null,
       enemyTurnQueue: null,
       enemyTurnCursor: 0,
+      pendingMove: null,
+      damagePulse: null,
       log: [...state.log, "敌军全灭，战斗胜利！"],
     };
   }
@@ -561,22 +587,25 @@ function checkOutcome(state: BattleState): BattleState {
       pickTarget: null,
       enemyTurnQueue: null,
       enemyTurnCursor: 0,
+      pendingMove: null,
+      damagePulse: null,
       log: [...state.log, "我方全部阵亡"],
     };
   }
   return state;
 }
 
-function dijkstraReachable(
+function dijkstraReachableData(
   u: Unit,
   units: Unit[],
   state: BattleState
-): Set<string> {
+): { reachable: Set<string>; parent: Map<string, string> } {
   const { gridW, gridH } = state;
   const occ = occupantMap(units);
   occ.delete(key(u.x, u.y));
   const start = key(u.x, u.y);
   const dist = new Map<string, number>();
+  const parent = new Map<string, string>();
   dist.set(start, 0);
   const heap: { k: string; d: number }[] = [{ k: start, d: 0 }];
   const dirs = [
@@ -638,6 +667,7 @@ function dijkstraReachable(
       const prev = dist.get(nk);
       if (prev !== undefined && prev <= nd) continue;
       dist.set(nk, nd);
+      parent.set(nk, cur.k);
       push(nk, nd);
     }
   }
@@ -646,7 +676,52 @@ function dijkstraReachable(
   for (const [k, d] of dist) {
     if (d > 0 && d <= u.move) reachable.add(k);
   }
-  return reachable;
+  return { reachable, parent };
+}
+
+/** 从起点沿最省移动力路径走到 goalKey，返回依次经过的格子（不含起点） */
+function buildForwardPath(
+  startKey: string,
+  goalKey: string,
+  parent: Map<string, string>
+): { x: number; y: number }[] | null {
+  if (goalKey === startKey) return [];
+  if (!parent.has(goalKey)) return null;
+  const rev: string[] = [];
+  let cur: string | undefined = goalKey;
+  while (cur && cur !== startKey) {
+    rev.push(cur);
+    cur = parent.get(cur);
+  }
+  if (cur !== startKey) return null;
+  return rev.reverse().map((k) => {
+    const [x, y] = k.split(",").map(Number);
+    return { x, y };
+  });
+}
+
+function bestApproachKey(
+  eu: Unit,
+  target: Unit,
+  reachable: Set<string>
+): string | null {
+  const startK = key(eu.x, eu.y);
+  let bestK: string | null = null;
+  let bestM = Infinity;
+  for (const k of reachable) {
+    const [x, y] = k.split(",").map(Number);
+    const m = Math.abs(x - target.x) + Math.abs(y - target.y);
+    if (
+      bestK === null ||
+      m < bestM ||
+      (m === bestM && k.localeCompare(bestK) < 0)
+    ) {
+      bestM = m;
+      bestK = k;
+    }
+  }
+  if (bestK === null || bestK === startK) return null;
+  return bestK;
 }
 
 export function getReachable(
@@ -654,11 +729,12 @@ export function getReachable(
   units: Unit[],
   state: BattleState
 ): Set<string> {
-  return dijkstraReachable(u, units, state);
+  return dijkstraReachableData(u, units, state).reachable;
 }
 
 export function gridCellClick(state: BattleState, x: number, y: number): BattleState {
   if (state.outcome !== "playing" || state.turn !== "player") return state;
+  if (state.pendingMove) return state;
   if (state.phase === "move" && state.selectedId) {
     const u = state.units.find((z) => z.id === state.selectedId);
     if (u && !u.moved && u.x === x && u.y === y) return openMenuInPlace(state);
@@ -668,6 +744,7 @@ export function gridCellClick(state: BattleState, x: number, y: number): BattleS
 
 export function openMenuInPlace(state: BattleState): BattleState {
   if (state.outcome !== "playing" || state.turn !== "player" || state.phase !== "move") return state;
+  if (state.pendingMove) return state;
   const id = state.selectedId;
   if (!id) return state;
   const u = state.units.find((x) => x.id === id);
@@ -684,6 +761,7 @@ export function openMenuInPlace(state: BattleState): BattleState {
 
 export function selectPlayerUnit(state: BattleState, unitId: string): BattleState {
   if (state.outcome !== "playing" || state.turn !== "player") return state;
+  if (state.pendingMove) return state;
   const u = state.units.find((x) => x.id === unitId);
   if (!u || u.side !== "player" || u.hp <= 0) return state;
   if (u.moved && u.acted) return state;
@@ -724,6 +802,7 @@ export function selectPlayerUnit(state: BattleState, unitId: string): BattleStat
 export function moveSelected(state: BattleState, tx: number, ty: number): BattleState {
   if (state.outcome !== "playing" || state.turn !== "player") return state;
   if (state.phase !== "move") return state;
+  if (state.pendingMove) return state;
   const id = state.selectedId;
   if (!id) return state;
   const u = state.units.find((x) => x.id === id);
@@ -733,18 +812,65 @@ export function moveSelected(state: BattleState, tx: number, ty: number): Battle
   if (!ok) return state;
   const occ = occupantMap(state.units);
   if (occ.has(k) && k !== key(u.x, u.y)) return state;
-  const units = state.units.map((x) =>
-    x.id === id ? { ...x, x: tx, y: ty, moved: true } : x
-  );
-  let next: BattleState = {
+  const startKey = key(u.x, u.y);
+  const { parent } = dijkstraReachableData(u, state.units, state);
+  const pathSteps = buildForwardPath(startKey, k, parent);
+  if (!pathSteps || pathSteps.length === 0) return state;
+  const pendingMove: PendingMove = {
+    unitId: id,
+    path: pathSteps,
+    kind: "player",
+    from: { x: u.x, y: u.y },
+  };
+  return {
     ...state,
-    units,
+    pendingMove,
     moveTargets: [],
     pickTarget: null,
-    log: [...state.log, `${u.name} 移动至 (${tx + 1},${ty + 1})。`],
   };
-  next = afterMoveOpenMenu(next, id);
-  return checkOutcome(next);
+}
+
+/** 推进一格沿路移动；走完后我军进入菜单，敌军则尝试攻击并轮到下一单位 */
+export function advancePendingMove(state: BattleState): BattleState {
+  const p = state.pendingMove;
+  if (!p || p.path.length === 0) return { ...state, pendingMove: null };
+  const [step, ...rest] = p.path;
+  const uid = p.unitId;
+  const units = state.units.map((x) =>
+    x.id === uid ? { ...x, x: step.x, y: step.y } : x
+  );
+  let s: BattleState = { ...state, units };
+  if (rest.length > 0) {
+    return { ...s, pendingMove: { ...p, path: rest } };
+  }
+  s = { ...s, pendingMove: null };
+  if (p.kind === "player") {
+    const u = s.units.find((x) => x.id === uid);
+    const logLine = u ? `${u.name} 移动至 (${step.x + 1},${step.y + 1})。` : "";
+    s = {
+      ...s,
+      units: s.units.map((x) => (x.id === uid ? { ...x, moved: true } : x)),
+      log: logLine ? [...s.log, logLine] : s.log,
+    };
+    s = afterMoveOpenMenu(s, uid);
+    return checkOutcome(s);
+  }
+  const eu = s.units.find((x) => x.id === uid);
+  if (eu) {
+    s = { ...s, log: [...s.log, `${eu.name} 逼近我军。`] };
+  }
+  s = enemyAttackAfterAdvance(s, uid);
+  s = checkOutcome(s);
+  const q = s.enemyTurnQueue;
+  const c = s.enemyTurnCursor;
+  const nextC = c + 1;
+  if (s.outcome !== "playing") {
+    return { ...s, enemyTurnQueue: null, enemyTurnCursor: 0, pendingMove: null };
+  }
+  if (nextC >= (q?.length ?? 0)) {
+    return finishEnemyTurnAndStartPlayer({ ...s, enemyTurnCursor: nextC });
+  }
+  return { ...s, enemyTurnCursor: nextC };
 }
 
 export function adjacent(a: Unit, b: Unit) {
@@ -961,6 +1087,7 @@ function applyPlayerMeleeDamage(
     pickTarget: null,
     log: [...state.log, ...lines],
   };
+  if (newHp > 0) next = attachDamagePulse(next, enemyId, dmg);
   next = checkOutcome(next);
   if (next.outcome !== "playing") return next;
   return maybeEndPlayerTurn(next);
@@ -1011,6 +1138,7 @@ function applyPlayerTacticDamage(
     pickTarget: null,
     log: [...state.log, ...lines],
   };
+  if (newHp > 0) next = attachDamagePulse(next, enemyId, dmg);
   next = checkOutcome(next);
   if (next.outcome !== "playing") return next;
   return maybeEndPlayerTurn(next);
@@ -1073,6 +1201,22 @@ export function cancelPickTarget(state: BattleState): BattleState {
 
 export function escapeOrRevertUnit(state: BattleState): BattleState {
   if (state.outcome !== "playing" || state.turn !== "player") return state;
+  if (state.pendingMove?.kind === "player" && state.pendingMove.from) {
+    const { unitId, from } = state.pendingMove;
+    const name = state.units.find((u) => u.id === unitId)?.name ?? unitId;
+    return {
+      ...state,
+      pendingMove: null,
+      units: state.units.map((u) =>
+        u.id === unitId ? { ...u, x: from.x, y: from.y } : u
+      ),
+      phase: "select",
+      selectedId: null,
+      moveTargets: [],
+      pickTarget: null,
+      log: [...state.log, `已取消 ${name} 的移动。`],
+    };
+  }
   if (state.phase === "tactic-menu") return cancelTacticMenu(state);
   if (state.phase === "pick-target") return cancelPickTarget(state);
   if (state.phase === "move") {
@@ -1118,6 +1262,7 @@ export function escapeOrRevertUnit(state: BattleState): BattleState {
     selectedId: null,
     moveTargets: [],
     pickTarget: null,
+    pendingMove: null,
     log: [...state.log, `${name} 取消行动，恢复至回合开始位置。`],
   };
 }
@@ -1138,6 +1283,7 @@ function maybeEndPlayerTurn(state: BattleState): BattleState {
     selectedId: null,
     moveTargets: [],
     pickTarget: null,
+    pendingMove: null,
     log: [...state.log, "—— 敌军回合 ——"],
   });
 }
@@ -1152,6 +1298,7 @@ function startEnemyTurn(state: BattleState): BattleState {
     units: refreshed,
     enemyTurnQueue: queue,
     enemyTurnCursor: 0,
+    pendingMove: null,
   };
   if (queue.length === 0) return finishEnemyTurnAndStartPlayer(base);
   return base;
@@ -1179,25 +1326,48 @@ function finishEnemyTurnAndStartPlayer(s: BattleState): BattleState {
     pickTarget: null,
     enemyTurnQueue: null,
     enemyTurnCursor: 0,
+    pendingMove: null,
     log: [...s.log, "—— 我军回合 ——"],
   };
   return withTurnSnapshot(next);
 }
 
+function enemyAttackAfterAdvance(s: BattleState, eid: string): BattleState {
+  const eu = s.units.find((x) => x.id === eid);
+  if (!eu || eu.side !== "enemy" || eu.hp <= 0) return s;
+  const adj2 = sortMeleeTargets(
+    s.units.filter((u) => u.side === "player" && u.hp > 0 && inPhysicalAttackRange(eu, u))
+  )[0];
+  if (!adj2) return s;
+  const dmg = meleeDamageDealt(s, eu, adj2);
+  const hint = combatHints(s, eu, adj2);
+  const newHp = Math.max(0, adj2.hp - dmg);
+  let hit: BattleState = {
+    ...s,
+    units: s.units.map((x) => (x.id === adj2.id ? { ...x, hp: newHp } : x)),
+    log: [
+      ...s.log,
+      `${eu.name} ${eu.troopKind === "archer" ? "箭射" : "攻击"} ${adj2.name}，造成 ${dmg} 点伤害${hint ? ` ${hint}` : ""}。`,
+    ],
+  };
+  if (newHp > 0) hit = attachDamagePulse(hit, adj2.id, dmg);
+  return hit;
+}
+
 function executeEnemyUnitAction(state: BattleState, eid: string): BattleState {
-  let s = state;
+  const s = state;
   const players = s.units.filter((u) => u.side === "player" && u.hp > 0);
   if (players.length === 0) return s;
   const euFound = s.units.find((x) => x.id === eid);
   if (!euFound || euFound.side !== "enemy" || euFound.hp <= 0) return s;
-  let eu: Unit = euFound;
+  const eu = euFound;
 
   const adj = sortMeleeTargets(players.filter((p) => inPhysicalAttackRange(eu, p)))[0];
   if (adj) {
     const dmg = meleeDamageDealt(s, eu, adj);
     const hint = combatHints(s, eu, adj);
     const newHp = Math.max(0, adj.hp - dmg);
-    s = {
+    let hit: BattleState = {
       ...s,
       units: s.units.map((x) => (x.id === adj.id ? { ...x, hp: newHp } : x)),
       log: [
@@ -1205,44 +1375,30 @@ function executeEnemyUnitAction(state: BattleState, eid: string): BattleState {
         `${eu.name} ${eu.troopKind === "archer" ? "箭射" : "攻击"} ${adj.name}，造成 ${dmg} 点伤害${hint ? ` ${hint}` : ""}。`,
       ],
     };
-    return checkOutcome(s);
+    if (newHp > 0) hit = attachDamagePulse(hit, adj.id, dmg);
+    return checkOutcome(hit);
   }
   const target = players.reduce((a, b) => {
     const da = Math.abs(eu.x - a.x) + Math.abs(eu.y - a.y);
     const db = Math.abs(eu.x - b.x) + Math.abs(eu.y - b.y);
     return da <= db ? a : b;
   });
-  const step = firstStepToward(eu, target, s);
-  if (step) {
-    s = {
-      ...s,
-      units: s.units.map((x) => (x.id === eu.id ? { ...x, x: step.x, y: step.y } : x)),
-      log: [...s.log, `${eu.name} 逼近我军。`],
-    };
-    eu = s.units.find((x) => x.id === eid)!;
-  }
-  const adj2 = sortMeleeTargets(
-    s.units.filter((u) => u.side === "player" && u.hp > 0 && inPhysicalAttackRange(eu, u))
-  )[0];
-  if (adj2) {
-    const dmg = meleeDamageDealt(s, eu, adj2);
-    const hint = combatHints(s, eu, adj2);
-    const newHp = Math.max(0, adj2.hp - dmg);
-    s = {
-      ...s,
-      units: s.units.map((x) => (x.id === adj2.id ? { ...x, hp: newHp } : x)),
-      log: [
-        ...s.log,
-        `${eu.name} ${eu.troopKind === "archer" ? "箭射" : "攻击"} ${adj2.name}，造成 ${dmg} 点伤害${hint ? ` ${hint}` : ""}。`,
-      ],
-    };
-    s = checkOutcome(s);
-  }
-  return s;
+  const { reachable, parent } = dijkstraReachableData(eu, s.units, s);
+  const goalK = bestApproachKey(eu, target, reachable);
+  if (!goalK) return s;
+  const pathSteps = buildForwardPath(key(eu.x, eu.y), goalK, parent);
+  if (!pathSteps || pathSteps.length === 0) return s;
+  return {
+    ...s,
+    pendingMove: { unitId: eu.id, path: pathSteps, kind: "enemy" },
+  };
 }
 
 export function processSingleEnemyStep(state: BattleState): BattleState {
   if (state.turn !== "enemy" || state.phase !== "enemy") return state;
+  if (state.pendingMove?.kind === "enemy") {
+    return state;
+  }
   const q = state.enemyTurnQueue;
   if (!q?.length) return state;
   const c = state.enemyTurnCursor;
@@ -1259,6 +1415,9 @@ export function processSingleEnemyStep(state: BattleState): BattleState {
   }
 
   let s = executeEnemyUnitAction(state, eid);
+  if (s.pendingMove?.kind === "enemy" && s.pendingMove.path.length > 0) {
+    return s;
+  }
   s = { ...s, enemyTurnCursor: nextC };
 
   if (s.outcome !== "playing") {
@@ -1266,58 +1425,16 @@ export function processSingleEnemyStep(state: BattleState): BattleState {
       ...s,
       enemyTurnQueue: null,
       enemyTurnCursor: 0,
+      pendingMove: null,
     };
   }
   if (nextC >= q.length) return finishEnemyTurnAndStartPlayer(s);
   return s;
 }
 
-function firstStepToward(eu: Unit, target: Unit, state: BattleState): { x: number; y: number } | null {
-  const { gridW, gridH } = state;
-  const units = state.units;
-  const occ = occupantMap(units);
-  occ.delete(key(eu.x, eu.y));
-  const goal = key(target.x, target.y);
-  const dirs = [
-    [0, 1],
-    [0, -1],
-    [1, 0],
-    [-1, 0],
-  ];
-  const prev = new Map<string, string | null>();
-  const q: string[] = [goal];
-  prev.set(goal, null);
-  while (q.length) {
-    const cur = q.shift()!;
-    const [cx, cy] = cur.split(",").map(Number);
-    for (const [dx, dy] of dirs) {
-      const nx = cx + dx;
-      const ny = cy + dy;
-      if (nx < 0 || ny < 0 || nx >= gridW || ny >= gridH) continue;
-      const nk = key(nx, ny);
-      if (prev.has(nk)) continue;
-      const t = terrainAt(state, nx, ny);
-      if (!Number.isFinite(stepCostForUnit(eu, t))) continue;
-      if (occ.has(nk) && nk !== key(eu.x, eu.y)) continue;
-      prev.set(nk, cur);
-      q.push(nk);
-    }
-  }
-  const start = key(eu.x, eu.y);
-  if (!prev.has(start)) return null;
-  let cur: string | null = start;
-  let last: string | null = null;
-  while (cur && cur !== goal) {
-    last = cur;
-    cur = prev.get(cur) ?? null;
-  }
-  if (!last) return null;
-  const [lx, ly] = last.split(",").map(Number);
-  return { x: lx, y: ly };
-}
-
 export function skipOrEndIfStuck(state: BattleState): BattleState {
   if (state.outcome !== "playing" || state.turn !== "player") return state;
+  if (state.pendingMove) return state;
   const id = state.selectedId;
   if (!id) return state;
   const u = state.units.find((x) => x.id === id);
@@ -1439,6 +1556,8 @@ export function ensureBattleFields(b: BattleState): BattleState {
     pickTarget: s.pickTarget ?? null,
     enemyTurnQueue: s.enemyTurnQueue ?? null,
     enemyTurnCursor: s.enemyTurnCursor ?? 0,
+    pendingMove: s.pendingMove ?? null,
+    damagePulse: s.damagePulse ?? null,
     terrain:
       s.terrain && s.terrain.length === s.gridH && s.terrain[0]?.length === s.gridW
         ? s.terrain

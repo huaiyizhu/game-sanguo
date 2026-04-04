@@ -5,6 +5,7 @@ import {
   canAffordTactic,
   canMeleeAttack,
   canUseTactic,
+  POST_ACTION_TURN_BANNER_DELAY_MS,
   physicalAttackMenuLabel,
   TURN_PHASE_BANNER_MS,
 } from "../game/battle";
@@ -18,6 +19,12 @@ const TACTIC_ORDER: TacticKind[] = ["fire", "water", "trap"];
 type Props = {
   battle: BattleState;
   visualEpoch: number;
+  /** 为 true 时回合开场字幕流程尚未结束，须屏蔽战场操作（由父组件根据 onTurnActionReady 驱动） */
+  turnIntroLocked: boolean;
+  /** 与回合字幕同节奏：false = 本回合尚不可操作，true = 可行动 */
+  onTurnActionReady: (ready: boolean) => void;
+  /** 消费 battle.damagePulse，避免受击动画推断错误 */
+  onDamagePulseConsumed: () => void;
   onCellClick: (x: number, y: number) => void;
   onUnitClick: (unitId: string, side: Side) => void;
   onMenuAction: (action: MenuAction) => void;
@@ -69,6 +76,9 @@ type KillBanner = { key: number; text: string };
 export default function GameBattle({
   battle,
   visualEpoch,
+  turnIntroLocked,
+  onTurnActionReady,
+  onDamagePulseConsumed,
   onCellClick,
   onUnitClick,
   onMenuAction,
@@ -78,8 +88,19 @@ export default function GameBattle({
   onPickConfirmFocused,
   onPickHoverEnemy,
 }: Props) {
-  const { gridW, gridH, units, moveTargets, selectedId, turn, phase, outcome, pickTarget, terrain } =
-    battle;
+  const {
+    gridW,
+    gridH,
+    units,
+    moveTargets,
+    selectedId,
+    turn,
+    phase,
+    outcome,
+    pickTarget,
+    terrain,
+    pendingMove,
+  } = battle;
   const moveSet = new Set(moveTargets.map((t) => `${t.x},${t.y}`));
   const [menuFocus, setMenuFocus] = useState(0);
   const [tacticFocus, setTacticFocus] = useState(0);
@@ -96,7 +117,10 @@ export default function GameBattle({
   const prevEpochRef = useRef(visualEpoch);
   const prevPhaseRef = useRef<BattlePhase | null>(null);
   const prevTurnBattleRef = useRef<"player" | "enemy" | undefined>(undefined);
+  const prevGateTurnRef = useRef<"player" | "enemy" | undefined>(undefined);
   const turnBannerTimerRef = useRef<number>(0);
+  const turnBannerDelayRef = useRef<number>(0);
+  const turnGateTimerRef = useRef<number>(0);
   const [turnBanner, setTurnBanner] = useState<"player" | "enemy" | null>(null);
   const [turnBannerSeq, setTurnBannerSeq] = useState(0);
 
@@ -106,7 +130,10 @@ export default function GameBattle({
     prevHpRef.current = null;
     prevSnapRef.current = null;
     prevTurnBattleRef.current = undefined;
+    prevGateTurnRef.current = undefined;
     window.clearTimeout(turnBannerTimerRef.current);
+    window.clearTimeout(turnBannerDelayRef.current);
+    window.clearTimeout(turnGateTimerRef.current);
     setTurnBanner(null);
     setMoveSlide({});
     setDyingVisuals([]);
@@ -117,6 +144,7 @@ export default function GameBattle({
   useEffect(() => {
     if (battle.outcome !== "playing") {
       window.clearTimeout(turnBannerTimerRef.current);
+      window.clearTimeout(turnBannerDelayRef.current);
       setTurnBanner(null);
       prevTurnBattleRef.current = battle.turn;
       return;
@@ -124,18 +152,74 @@ export default function GameBattle({
     const prev = prevTurnBattleRef.current;
     const curr = battle.turn;
     const turnChanged = prev !== curr;
+
+    const scheduleBannerHide = () => {
+      window.clearTimeout(turnBannerTimerRef.current);
+      turnBannerTimerRef.current = window.setTimeout(() => {
+        setTurnBanner(null);
+      }, TURN_PHASE_BANNER_MS);
+    };
+
     if (turnChanged) {
       prevTurnBattleRef.current = curr;
-      setTurnBanner(curr);
-      setTurnBannerSeq((n) => n + 1);
+      window.clearTimeout(turnBannerTimerRef.current);
+      window.clearTimeout(turnBannerDelayRef.current);
+
+      const deferBannerForActionAnims =
+        (prev === "enemy" && curr === "player") ||
+        (prev === "player" && curr === "enemy");
+
+      if (deferBannerForActionAnims) {
+        turnBannerDelayRef.current = window.setTimeout(() => {
+          setTurnBanner(curr);
+          setTurnBannerSeq((n) => n + 1);
+          scheduleBannerHide();
+        }, POST_ACTION_TURN_BANNER_DELAY_MS);
+      } else {
+        setTurnBanner(curr);
+        setTurnBannerSeq((n) => n + 1);
+        scheduleBannerHide();
+      }
+    } else {
+      /* 每次 effect 执行都重新挂载关闭定时器，避免 Strict Mode cleanup 或合盖休眠后定时器丢失导致字幕层逻辑上“永远不关” */
+      window.clearTimeout(turnBannerTimerRef.current);
+      turnBannerTimerRef.current = window.setTimeout(() => {
+        setTurnBanner(null);
+      }, TURN_PHASE_BANNER_MS);
     }
-    /* 每次 effect 执行都重新挂载关闭定时器，避免 Strict Mode cleanup 或合盖休眠后定时器丢失导致字幕层逻辑上“永远不关” */
-    window.clearTimeout(turnBannerTimerRef.current);
-    turnBannerTimerRef.current = window.setTimeout(() => {
-      setTurnBanner(null);
-    }, TURN_PHASE_BANNER_MS);
-    return () => window.clearTimeout(turnBannerTimerRef.current);
+    return () => {
+      window.clearTimeout(turnBannerTimerRef.current);
+      window.clearTimeout(turnBannerDelayRef.current);
+    };
   }, [battle.turn, battle.outcome]);
+
+  useEffect(() => {
+    if (battle.outcome !== "playing") {
+      window.clearTimeout(turnGateTimerRef.current);
+      prevGateTurnRef.current = battle.turn;
+      onTurnActionReady(true);
+      return;
+    }
+    const prev = prevGateTurnRef.current;
+    const curr = battle.turn;
+    if (prev === curr) return;
+
+    prevGateTurnRef.current = curr;
+    window.clearTimeout(turnGateTimerRef.current);
+    onTurnActionReady(false);
+
+    const deferBannerForActionAnims =
+      prev !== undefined &&
+      ((prev === "enemy" && curr === "player") || (prev === "player" && curr === "enemy"));
+    const lockMs = deferBannerForActionAnims
+      ? POST_ACTION_TURN_BANNER_DELAY_MS + TURN_PHASE_BANNER_MS
+      : TURN_PHASE_BANNER_MS;
+
+    turnGateTimerRef.current = window.setTimeout(() => {
+      onTurnActionReady(true);
+    }, lockMs);
+    return () => window.clearTimeout(turnGateTimerRef.current);
+  }, [battle.turn, battle.outcome, visualEpoch, onTurnActionReady]);
 
   const tabWasHiddenRef = useRef(false);
   useEffect(() => {
@@ -147,6 +231,7 @@ export default function GameBattle({
       if (document.visibilityState === "visible" && tabWasHiddenRef.current) {
         tabWasHiddenRef.current = false;
         window.clearTimeout(turnBannerTimerRef.current);
+        window.clearTimeout(turnBannerDelayRef.current);
         setTurnBanner(null);
       }
     };
@@ -155,7 +240,8 @@ export default function GameBattle({
   }, []);
 
   useEffect(() => {
-    if (!turnBanner) return;
+    if (outcome !== "playing") return;
+    if (!turnBanner && !turnIntroLocked) return;
     const block = (e: Event) => {
       e.preventDefault();
       e.stopPropagation();
@@ -166,7 +252,7 @@ export default function GameBattle({
       window.removeEventListener("keydown", block, true);
       window.removeEventListener("keyup", block, true);
     };
-  }, [turnBanner]);
+  }, [turnBanner, turnIntroLocked, outcome]);
 
   const selectedUnit = selectedId ? units.find((u) => u.id === selectedId) : undefined;
   const attackOk =
@@ -220,15 +306,6 @@ export default function GameBattle({
     }
 
     for (const u of units) {
-      const prevHp = prevHpRef.current[u.id];
-      if (prevHp !== undefined && u.hp < prevHp && u.hp > 0) {
-        setDmgFx({
-          unitId: u.id,
-          amount: prevHp - u.hp,
-          key: Date.now() + Math.random(),
-        });
-      }
-
       const old = prevSnapRef.current[u.id];
       if (old) {
         if (old.hp > 0 && u.hp <= 0) {
@@ -273,6 +350,13 @@ export default function GameBattle({
       prevHpRef.current[u.id] = u.hp;
     }
   }, [units]);
+
+  useEffect(() => {
+    const p = battle.damagePulse;
+    if (!p) return;
+    setDmgFx({ unitId: p.unitId, amount: p.amount, key: p.key });
+    queueMicrotask(() => onDamagePulseConsumed());
+  }, [battle.damagePulse, onDamagePulseConsumed]);
 
   useEffect(() => {
     if (!dmgFx) return;
@@ -407,7 +491,7 @@ export default function GameBattle({
 
   const onContextMenu = useCallback(
     (e: MouseEvent) => {
-      if (outcome !== "playing" || turn !== "player") return;
+      if (outcome !== "playing" || turn !== "player" || turnIntroLocked) return;
       if (
         phase === "move" ||
         phase === "menu" ||
@@ -418,7 +502,7 @@ export default function GameBattle({
         onEscapeOrRevert();
       }
     },
-    [outcome, turn, phase, onEscapeOrRevert]
+    [outcome, turn, phase, turnIntroLocked, onEscapeOrRevert]
   );
 
   const cells: { x: number; y: number }[] = [];
@@ -464,6 +548,9 @@ export default function GameBattle({
       aria-label="battlefield"
       onContextMenu={onContextMenu}
     >
+      {outcome === "playing" && turnIntroLocked && (
+        <div className="turn-intro-input-blocker" aria-hidden />
+      )}
       {turnBanner && (
         <div
           className={`turn-phase-banner-root turn-phase-banner-${turnBanner}`}
@@ -491,6 +578,7 @@ export default function GameBattle({
           .join(" ")}
         style={{
           gridTemplateColumns: `repeat(${gridW}, var(--cell))`,
+          gridTemplateRows: `repeat(${gridH}, var(--cell))`,
         }}
       >
         {cells.map(({ x, y }) => {
@@ -510,7 +598,9 @@ export default function GameBattle({
             turn === "player" &&
             phase === "move" &&
             (isMove || onOwnCell) &&
-            selectedId;
+            selectedId &&
+            !pendingMove &&
+            !turnIntroLocked;
           const showMenu =
             u &&
             u.id === selectedId &&
@@ -536,6 +626,8 @@ export default function GameBattle({
             turn === "player" &&
             (phase === "select" || phase === "move" || phase === "menu" || phase === "tactic-menu");
 
+          const deathHere = dyingVisuals.find((d) => d.x === x && d.y === y);
+
           return (
             <div
               key={`${x}-${y}`}
@@ -557,6 +649,20 @@ export default function GameBattle({
               title={`${TERRAIN_LABEL[terrainAt(x, y)]} (${x + 1},${y + 1})`}
               role="presentation"
             >
+              {deathHere && (
+                <div key={deathHere.key} className="death-overlay-cell" aria-hidden>
+                  <div
+                    className={`unit-token ${deathHere.side} troop-${deathHere.troopKind} unit-death-fade`}
+                  >
+                    <span className="unit-level-badge" aria-hidden>
+                      Lv.{deathHere.level}
+                    </span>
+                    <TroopEmblem kind={deathHere.troopKind} />
+                    <span className="unit-name">{deathHere.name}</span>
+                    <span className="unit-hp">0</span>
+                  </div>
+                </div>
+              )}
               {u && (
                 <div
                   role="button"
@@ -577,7 +683,9 @@ export default function GameBattle({
                     (phase === "move" || phase === "menu" || phase === "tactic-menu") &&
                     u.side === "player" &&
                     u.hp > 0 &&
-                    !(u.moved && u.acted)
+                    !(u.moved && u.acted) &&
+                    !pendingMove &&
+                    !turnIntroLocked
                       ? "selectable"
                       : "",
                   ]
@@ -722,39 +830,24 @@ export default function GameBattle({
             </div>
           );
         })}
-        {dyingVisuals.map((d) => (
-          <div
-            key={d.key}
-            className="death-ghost-cell"
-            style={{ gridColumn: d.x + 1, gridRow: d.y + 1 }}
-            aria-hidden
-          >
-            <div className={`unit-token ${d.side} troop-${d.troopKind} unit-death-fade`}>
-              <span className="unit-level-badge" aria-hidden>
-                Lv.{d.level}
-              </span>
-              <TroopEmblem kind={d.troopKind} />
-              <span className="unit-name">{d.name}</span>
-              <span className="unit-hp">0</span>
-            </div>
-          </div>
-        ))}
       </div>
-      {phase === "menu" && (
-        <p className="menu-hint">
-          方向键选择 · Enter 确认 · Esc / 右键 取消并恢复回合初状态
-        </p>
-      )}
-      {phase === "tactic-menu" && (
-        <p className="menu-hint">
-          方向键选择计策 · Enter 确认 · Esc / 右键 返回行动菜单
-        </p>
-      )}
-      {phase === "pick-target" && (
-        <p className="menu-hint">
-          方向键切换目标 · Enter 确认 · Esc / 右键 返回上一层
-        </p>
-      )}
+      <div className="battle-menu-hint-slot" aria-live="polite">
+        {phase === "menu" && (
+          <p className="menu-hint">
+            方向键选择 · Enter 确认 · Esc / 右键 取消并恢复回合初状态
+          </p>
+        )}
+        {phase === "tactic-menu" && (
+          <p className="menu-hint">
+            方向键选择计策 · Enter 确认 · Esc / 右键 返回行动菜单
+          </p>
+        )}
+        {phase === "pick-target" && (
+          <p className="menu-hint">
+            方向键切换目标 · Enter 确认 · Esc / 右键 返回上一层
+          </p>
+        )}
+      </div>
     </div>
   );
 }
