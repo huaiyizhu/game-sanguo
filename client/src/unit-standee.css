@@ -1,0 +1,137 @@
+/**
+ * 战场单位立牌：格子仅地形；兵种立绘叠在格上，名字/兵种/血条在头顶 HUD。
+ */
+
+.battle-slot {
+  position: relative;
+  z-index: 0;
+  overflow: visible;
+}
+
+.battle-slot > .cell {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.battle-slot--menu-open {
+  z-index: 100;
+}
+
+.battle-slot--pick-candidate {
+  z-index: 40;
+}
+
+.battle-slot--pick-focus {
+  z-index: 50;
+}
+
+.unit-standee {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  transform-origin: 50% 100%;
+  /* 略宽于格宽，立绘更抢眼；随 --cell 缩放 */
+  width: min(calc(var(--cell, 72px) * 1.38), 7.25rem);
+  max-width: none;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.12rem;
+  pointer-events: none;
+  font-size: clamp(0.72rem, 2.65vw, 0.95rem);
+  line-height: 1.15;
+}
+
+.unit-standee__hud {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.06rem;
+  width: 100%;
+  max-width: 10rem;
+  padding: 0 2px;
+  pointer-events: none;
+  text-align: center;
+  font-family: "VT323", ui-monospace, monospace;
+  letter-spacing: 0.04em;
+  text-shadow:
+    0 0 3px rgba(0, 0, 0, 0.85),
+    0 1px 2px rgba(0, 0, 0, 0.75);
+}
+
+.unit-standee__name {
+  font-weight: 800;
+  color: #fefce8;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unit-standee__tags {
+  font-weight: 700;
+  font-size: 0.88em;
+  color: rgba(254, 249, 195, 0.92);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.unit-standee.player .unit-standee__tags {
+  color: rgba(220, 252, 231, 0.95);
+}
+
+.unit-standee.enemy .unit-standee__tags {
+  color: rgba(254, 215, 170, 0.95);
+}
+
+.unit-standee__hpbar {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.unit-standee__hpfill {
+  height: 100%;
+  border-radius: 1px;
+  background: linear-gradient(180deg, #86efac 0%, #22c55e 45%, #15803d 100%);
+  transition: width 0.22s ease;
+}
+
+.unit-standee.enemy .unit-standee__hpfill {
+  background: linear-gradient(180deg, #fecaca 0%, #f87171 42%, #b91c1c 100%);
+}
+
+.unit-standee--death .unit-standee__hud,
+.unit-standee__hud--ghost {
+  opacity: 0.88;
+  filter: saturate(0.55);
+}
+
+.unit-standee__body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-end;
+  width: 100%;
+  min-height: 0;
+  border-radius: 4px;
+  padding: 2px 3px 3px;
+  cursor: default;
+  border: 1px solid transparent;
+  overflow: visible;
+  pointer-events: auto;
+}
+
+.unit-standee .action-menu {
+  pointer-events: auto;
+}
