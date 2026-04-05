@@ -6,11 +6,6 @@
   box-sizing: border-box;
 }
 
-.cell .unit-token {
-  position: relative;
-  z-index: 1;
-}
-
 .cell.terrain-plain::before,
 .cell.terrain-forest::before,
 .cell.terrain-water::before,

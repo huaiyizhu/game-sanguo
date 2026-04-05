@@ -10,7 +10,7 @@ import {
   TURN_PHASE_BANNER_MS,
 } from "../game/battle";
 import type { BattlePhase, BattleState, Side, TacticKind, Terrain, TroopKind } from "../game/types";
-import { TACTIC_DEF, TERRAIN_LABEL } from "../game/types";
+import { TACTIC_DEF, TERRAIN_LABEL, TROOP_KIND_LABEL } from "../game/types";
 
 export type MenuAction = "attack" | "tactic" | "wait";
 
@@ -130,6 +130,7 @@ export default function GameBattle({
     prevHpRef.current = null;
     prevSnapRef.current = null;
     prevTurnBattleRef.current = undefined;
+    /* 与下方回合门控 effect 配合：新局/视觉纪元后必须重跑门控，否则 prev===curr 直接 return 会永远不解锁点击 */
     prevGateTurnRef.current = undefined;
     window.clearTimeout(turnBannerTimerRef.current);
     window.clearTimeout(turnBannerDelayRef.current);
@@ -218,7 +219,11 @@ export default function GameBattle({
     turnGateTimerRef.current = window.setTimeout(() => {
       onTurnActionReady(true);
     }, lockMs);
-    return () => window.clearTimeout(turnGateTimerRef.current);
+    return () => {
+      window.clearTimeout(turnGateTimerRef.current);
+      /* React Strict Mode：首次 effect 的定时器被清掉后，若 ref 已写入 curr，再次执行会 prev===curr 直接 return，永远不调 onTurnActionReady(true) */
+      prevGateTurnRef.current = undefined;
+    };
   }, [battle.turn, battle.outcome, visualEpoch, onTurnActionReady]);
 
   const tabWasHiddenRef = useRef(false);
@@ -572,15 +577,17 @@ export default function GameBattle({
           ))}
         </div>
       )}
-      <div
-        className={["battle-grid", showMoveRange ? "battle-grid--move-preview" : ""]
-          .filter(Boolean)
-          .join(" ")}
-        style={{
-          gridTemplateColumns: `repeat(${gridW}, var(--cell))`,
-          gridTemplateRows: `repeat(${gridH}, var(--cell))`,
-        }}
-      >
+      <div className="battle-scene">
+        <div className="battle-scene__ground" aria-hidden />
+        <div
+          className={["battle-grid", showMoveRange ? "battle-grid--move-preview" : ""]
+            .filter(Boolean)
+            .join(" ")}
+          style={{
+            gridTemplateColumns: `repeat(${gridW}, var(--cell))`,
+            gridTemplateRows: `repeat(${gridH}, var(--cell))`,
+          }}
+        >
         {cells.map(({ x, y }) => {
           const u = byPos.get(`${x},${y}`);
           const isMove = moveSet.has(`${x},${y}`);
@@ -632,62 +639,66 @@ export default function GameBattle({
             <div
               key={`${x}-${y}`}
               className={[
-                "cell",
-                terrainClass(x, y),
-                isMove ? "move-hint" : "",
-                u ? "has-unit" : "",
-                canClickTile ? "clickable-tile" : "",
-                showMenu || showTacticMenu ? "cell-menu-open" : "",
-                pickCand ? "cell-pick-candidate" : "",
-                pickFocus ? "cell-pick-focus" : "",
+                "battle-slot",
+                showMenu || showTacticMenu ? "battle-slot--menu-open" : "",
+                pickCand ? "battle-slot--pick-candidate" : "",
+                pickFocus ? "battle-slot--pick-focus" : "",
               ]
                 .filter(Boolean)
                 .join(" ")}
-              onClick={() => {
-                if (canClickTile) onCellClick(x, y);
-              }}
-              title={`${TERRAIN_LABEL[terrainAt(x, y)]} (${x + 1},${y + 1})`}
-              role="presentation"
             >
+              <div
+                className={[
+                  "cell",
+                  terrainClass(x, y),
+                  isMove ? "move-hint" : "",
+                  canClickTile ? "clickable-tile" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                onClick={() => {
+                  if (canClickTile) onCellClick(x, y);
+                }}
+                title={`${TERRAIN_LABEL[terrainAt(x, y)]} (${x + 1},${y + 1})`}
+                role="presentation"
+              />
               {deathHere && (
-                <div key={deathHere.key} className="death-overlay-cell" aria-hidden>
+                <div key={deathHere.key} className="death-overlay-slot" aria-hidden>
                   <div
-                    className={`unit-token ${deathHere.side} troop-${deathHere.troopKind} unit-death-fade`}
+                    className={[
+                      "unit-standee",
+                      "unit-standee--death",
+                      deathHere.side,
+                      "unit-death-fade",
+                    ].join(" ")}
                   >
-                    <span className="unit-level-badge" aria-hidden>
-                      Lv.{deathHere.level}
-                    </span>
-                    <TroopEmblem kind={deathHere.troopKind} />
-                    <span className="unit-name">{deathHere.name}</span>
-                    <span className="unit-hp">0</span>
+                    <div className="unit-standee__hud unit-standee__hud--ghost">
+                      <span className="unit-standee__name">{deathHere.name}</span>
+                      <span className="unit-standee__tags">
+                        {TROOP_KIND_LABEL[deathHere.troopKind]} · Lv.{deathHere.level}
+                      </span>
+                      <div className="unit-standee__hpbar" aria-hidden>
+                        <div className="unit-standee__hpfill" style={{ width: "0%" }} />
+                      </div>
+                    </div>
+                    <div
+                      className={[
+                        "unit-standee__body",
+                        deathHere.side,
+                        `troop-${deathHere.troopKind}`,
+                      ].join(" ")}
+                    >
+                      <TroopEmblem kind={deathHere.troopKind} side={deathHere.side} showTroopBadge={false} />
+                    </div>
                   </div>
                 </div>
               )}
               {u && (
                 <div
-                  role="button"
-                  tabIndex={0}
                   className={[
-                    "unit-token",
+                    "unit-standee",
                     u.side,
-                    `troop-${u.troopKind}`,
                     slide ? "unit-move-slide" : "",
-                    isSelected ? "selected" : "",
-                    turnDone ? "unit-turn-done" : "",
-                    pendingSelectionGlow ? "unit-pending-highlight" : "",
-                    hitActive ? "unit-hit" : "",
-                    pickCand ? "pick-target-candidate" : "",
-                    pickFocus ? "pick-target-focus" : "",
-                    outcome === "playing" &&
-                    turn === "player" &&
-                    (phase === "move" || phase === "menu" || phase === "tactic-menu") &&
-                    u.side === "player" &&
-                    u.hp > 0 &&
-                    !(u.moved && u.acted) &&
-                    !pendingMove &&
-                    !turnIntroLocked
-                      ? "selectable"
-                      : "",
                   ]
                     .filter(Boolean)
                     .join(" ")}
@@ -699,36 +710,72 @@ export default function GameBattle({
                         } as CSSProperties)
                       : undefined
                   }
-                  onMouseEnter={() => {
-                    if (phase === "pick-target" && u.side === "enemy" && isPickCandidate(u.id)) {
-                      onPickHoverEnemy(u.id);
-                    }
-                  }}
-                  onClick={(e: MouseEvent) => {
-                    e.stopPropagation();
-                    onUnitClick(u.id, u.side);
-                  }}
-                  onKeyDown={(e: KeyboardEvent) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
+                >
+                  <div className="unit-standee__hud">
+                    <span className="unit-standee__name">{u.name}</span>
+                    <span className="unit-standee__tags">
+                      {TROOP_KIND_LABEL[u.troopKind]} · Lv.{u.level}
+                    </span>
+                    <div className="unit-standee__hpbar" aria-hidden>
+                      <div
+                        className="unit-standee__hpfill"
+                        style={{
+                          width: `${Math.max(0, Math.min(100, (u.hp / Math.max(1, u.maxHp)) * 100))}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    className={[
+                      "unit-standee__body",
+                      u.side,
+                      `troop-${u.troopKind}`,
+                      isSelected ? "selected" : "",
+                      turnDone ? "unit-turn-done" : "",
+                      pendingSelectionGlow ? "unit-pending-highlight" : "",
+                      hitActive ? "unit-hit" : "",
+                      pickCand ? "pick-target-candidate" : "",
+                      pickFocus ? "pick-target-focus" : "",
+                      outcome === "playing" &&
+                      turn === "player" &&
+                      (phase === "move" || phase === "menu" || phase === "tactic-menu") &&
+                      u.side === "player" &&
+                      u.hp > 0 &&
+                      !(u.moved && u.acted) &&
+                      !pendingMove &&
+                      !turnIntroLocked
+                        ? "selectable"
+                        : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    aria-label={`${u.name}，${TROOP_KIND_LABEL[u.troopKind]}，等级 ${u.level}，生命 ${u.hp}/${u.maxHp}`}
+                    onMouseEnter={() => {
+                      if (phase === "pick-target" && u.side === "enemy" && isPickCandidate(u.id)) {
+                        onPickHoverEnemy(u.id);
+                      }
+                    }}
+                    onClick={(e: MouseEvent) => {
                       e.stopPropagation();
                       onUnitClick(u.id, u.side);
-                    }
-                  }}
-                >
-                  <span className="unit-level-badge" aria-label={`等级 ${u.level}`}>
-                    Lv.{u.level}
-                  </span>
-                  <TroopEmblem kind={u.troopKind} />
-                  {hitActive && dmgFx && (
-                    <span className="dmg-float" key={dmgFx.key}>
-                      -{dmgFx.amount}
-                    </span>
-                  )}
-                  <span className="unit-name">{u.name}</span>
-                  <span className="unit-hp">
-                    {u.hp}/{u.maxHp}
-                  </span>
+                    }}
+                    onKeyDown={(e: KeyboardEvent) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onUnitClick(u.id, u.side);
+                      }
+                    }}
+                  >
+                    <TroopEmblem kind={u.troopKind} side={u.side} showTroopBadge={false} />
+                    {hitActive && dmgFx && (
+                      <span className="dmg-float" key={dmgFx.key}>
+                        -{dmgFx.amount}
+                      </span>
+                    )}
+                  </div>
                   {showMenu && (
                     <div
                       className="action-menu"
@@ -830,6 +877,7 @@ export default function GameBattle({
             </div>
           );
         })}
+        </div>
       </div>
       <div className="battle-menu-hint-slot" aria-live="polite">
         {phase === "menu" && (

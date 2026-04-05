@@ -6,6 +6,8 @@ import App from "./App";
 import "./index.css";
 import "./terrain-visuals.css";
 import "./troop-visuals.css";
+import "./unit-standee.css";
+import "./battle-map-25d.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

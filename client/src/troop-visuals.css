@@ -1,220 +1,173 @@
 /**
- * 将领种类战场呈现：骑兵 / 步兵 / 弓兵
- * 与 unit-token 的 .player / .enemy 叠加；图腾见 TroopEmblem.tsx
+ * 兵种：透明底 PNG 立绘（骑兵 / 步兵 / 弓兵）
  */
 
-.unit-troop-emblem {
-  position: absolute;
-  top: 1px;
-  right: 2px;
-  z-index: 3;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0;
-  pointer-events: none;
-  line-height: 1;
+.unit-standee__body {
+  perspective: none;
 }
 
-.unit-troop-emblem-svg {
+.unit-troop-figure {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: clamp(15px, 4.5vw, 20px);
-  height: clamp(13px, 3.9vw, 17px);
-  color: rgba(255, 255, 255, 0.92);
-  filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.85));
+  min-height: 0;
+  width: 100%;
+  pointer-events: none;
+  line-height: 0;
 }
 
-.unit-troop-emblem-svg svg {
+.unit-troop-figure-model {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 100%;
+  max-width: min(calc(var(--cell, 72px) * 1.22), 118px);
+  height: min(calc(var(--cell, 72px) * 1.52), 168px);
+  min-height: min(calc(var(--cell, 72px) * 1.28), 138px);
+  transform: none;
+  transition: transform 0.18s ease;
+  overflow: visible;
+  /* pointer-events 不继承：须与子节点一并关闭，否则 img 会吃掉点击到不了 .unit-standee__body */
+  pointer-events: none;
+}
+
+.unit-troop-figure--raster .unit-troop-figure-model--raster {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.unit-troop-sprite {
+  display: block;
   width: 100%;
   height: 100%;
-  display: block;
+  object-fit: contain;
+  object-position: center bottom;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
-.unit-troop-emblem-char {
-  font-size: clamp(0.46rem, 1.45vw, 0.62rem);
+/* 步兵/弓兵立绘略小：底部为轴略放大，与骑兵在格内视觉体量一致 */
+.troop-figure-infantry .unit-troop-sprite,
+.troop-figure-archer .unit-troop-sprite {
+  transform: scale(1.24);
+  transform-origin: center bottom;
+}
+
+.unit-troop-sprite--enemy {
+  filter: hue-rotate(-38deg) saturate(1.15) brightness(0.92);
+}
+
+.unit-troop-figure-model--raster {
+  animation: unit-idle-bob 2.4s ease-in-out infinite;
+}
+
+.unit-standee__body.selectable:hover .unit-troop-figure-model--raster {
+  animation-play-state: paused;
+  transform: translateY(-3px);
+}
+
+@keyframes unit-idle-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+.unit-troop-figure-badge {
+  position: absolute;
+  right: 1px;
+  bottom: 0;
+  font-size: clamp(0.48rem, 1.5vw, 0.62rem);
   font-weight: 900;
   letter-spacing: 0;
-  margin-top: -1px;
-  padding: 0 2px;
-  border-radius: 2px;
-  background: rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.28);
+  padding: 0 3px;
+  line-height: 1.25;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.32);
   color: #fef9c3;
-  text-shadow: 0 1px 2px #000;
+  pointer-events: none;
 }
 
-.unit-token.enemy .unit-troop-emblem-char {
+.unit-standee__body.enemy .unit-troop-figure-badge {
   color: #ffedd5;
 }
 
-/* —— 骑兵：前钝后尖轮廓 + 金边（不用 skew，避免行动菜单变形） —— */
-.unit-token.troop-cavalry {
-  border-radius: 2px 7px 7px 2px;
+@media (prefers-reduced-motion: reduce) {
+  .unit-troop-figure-model {
+    transition: none;
+  }
+
+  .unit-troop-figure-model--raster {
+    animation: none;
+  }
+
+  .unit-standee__body.selectable:hover .unit-troop-figure-model--raster {
+    transform: none;
+  }
 }
 
-.unit-token.player.troop-cavalry {
-  background:
-    linear-gradient(118deg, rgba(253, 224, 71, 0.22) 0%, transparent 48%),
-    var(--player);
-  border-color: #eab308;
-  box-shadow:
-    inset 0 -2px 0 rgba(250, 204, 21, 0.4),
-    inset 0 0 0 1px rgba(250, 204, 21, 0.2);
+/* 底板透明，选中高亮仅靠外描边 */
+.unit-standee__body.troop-cavalry,
+.unit-standee__body.troop-infantry,
+.unit-standee__body.troop-archer {
+  border-radius: 4px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
 }
 
-.unit-token.enemy.troop-cavalry {
-  background:
-    linear-gradient(118deg, rgba(254, 215, 170, 0.2) 0%, transparent 48%),
-    var(--enemy);
-  border-color: #f59e0b;
-  box-shadow:
-    inset 0 -2px 0 rgba(251, 191, 36, 0.35),
-    inset 0 0 0 1px rgba(251, 191, 36, 0.18);
-}
-
-.unit-token.troop-cavalry .unit-troop-emblem-char {
+.unit-standee__body.troop-cavalry .unit-troop-figure-badge {
   background: rgba(113, 63, 18, 0.55);
   border-color: rgba(253, 224, 71, 0.45);
 }
 
-/* —— 步兵：稳重方盾轮廓 + 左侧甲片条 —— */
-.unit-token.troop-infantry {
-  border-radius: 3px;
-  border-left-width: 3px;
-}
-
-.unit-token.player.troop-infantry {
-  border-left-color: #e2e8f0;
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0) 28%),
-    var(--player);
-  box-shadow: inset 2px 0 0 rgba(15, 23, 42, 0.35);
-}
-
-.unit-token.enemy.troop-infantry {
-  border-left-color: #fecaca;
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 28%),
-    var(--enemy);
-  box-shadow: inset 2px 0 0 rgba(0, 0, 0, 0.35);
-}
-
-.unit-token.troop-infantry .unit-troop-emblem-char {
+.unit-standee__body.troop-infantry .unit-troop-figure-badge {
   background: rgba(30, 41, 59, 0.55);
   border-color: rgba(226, 232, 240, 0.4);
 }
 
-.unit-token.enemy.troop-infantry .unit-troop-emblem-char {
+.unit-standee__body.enemy.troop-infantry .unit-troop-figure-badge {
   background: rgba(69, 10, 10, 0.55);
   border-color: rgba(254, 202, 202, 0.4);
 }
 
-/* —— 弓兵：上弦月式顶边 + 青绿弓弦色 —— */
-.unit-token.troop-archer {
-  border-radius: 5px 5px 3px 3px;
-}
-
-.unit-token.player.troop-archer {
-  border-color: #4ade80;
-  background: var(--player);
-  box-shadow:
-    inset 0 3px 0 rgba(163, 230, 53, 0.5),
-    inset 0 0 0 1px rgba(74, 222, 128, 0.25);
-}
-
-.unit-token.enemy.troop-archer {
-  border-color: #86efac;
-  background: var(--enemy);
-  box-shadow:
-    inset 0 3px 0 rgba(134, 239, 172, 0.35),
-    inset 0 0 0 1px rgba(167, 243, 208, 0.2);
-}
-
-.unit-token.troop-archer .unit-troop-emblem-char {
+.unit-standee__body.troop-archer .unit-troop-figure-badge {
   background: rgba(20, 83, 45, 0.55);
   border-color: rgba(163, 230, 53, 0.45);
 }
 
-.unit-token.enemy.troop-archer .unit-troop-emblem-char {
+.unit-standee__body.enemy.troop-archer .unit-troop-figure-badge {
   background: rgba(55, 20, 20, 0.6);
   border-color: rgba(187, 247, 208, 0.4);
 }
 
-/* 与选中 / 可走 高亮共存 */
-.unit-token.troop-cavalry.selectable {
-  box-shadow:
-    0 0 0 2px var(--gold),
-    inset 0 -2px 0 rgba(250, 204, 21, 0.4);
+.unit-standee__body.troop-cavalry.selectable,
+.unit-standee__body.troop-infantry.selectable,
+.unit-standee__body.enemy.troop-infantry.selectable,
+.unit-standee__body.troop-archer.selectable {
+  box-shadow: 0 0 0 2px var(--gold);
 }
 
-.unit-token.troop-infantry.selectable {
-  box-shadow:
-    0 0 0 2px var(--gold),
-    inset 2px 0 0 rgba(15, 23, 42, 0.35);
+.unit-standee__body.troop-cavalry.selected,
+.unit-standee__body.troop-infantry.selected,
+.unit-standee__body.enemy.troop-infantry.selected,
+.unit-standee__body.troop-archer.selected {
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.65);
 }
 
-.unit-token.enemy.troop-infantry.selectable {
-  box-shadow:
-    0 0 0 2px var(--gold),
-    inset 2px 0 0 rgba(0, 0, 0, 0.35);
-}
-
-.unit-token.troop-archer.selectable {
-  box-shadow:
-    0 0 0 2px var(--gold),
-    inset 0 3px 0 rgba(163, 230, 53, 0.45);
-}
-
-.unit-token.troop-cavalry.selected {
-  box-shadow:
-    0 0 0 2px rgba(251, 191, 36, 0.65),
-    inset 0 -2px 0 rgba(250, 204, 21, 0.35);
-}
-
-.unit-token.troop-infantry.selected {
-  box-shadow:
-    0 0 0 2px rgba(251, 191, 36, 0.65),
-    inset 2px 0 0 rgba(15, 23, 42, 0.35);
-}
-
-.unit-token.enemy.troop-infantry.selected {
-  box-shadow:
-    0 0 0 2px rgba(251, 191, 36, 0.65),
-    inset 2px 0 0 rgba(0, 0, 0, 0.35);
-}
-
-.unit-token.troop-archer.selected {
-  box-shadow:
-    0 0 0 2px rgba(251, 191, 36, 0.65),
-    inset 0 3px 0 rgba(163, 230, 53, 0.4);
-}
-
-.unit-token.troop-cavalry.unit-pending-highlight {
+.unit-standee__body.troop-cavalry.unit-pending-highlight,
+.unit-standee__body.troop-infantry.unit-pending-highlight,
+.unit-standee__body.enemy.troop-infantry.unit-pending-highlight,
+.unit-standee__body.troop-archer.unit-pending-highlight {
   box-shadow:
     0 0 0 2px #fef3c7,
-    0 0 18px rgba(254, 243, 199, 0.55),
-    inset 0 -2px 0 rgba(250, 204, 21, 0.35);
-}
-
-.unit-token.troop-infantry.unit-pending-highlight {
-  box-shadow:
-    0 0 0 2px #fef3c7,
-    0 0 18px rgba(254, 243, 199, 0.55),
-    inset 2px 0 0 rgba(15, 23, 42, 0.3);
-}
-
-.unit-token.enemy.troop-infantry.unit-pending-highlight {
-  box-shadow:
-    0 0 0 2px #fef3c7,
-    0 0 18px rgba(254, 243, 199, 0.55),
-    inset 2px 0 0 rgba(0, 0, 0, 0.3);
-}
-
-.unit-token.troop-archer.unit-pending-highlight {
-  box-shadow:
-    0 0 0 2px #fef3c7,
-    0 0 18px rgba(254, 243, 199, 0.55),
-    inset 0 3px 0 rgba(163, 230, 53, 0.4);
+    0 0 18px rgba(254, 243, 199, 0.55);
 }

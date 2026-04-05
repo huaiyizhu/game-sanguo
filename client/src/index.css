@@ -608,8 +608,35 @@ a:hover {
   }
 }
 
+/* 战场外框：2.5D 贴砖与角色立体见 battle-map-25d.css、troop-visuals.css */
+.battle-scene {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 1.25rem auto 0;
+}
+
+.battle-scene__ground {
+  position: absolute;
+  left: 50%;
+  bottom: -1%;
+  width: 90%;
+  max-width: 48rem;
+  height: 18%;
+  transform: translateX(-50%);
+  background: radial-gradient(
+    ellipse 72% 60% at 50% 50%,
+    rgba(0, 0, 0, 0.42) 0%,
+    rgba(0, 0, 0, 0.14) 48%,
+    transparent 74%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
 .battle-grid {
-  /* 单格略放大，便于姓名/兵力/等级/兵种图腾同屏不挤 */
+  /* 单格略放大，便于剪影 + 姓名/兵力同屏 */
   --cell: min(72px, 11vw);
   position: relative;
   z-index: 0;
@@ -618,6 +645,17 @@ a:hover {
   width: fit-content;
   margin: 2.35rem auto 0;
   isolation: isolate;
+}
+
+.battle-scene .battle-grid {
+  z-index: 1;
+  position: relative;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .battle-scene__ground {
+    opacity: 0.65;
+  }
 }
 
 /* 移动预览：压暗不可达格，与 .move-hint 形成强对比 */
@@ -642,25 +680,25 @@ a:hover {
   overflow: visible;
 }
 
-/* 行动菜单溢出到邻格时，必须压过后续格子（同网格内靠后的 DOM 会默认盖住溢出层） */
-.cell.cell-menu-open {
+/* 行动菜单 / 选目标层级在格位容器上，地形格本身保持纯地图层 */
+.battle-slot--menu-open {
   z-index: 100;
 }
 
-.cell.cell-pick-candidate {
+.battle-slot--pick-candidate {
   z-index: 40;
 }
 
-.cell.cell-pick-focus {
+.battle-slot--pick-focus {
   z-index: 50;
 }
 
-.unit-token.pick-target-candidate {
+.unit-standee__body.pick-target-candidate {
   outline: 2px dashed rgba(252, 165, 165, 0.75);
   outline-offset: -1px;
 }
 
-.unit-token.pick-target-focus {
+.unit-standee__body.pick-target-focus {
   outline: 3px solid #fbbf24;
   box-shadow: 0 0 16px rgba(251, 191, 36, 0.45);
 }
@@ -716,87 +754,65 @@ a:hover {
   filter: brightness(1.18) saturate(1.12);
 }
 
-.unit-token {
+.unit-standee__body {
   position: relative;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
-  gap: 1px;
-  width: calc(100% - 4px);
-  height: calc(100% - 4px);
+  gap: 0;
+  width: 100%;
+  min-height: min(calc(var(--cell, 72px) * 1.15), 6rem);
   border-radius: 4px;
-  font-size: clamp(0.6rem, 2.35vw, 0.84rem);
-  line-height: 1.2;
+  font-size: clamp(0.58rem, 2.2vw, 0.8rem);
+  line-height: 1.15;
   text-align: center;
-  padding: 3px 4px 4px;
-  padding-top: clamp(0.52rem, 2.9vw, 0.78rem);
+  padding: 2px 3px 3px;
   cursor: default;
   border: 1px solid transparent;
   overflow: visible;
 }
 
-.unit-level-badge {
-  position: absolute;
-  top: 3px;
-  left: 4px;
-  font-size: clamp(0.5rem, 1.85vw, 0.7rem);
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: -0.02em;
-  color: #fef9c3;
-  text-shadow:
-    0 0 6px rgba(0, 0, 0, 0.85),
-    0 1px 2px #000;
-  pointer-events: none;
-  white-space: nowrap;
-  z-index: 2;
+.unit-standee__body.player {
+  background: transparent;
+  border-color: transparent;
 }
 
-.unit-token.enemy .unit-level-badge {
-  color: #fde68a;
+.unit-standee__body.enemy {
+  background: transparent;
+  border-color: transparent;
 }
 
-.unit-token.player {
-  background: var(--player);
-  border-color: #40916c;
-}
-
-.unit-token.enemy {
-  background: var(--enemy);
-  border-color: #c1121f;
-}
-
-.unit-token.selectable {
+.unit-standee__body.selectable {
   cursor: pointer;
   box-shadow: 0 0 0 2px var(--gold);
 }
 
-.unit-token.selectable:hover {
+.unit-standee__body.selectable:hover {
   filter: brightness(1.08);
 }
 
-.unit-token.selected {
+.unit-standee__body.selected {
   box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.55);
 }
 
-.unit-token.unit-turn-done {
+.unit-standee__body.unit-turn-done {
   filter: grayscale(0.55) brightness(0.78);
   opacity: 0.88;
 }
 
-.unit-token.unit-pending-highlight {
+.unit-standee__body.unit-pending-highlight {
   box-shadow:
     0 0 0 2px #fef3c7,
     0 0 18px rgba(254, 243, 199, 0.55);
   filter: brightness(1.12) saturate(1.08);
 }
 
-.unit-token.unit-pending-highlight.selectable:hover {
+.unit-standee__body.unit-pending-highlight.selectable:hover {
   filter: brightness(1.18) saturate(1.1);
 }
 
-.unit-token.unit-move-slide {
+.unit-standee.unit-move-slide {
   animation: unit-move-slide-in 0.42s cubic-bezier(0.22, 1, 0.32, 1) forwards;
   z-index: 5;
 }
@@ -804,30 +820,45 @@ a:hover {
 @keyframes unit-move-slide-in {
   from {
     transform: translate(
-      calc(var(--sdx, 0) * (var(--cell) + 2px)),
+      calc(-50% + var(--sdx, 0) * (var(--cell) + 2px)),
       calc(var(--sdy, 0) * (var(--cell) + 2px))
     );
   }
   to {
-    transform: translate(0, 0);
+    transform: translate(-50%, 0);
   }
 }
 
-/* 阵亡残影叠在格内，底层仍是该格地形，不再用独立网格格盖住整块地 */
-.death-overlay-cell {
+@media (prefers-reduced-motion: reduce) {
+  .unit-standee.unit-move-slide {
+    animation: none;
+    transform: translateX(-50%);
+  }
+}
+
+/* 阵亡残影叠在格位上，底层仍是该格地形 */
+.death-overlay-slot {
   position: absolute;
   inset: 0;
-  z-index: 4;
+  z-index: 8;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
+  padding-bottom: 2px;
   pointer-events: none;
   background: transparent;
 }
 
-.death-overlay-cell .unit-token {
+.death-overlay-slot .unit-standee {
   position: relative;
+  left: auto;
+  bottom: auto;
+  transform: none;
   z-index: 1;
+}
+
+.death-overlay-slot .unit-standee__body {
+  pointer-events: none;
 }
 
 .unit-death-fade {
@@ -892,12 +923,9 @@ a:hover {
   left: 50%;
   transform: translateX(-50%);
   font-size: clamp(0.62rem, 2.2vw, 0.88rem);
-  color: #fecaca;
+  color: #fca5a5;
   font-weight: 800;
   letter-spacing: 0.02em;
-  text-shadow:
-    0 0 10px #dc2626,
-    0 2px 6px #000;
   pointer-events: none;
   animation: dmg-float-up 0.7s ease-out forwards;
   z-index: 8;
@@ -990,16 +1018,6 @@ a:hover {
   margin: 0;
   font-size: 0.78rem;
   color: var(--text-muted);
-}
-
-.unit-name {
-  font-weight: 700;
-}
-
-.unit-hp {
-  opacity: 0.92;
-  font-size: 0.88em;
-  letter-spacing: 0.02em;
 }
 
 .battle-log {
