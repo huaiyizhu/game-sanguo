@@ -12,6 +12,7 @@ import {
   cancelPickTarget,
   cancelTacticMenu,
   confirmPickTarget,
+  createBattleForScenario,
   createInitialBattle,
   createNextBattleAfterVictory,
   ensureBattleFields,
@@ -31,6 +32,7 @@ import {
   tacticMenuChoose,
   waitAfterMove,
 } from "../game/battle";
+import { listScenarioEntries } from "../game/scenarios";
 import type { BattleState, Terrain } from "../game/types";
 import {
   ARMY_TYPE_LABEL,
@@ -53,6 +55,19 @@ import GameBattle, { type MenuAction } from "./GameBattle";
 
 /** 敌军每名单位行动之间的间隔（毫秒）；队列中第一名立即行动 */
 const ENEMY_ACTION_GAP_MS = 2000;
+
+/** 秘籍：打开关卡列表（在捕获阶段优先于战场按键屏蔽） */
+const CHEAT_STAGE_PICKER_COMBO = (e: KeyboardEvent) =>
+  e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.code === "KeyK";
+
+const SCENARIO_PICKER_ENTRIES = listScenarioEntries();
+
+function isTypingTarget(el: EventTarget | null): boolean {
+  if (!(el instanceof HTMLElement)) return false;
+  const tag = el.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  return el.isContentEditable;
+}
 
 /** 胜负全屏提示展示时长（毫秒），之后自动下一关或重开 */
 const OUTCOME_TRANSITION_MS = 2800;
@@ -151,6 +166,7 @@ export default function GamePage() {
     }
   });
   const [turnIntroLocked, setTurnIntroLocked] = useState(true);
+  const [stagePickerOpen, setStagePickerOpen] = useState(false);
   const turnIntroLockedRef = useRef(true);
   turnIntroLockedRef.current = turnIntroLocked;
   const onTurnActionReady = useCallback((ready: boolean) => {
@@ -196,6 +212,38 @@ export default function GamePage() {
   useEffect(() => {
     void refreshRemote();
   }, [refreshRemote]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
+
+      if (CHEAT_STAGE_PICKER_COMBO(e)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setStagePickerOpen((open) => !open);
+        return;
+      }
+
+      if (stagePickerOpen && e.key === "Escape") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setStagePickerOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [stagePickerOpen]);
+
+  const jumpToScenario = useCallback(
+    (scenarioId: string, title: string) => {
+      setBattle(createBattleForScenario(scenarioId));
+      setStagePickerOpen(false);
+      setInspectUnitId(null);
+      setMessage(`秘籍：已进入「${title}」`);
+      bumpVisualEpoch();
+    },
+    [bumpVisualEpoch]
+  );
 
   const battleRef = useRef(battle);
   battleRef.current = battle;
@@ -470,6 +518,42 @@ export default function GamePage() {
 
   return (
     <div className="page game-layout">
+      {stagePickerOpen && (
+        <div
+          className="stage-picker-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="stage-picker-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setStagePickerOpen(false);
+          }}
+        >
+          <div className="stage-picker-panel" onMouseDown={(e) => e.stopPropagation()}>
+            <h2 id="stage-picker-title" className="stage-picker-title">
+              秘籍 · 选关
+            </h2>
+            <p className="stage-picker-hint muted small">
+              再按 <kbd className="kbd-chip">Ctrl</kbd>+<kbd className="kbd-chip">Shift</kbd>+
+              <kbd className="kbd-chip">K</kbd> 或 <kbd className="kbd-chip">Esc</kbd> 关闭
+            </p>
+            <ul className="stage-picker-list">
+              {SCENARIO_PICKER_ENTRIES.map((row, i) => (
+                <li key={row.id}>
+                  <button
+                    type="button"
+                    className="stage-picker-row"
+                    onClick={() => jumpToScenario(row.id, row.title)}
+                  >
+                    <span className="stage-picker-idx">{i + 1}</span>
+                    <span className="stage-picker-name">{row.title}</span>
+                    <span className="stage-picker-id muted small">{row.id}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
       <div className="game-left-stack">
         <aside className="unit-inspect" aria-label="武将信息">
           <h3>武将信息</h3>
@@ -682,6 +766,7 @@ export default function GamePage() {
           battle={battle}
           visualEpoch={visualEpoch}
           turnIntroLocked={turnIntroLocked}
+          keyboardBlocked={stagePickerOpen}
           onTurnActionReady={onTurnActionReady}
           onDamagePulseConsumed={onDamagePulseConsumed}
           onCellClick={onCellClick}

@@ -33,6 +33,8 @@ type Props = {
   onPickNavigate: (delta: number) => void;
   onPickConfirmFocused: () => void;
   onPickHoverEnemy: (enemyId: string) => void;
+  /** 为 true 时屏蔽战场键盘（例如父级秘籍选关弹层打开） */
+  keyboardBlocked?: boolean;
 };
 
 const MENU_ORDER: MenuAction[] = ["attack", "tactic", "wait"];
@@ -87,6 +89,7 @@ export default function GameBattle({
   onPickNavigate,
   onPickConfirmFocused,
   onPickHoverEnemy,
+  keyboardBlocked = false,
 }: Props) {
   const {
     gridW,
@@ -246,7 +249,7 @@ export default function GameBattle({
 
   useEffect(() => {
     if (outcome !== "playing") return;
-    if (!turnBanner && !turnIntroLocked) return;
+    if (!turnBanner && !turnIntroLocked && !keyboardBlocked) return;
     const block = (e: Event) => {
       e.preventDefault();
       e.stopPropagation();
@@ -257,7 +260,7 @@ export default function GameBattle({
       window.removeEventListener("keydown", block, true);
       window.removeEventListener("keyup", block, true);
     };
-  }, [turnBanner, turnIntroLocked, outcome]);
+  }, [turnBanner, turnIntroLocked, keyboardBlocked, outcome]);
 
   const selectedUnit = selectedId ? units.find((u) => u.id === selectedId) : undefined;
   const attackOk =

@@ -6,6 +6,26 @@
 
 ## 2026-04-03
 
+### 刘备线多关卡、兵种立绘与秘籍选关（白天）
+
+**战役与代码结构**
+
+- 刘备主线扩展为 **9 关**（`SCENARIO_ORDER`）：序章黄巾、`ch1_pursuit` 起至汉中定军山麓等；敌军数量与数值随章递增，各关使用不同 **地形模板**（经典/密林/河道/水泽/山隘/沙地混合等）。
+- 关卡数据集中到 **`client/src/game/scenarios.ts`**（`buildBattleStateForScenario`、`listScenarioEntries`、`createDefaultTerrain`）；**`battle.ts`** 通过 `createBattleForScenario` / `SCENARIO_IDS` 引用，胜负后的 **`createNextBattleAfterVictory`** 仍按顺序进关并 **合并存活我军**（`mergeCarriedPlayers`）。
+- 保留既有 **`scenarioId`**（如 `prologue_zhangjiao`、`ch1_pursuit`），避免旧存档语义错乱。
+
+**兵种精灵与战场表现**
+
+- 骑兵 / 步兵 / 弓兵使用 **PNG 位图**（`client/public/sprites/units/`）；**`client/scripts/remove-sprite-bg.mjs`** 做背景剔除（各兵种参数可区分），**`npm run sprites:units`** 一键处理素材。
+- 步兵、弓兵在 **CSS** 中适度放大（如 `transform: scale`），与骑兵在同一格内 **体量观感** 更一致；战场单位为立牌式展示（血条、姓名、兵种等在格子上方等，与既有 UI 统一）。
+
+**秘籍选关**
+
+- 游戏页 **Ctrl+Shift+K** 打开全关卡列表，点选 **直接进入** 对应关；**Esc** 关闭；打开时 **`GameBattle`** 通过 **`keyboardBlocked`** 屏蔽战场快捷键，避免误操作。
+- **README** 中写明秘籍组合键，防止遗忘。
+
+---
+
 ### 战斗节奏、受击反馈与 Azure CI/CD（晚间）
 
 **移动与敌军 AI**

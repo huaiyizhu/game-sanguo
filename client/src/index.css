@@ -1119,3 +1119,99 @@ a:hover {
     animation-duration: 0.35s;
   }
 }
+
+/* 秘籍选关（Ctrl+Shift+K） */
+.stage-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(6, 10, 16, 0.78);
+  backdrop-filter: blur(4px);
+}
+
+.stage-picker-panel {
+  width: min(420px, 100%);
+  max-height: min(72vh, 520px);
+  overflow: auto;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+}
+
+.stage-picker-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  color: var(--gold);
+}
+
+.stage-picker-hint {
+  margin: 0 0 0.75rem;
+  line-height: 1.5;
+}
+
+.kbd-chip {
+  display: inline-block;
+  padding: 0.08rem 0.35rem;
+  margin: 0 0.06rem;
+  font-size: 0.72rem;
+  font-family: ui-monospace, monospace;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #1a222e;
+  color: var(--text-muted);
+}
+
+.stage-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.stage-picker-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1.6rem 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  text-align: left;
+  font-family: inherit;
+  font-size: 0.88rem;
+  padding: 0.5rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, #1e2838 0%, #181f2a 100%);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.stage-picker-row:hover {
+  border-color: var(--gold-dim);
+  color: var(--gold);
+}
+
+.stage-picker-idx {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.stage-picker-name {
+  font-weight: 600;
+}
+
+.stage-picker-id {
+  font-size: 0.68rem;
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
