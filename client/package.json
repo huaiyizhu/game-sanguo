@@ -7,6 +7,9 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "sprites:units": "node scripts/remove-sprite-bg.mjs",
+    "sprites:units-size": "node scripts/normalize-unit-sprites.mjs",
+    "sprites:units:all": "node scripts/remove-sprite-bg.mjs && node scripts/normalize-unit-sprites.mjs",
+    "sprites:units-final": "node scripts/remove-sprite-bg.mjs --final && node scripts/normalize-unit-sprites.mjs",
     "avatars:list-ids": "node scripts/list-avatar-ids.mjs"
   },
   "dependencies": {

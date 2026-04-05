@@ -918,9 +918,8 @@ a:hover {
   width: 100%;
 }
 
-/* 从单位列表定位到格子时的短暂高亮 */
+/* 从单位列表定位到格子时的短暂高亮（z-index 见 unit-standee.css） */
 .battle-slot--roster-pulse {
-  z-index: 25;
   animation: battle-roster-pulse 1.8s ease-out forwards;
 }
 
@@ -1192,18 +1191,7 @@ a:hover {
   overflow: visible;
 }
 
-/* 行动菜单 / 选目标层级在格位容器上，地形格本身保持纯地图层 */
-.battle-slot--menu-open {
-  z-index: 100;
-}
-
-.battle-slot--pick-candidate {
-  z-index: 40;
-}
-
-.battle-slot--pick-focus {
-  z-index: 50;
-}
+/* 行动菜单 / 选目标 / 移动 等格位叠放：GameBattle 内联 zIndex（battleSlotStackZ） */
 
 .unit-standee__body.pick-target-candidate {
   outline: 2px dashed rgba(252, 165, 165, 0.75);
@@ -1305,7 +1293,7 @@ a:hover {
 }
 
 .unit-standee__body.selected {
-  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.55);
+  box-shadow: none;
 }
 
 .unit-standee__body.unit-turn-done {
@@ -1314,9 +1302,7 @@ a:hover {
 }
 
 .unit-standee__body.unit-pending-highlight {
-  box-shadow:
-    0 0 0 2px #fef3c7,
-    0 0 18px rgba(254, 243, 199, 0.55);
+  box-shadow: none;
   filter: brightness(1.12) saturate(1.08);
 }
 
@@ -1324,27 +1310,32 @@ a:hover {
   filter: brightness(1.18) saturate(1.1);
 }
 
+/* 步长须与 .battle-grid 的 gap: 3px 一致，否则每格落点偏一像素会有顿挫感 */
+/* 时长须与 battle.ts MOVE_SLIDE_DURATION_MS 一致；步进见 MOVE_STEP_MS_PLAYER / ENEMY */
 .unit-standee.unit-move-slide {
-  animation: unit-move-slide-in 0.42s cubic-bezier(0.22, 1, 0.32, 1) forwards;
+  animation: unit-move-slide-in 240ms ease-out forwards;
   z-index: 5;
+  will-change: transform;
 }
 
 @keyframes unit-move-slide-in {
   from {
-    transform: translate(
-      calc(-50% + var(--sdx, 0) * (var(--cell) + 2px)),
-      calc(var(--sdy, 0) * (var(--cell) + 2px))
+    transform: translate3d(
+      calc(-50% + var(--sdx, 0) * (var(--cell) + 3px)),
+      calc(var(--sdy, 0) * (var(--cell) + 3px)),
+      0
     );
   }
   to {
-    transform: translate(-50%, 0);
+    transform: translate3d(-50%, 0, 0);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .unit-standee.unit-move-slide {
     animation: none;
-    transform: translateX(-50%);
+    will-change: auto;
+    transform: translate3d(-50%, 0, 0);
   }
 }
 

@@ -4,9 +4,23 @@
 
 .battle-slot {
   position: relative;
-  z-index: 0;
   overflow: visible;
 }
+
+/* 地形层先绘制、单位层后绘制，避免立绘溢出到邻格时被后绘制的格线盖住 */
+.battle-slot--terrain {
+  z-index: 0;
+}
+
+.battle-slot--units {
+  pointer-events: none;
+}
+
+.battle-slot--units .action-menu {
+  pointer-events: auto;
+}
+
+/* 格与格叠放顺序由 GameBattle 内联 zIndex（battleSlotStackZ）统一计算 */
 
 .battle-slot > .cell {
   position: absolute;
@@ -14,18 +28,6 @@
   width: 100%;
   height: 100%;
   display: block;
-}
-
-.battle-slot--menu-open {
-  z-index: 100;
-}
-
-.battle-slot--pick-candidate {
-  z-index: 40;
-}
-
-.battle-slot--pick-focus {
-  z-index: 50;
 }
 
 .unit-standee {

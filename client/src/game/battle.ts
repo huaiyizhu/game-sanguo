@@ -52,9 +52,18 @@ export const TURN_PHASE_BANNER_MS = 1000;
  */
 export const POST_ACTION_TURN_BANNER_DELAY_MS = 1000;
 
-/** 沿路逐格移动时每格间隔（毫秒），供 GamePage 定时器使用 */
-export const MOVE_STEP_MS_PLAYER = 260;
-export const MOVE_STEP_MS_ENEMY = 300;
+/**
+ * 与 `index.css` 中 `.unit-standee.unit-move-slide` 的 `animation-duration` 一致（毫秒）。
+ * 改动画时长时须同步改此处与下方步进间隔。
+ */
+export const MOVE_SLIDE_DURATION_MS = 240;
+
+/**
+ * 沿路逐格移动时每格间隔（毫秒），供 GamePage 定时器使用。
+ * 须明显大于 MOVE_SLIDE_DURATION_MS，避免下一格逻辑开始时上一格滑动动画未完成造成叠跳。
+ */
+export const MOVE_STEP_MS_PLAYER = MOVE_SLIDE_DURATION_MS + 50;
+export const MOVE_STEP_MS_ENEMY = MOVE_SLIDE_DURATION_MS + 72;
 
 function terrainAt(state: BattleState, x: number, y: number): Terrain {
   const row = state.terrain[y];

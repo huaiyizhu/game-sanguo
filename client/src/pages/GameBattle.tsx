@@ -3,17 +3,19 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import type { CSSProperties, KeyboardEvent, MouseEvent } from "react";
+import type { AnimationEvent, CSSProperties, KeyboardEvent, MouseEvent } from "react";
 import GeneralAvatar from "../components/GeneralAvatar";
 import TroopEmblem from "../components/TroopEmblem";
 import {
   canAffordTactic,
   canMeleeAttack,
   canUseTactic,
+  MOVE_SLIDE_DURATION_MS,
   POST_ACTION_TURN_BANNER_DELAY_MS,
   physicalAttackMenuLabel,
   TURN_PHASE_BANNER_MS,
@@ -85,6 +87,35 @@ type DyingVisual = {
 };
 
 type KillBanner = { key: number; text: string };
+
+/**
+ * 整格 z-index：越大越在上层。有单位的格必须整体高于纯地形格（否则后序 DOM 邻格会盖住立绘溢出）；
+ * 移动中再抬高，减少滑步时「被格子切一下」的顿挫感。
+ */
+function battleSlotStackZ(
+  x: number,
+  y: number,
+  gridW: number,
+  f: {
+    menuOpen: boolean;
+    pickFocus: boolean;
+    pickCand: boolean;
+    rosterPulse: boolean;
+    moveSlide: boolean;
+    moveHint: boolean;
+    hasLiveUnit: boolean;
+  }
+): number {
+  const tie = y * gridW + x;
+  if (f.menuOpen) return 100_000 + tie;
+  if (f.pickFocus) return 92_000 + tie;
+  if (f.pickCand) return 88_000 + tie;
+  if (f.rosterPulse) return 75_000 + tie;
+  if (f.moveSlide) return 65_000 + tie;
+  if (f.moveHint) return 12_000 + tie;
+  if (f.hasLiveUnit) return 6_000 + tie;
+  return tie;
+}
 
 export type GameBattleHandle = {
   /** 滚动战场使该单位所在格进入视野，并短暂高亮；单位须存活 */
@@ -392,7 +423,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     else setMenuFocus(2);
   }, [phase, selectedId, units, battle, selectedUnit]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!prevSnapRef.current || !prevHpRef.current) {
       const snap: Record<string, UnitSnap> = {};
       const hpMap: Record<string, number> = {};
@@ -436,13 +467,14 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
           const dx = old.x - u.x;
           const dy = old.y - u.y;
           setMoveSlide((prev) => ({ ...prev, [id]: { dx, dy } }));
+          /* prefers-reduced-motion 下无 animation，animationend 不会触发 */
           window.setTimeout(() => {
             setMoveSlide((prev) => {
               const next = { ...prev };
               delete next[id];
               return next;
             });
-          }, 460);
+          }, MOVE_SLIDE_DURATION_MS + 48);
         }
       }
 
@@ -641,6 +673,74 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     Boolean(selectedId) &&
     moveTargets.length > 0;
 
+  const battleCellCtxList = cells.map(({ x, y }) => {
+    const u = byPos.get(`${x},${y}`);
+    const isMove = moveSet.has(`${x},${y}`);
+    const isSelected = u && u.id === selectedId;
+    const turnDone = u && u.hp > 0 && u.moved && u.acted;
+    const onOwnCell =
+      phase === "move" &&
+      selectedId &&
+      (() => {
+        const su = units.find((z) => z.id === selectedId);
+        return Boolean(su && !su.moved && su.x === x && su.y === y);
+      })();
+    const canClickTile =
+      outcome === "playing" &&
+      turn === "player" &&
+      phase === "move" &&
+      (isMove || onOwnCell) &&
+      selectedId &&
+      !pendingMove &&
+      !turnIntroLocked;
+    const showMenu =
+      Boolean(u) &&
+      u!.id === selectedId &&
+      phase === "menu" &&
+      outcome === "playing" &&
+      turn === "player";
+    const showTacticMenu =
+      Boolean(u) &&
+      u!.id === selectedId &&
+      phase === "tactic-menu" &&
+      outcome === "playing" &&
+      turn === "player";
+    const hitActive = dmgFx?.unitId === u?.id;
+    const pickCand = Boolean(u && u.side === "enemy" && isPickCandidate(u.id));
+    const pickFocus = Boolean(u && u.id === focusedEnemyId);
+    const slide = u && moveSlide[u.id];
+    const pendingSelectionGlow = Boolean(
+      isSelected &&
+        u &&
+        u.hp > 0 &&
+        !(u.moved && u.acted) &&
+        outcome === "playing" &&
+        turn === "player" &&
+        (phase === "select" || phase === "move" || phase === "menu" || phase === "tactic-menu")
+    );
+    const deathHere = dyingVisuals.find((d) => d.x === x && d.y === y);
+    const rosterPulseHere = rosterPulse !== null && rosterPulse.x === x && rosterPulse.y === y;
+
+    return {
+      x,
+      y,
+      u,
+      isMove,
+      isSelected,
+      turnDone,
+      canClickTile,
+      showMenu,
+      showTacticMenu,
+      hitActive,
+      pickCand,
+      pickFocus,
+      slide,
+      pendingSelectionGlow,
+      deathHere,
+      rosterPulseHere,
+    };
+  });
+
   return (
     <div
       ref={battleWrapRef}
@@ -690,69 +790,27 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
             } as CSSProperties
           }
         >
-        {cells.map(({ x, y }) => {
-          const u = byPos.get(`${x},${y}`);
-          const isMove = moveSet.has(`${x},${y}`);
-          const isSelected = u && u.id === selectedId;
-          const turnDone = u && u.hp > 0 && u.moved && u.acted;
-          const onOwnCell =
-            phase === "move" &&
-            selectedId &&
-            (() => {
-              const su = units.find((z) => z.id === selectedId);
-              return su && !su.moved && su.x === x && su.y === y;
-            })();
-          const canClickTile =
-            outcome === "playing" &&
-            turn === "player" &&
-            phase === "move" &&
-            (isMove || onOwnCell) &&
-            selectedId &&
-            !pendingMove &&
-            !turnIntroLocked;
-          const showMenu =
-            u &&
-            u.id === selectedId &&
-            phase === "menu" &&
-            outcome === "playing" &&
-            turn === "player";
-          const showTacticMenu =
-            u &&
-            u.id === selectedId &&
-            phase === "tactic-menu" &&
-            outcome === "playing" &&
-            turn === "player";
-          const hitActive = dmgFx?.unitId === u?.id;
-          const pickCand = u && u.side === "enemy" && isPickCandidate(u.id);
-          const pickFocus = u && u.id === focusedEnemyId;
-          const slide = u && moveSlide[u.id];
-          const pendingSelectionGlow =
-            isSelected &&
-            u &&
-            u.hp > 0 &&
-            !(u.moved && u.acted) &&
-            outcome === "playing" &&
-            turn === "player" &&
-            (phase === "select" || phase === "move" || phase === "menu" || phase === "tactic-menu");
-
-          const deathHere = dyingVisuals.find((d) => d.x === x && d.y === y);
-
-          const rosterPulseHere =
-            rosterPulse !== null && rosterPulse.x === x && rosterPulse.y === y;
-
-          return (
+        {battleCellCtxList.map(
+          ({
+            x,
+            y,
+            u,
+            isMove,
+            canClickTile,
+            deathHere,
+            rosterPulseHere,
+          }) => (
             <div
-              key={`${x}-${y}`}
+              key={`t-${x}-${y}`}
               data-battle-cell={`${x},${y}`}
               className={[
                 "battle-slot",
-                showMenu || showTacticMenu ? "battle-slot--menu-open" : "",
-                pickCand ? "battle-slot--pick-candidate" : "",
-                pickFocus ? "battle-slot--pick-focus" : "",
-                rosterPulseHere ? "battle-slot--roster-pulse" : "",
+                "battle-slot--terrain",
+                rosterPulseHere && !u ? "battle-slot--roster-pulse" : "",
               ]
                 .filter(Boolean)
                 .join(" ")}
+              style={{ gridColumn: x + 1, gridRow: y + 1 }}
             >
               <div
                 className={[
@@ -805,7 +863,53 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                   </div>
                 </div>
               )}
-              {u && (
+            </div>
+          )
+        )}
+        {battleCellCtxList.map(
+          ({
+            x,
+            y,
+            u,
+            isSelected,
+            turnDone,
+            showMenu,
+            showTacticMenu,
+            hitActive,
+            pickCand,
+            pickFocus,
+            slide,
+            pendingSelectionGlow,
+            isMove,
+            rosterPulseHere,
+          }) =>
+            u ? (
+              <div
+                key={`unit-${u.id}`}
+                className={[
+                  "battle-slot",
+                  "battle-slot--units",
+                  showMenu || showTacticMenu ? "battle-slot--menu-open" : "",
+                  pickCand ? "battle-slot--pick-candidate" : "",
+                  pickFocus ? "battle-slot--pick-focus" : "",
+                  rosterPulseHere ? "battle-slot--roster-pulse" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                style={{
+                  gridColumn: x + 1,
+                  gridRow: y + 1,
+                  zIndex: battleSlotStackZ(x, y, gridW, {
+                    menuOpen: Boolean(showMenu || showTacticMenu),
+                    pickFocus: Boolean(pickFocus),
+                    pickCand: Boolean(pickCand),
+                    rosterPulse: Boolean(rosterPulseHere && u),
+                    moveSlide: Boolean(slide),
+                    moveHint: Boolean(isMove),
+                    hasLiveUnit: Boolean(u.hp > 0),
+                  }),
+                }}
+              >
                 <div
                   className={[
                     "unit-standee",
@@ -822,6 +926,17 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                         } as CSSProperties)
                       : undefined
                   }
+                  onAnimationEnd={(e: AnimationEvent) => {
+                    if (e.target !== e.currentTarget) return;
+                    if (e.animationName !== "unit-move-slide-in") return;
+                    const uid = u.id;
+                    setMoveSlide((prev) => {
+                      if (!prev[uid]) return prev;
+                      const next = { ...prev };
+                      delete next[uid];
+                      return next;
+                    });
+                  }}
                 >
                   <div className="unit-standee__hud">
                     <div className="unit-standee__hud-row">
@@ -866,7 +981,9 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                       u.hp > 0 &&
                       !(u.moved && u.acted) &&
                       !pendingMove &&
-                      !turnIntroLocked
+                      !turnIntroLocked &&
+                      selectedId != null &&
+                      u.id === selectedId
                         ? "selectable"
                         : "",
                     ]
@@ -994,10 +1111,9 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                     </div>
                   )}
                 </div>
-              )}
-            </div>
-          );
-        })}
+              </div>
+            ) : null
+        )}
         </div>
       </div>
       <div className="battle-menu-hint-slot" aria-live="polite">

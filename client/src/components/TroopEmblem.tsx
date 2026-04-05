@@ -12,7 +12,8 @@ const RASTER_SRC: Record<TroopKind, string> = {
 };
 
 /**
- * 战场兵种：骑兵 / 步兵 / 弓兵均为透明底 PNG（由 scripts/remove-sprite-bg.mjs 从源图抠背景）。
+ * 战场兵种：骑兵 / 步兵 / 弓兵均为同尺寸透明底 PNG（512×512，
+ * 由 remove-sprite-bg（npm run sprites:units-final）抠底去水印后 normalize-unit-sprites 统一画布）。
  */
 export default function TroopEmblem({ kind, side, showTroopBadge = true }: Props) {
   const label = TROOP_KIND_LABEL[kind];

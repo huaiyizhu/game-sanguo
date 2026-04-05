@@ -35,8 +35,8 @@
 }
 
 .unit-troop-figure--raster .unit-troop-figure-model--raster {
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
+  /* 统一 512 透明底 PNG 缩放到格内，平滑缩放即可 */
+  image-rendering: auto;
 }
 
 .unit-troop-sprite {
@@ -50,19 +50,17 @@
   -webkit-user-drag: none;
 }
 
-/* 步兵/弓兵立绘略小：底部为轴略放大，与骑兵在格内视觉体量一致 */
-.troop-figure-infantry .unit-troop-sprite,
-.troop-figure-archer .unit-troop-sprite {
-  transform: scale(1.24);
-  transform-origin: center bottom;
-}
-
 .unit-troop-sprite--enemy {
   filter: hue-rotate(-38deg) saturate(1.15) brightness(0.92);
 }
 
 .unit-troop-figure-model--raster {
   animation: unit-idle-bob 2.4s ease-in-out infinite;
+}
+
+/* 格间滑动时暂停立绘上下浮动，避免与位移动画叠成「每格一蹦」 */
+.unit-standee.unit-move-slide .unit-troop-figure-model--raster {
+  animation-play-state: paused;
 }
 
 .unit-standee__body.selectable:hover .unit-troop-figure-model--raster {
@@ -114,7 +112,7 @@
   }
 }
 
-/* 底板透明，选中高亮仅靠外描边 */
+/* 底板透明；选中态不再画外描边（避免粗白/金框与格线叠层） */
 .unit-standee__body.troop-cavalry,
 .unit-standee__body.troop-infantry,
 .unit-standee__body.troop-archer {
@@ -160,14 +158,12 @@
 .unit-standee__body.troop-infantry.selected,
 .unit-standee__body.enemy.troop-infantry.selected,
 .unit-standee__body.troop-archer.selected {
-  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.65);
+  box-shadow: none;
 }
 
 .unit-standee__body.troop-cavalry.unit-pending-highlight,
 .unit-standee__body.troop-infantry.unit-pending-highlight,
 .unit-standee__body.enemy.troop-infantry.unit-pending-highlight,
 .unit-standee__body.troop-archer.unit-pending-highlight {
-  box-shadow:
-    0 0 0 2px #fef3c7,
-    0 0 18px rgba(254, 243, 199, 0.55);
+  box-shadow: none;
 }
