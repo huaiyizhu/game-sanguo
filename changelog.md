@@ -6,6 +6,14 @@
 
 ## 2026-04-03
 
+### 将领图鉴（100+）、大地图、胜利条件与秘籍图鉴（白天 · 续）
+
+- **`client/src/game/generals.ts`**：三国演义向 **将领图鉴**（名将列传 + 批量部将/文臣），合计 **超过 100 人**；`unitFromCatalog` 按关卡 tier 缩放等级与兵力，供 `scenarios` 摆将。
+- **`BattleState`** 扩展 **`scenarioBrief` / `victoryBrief` / `winCondition`**（`eliminate_all` 或 `eliminate_marked_enemies`）；**`battle.ts`** 的 `checkOutcome` 与 **`ensureBattleFields`** 兼容旧存档。
+- **`scenarios.ts`**：各关 **更大的网格**（16×10 … 24×14）、按剧情重写的 **开场 log / 背景提要 / 胜利说明**，敌军以 **曹操、诸葛亮、夏侯惇、周瑜** 等图鉴将领混合杂兵；序章击破 **张角**、小沛击破 **吕布**、剑阁击破 **刘璋**、汉中击破 **夏侯惇** 等为 **主将胜利** 关。
+- **秘籍 Ctrl+Shift+J**：将领列表 + 筛选 + 点击看属性/列传；战场 **`--cell`** 随 **`gridW`** 缩小，大地图仍可一屏操作。
+- **README** 已补充大地图、胜利条件与双秘籍说明。
+
 ### 刘备线多关卡、兵种立绘与秘籍选关（白天）
 
 **战役与代码结构**

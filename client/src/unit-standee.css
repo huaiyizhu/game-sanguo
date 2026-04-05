@@ -64,6 +64,72 @@
     0 1px 2px rgba(0, 0, 0, 0.75);
 }
 
+.unit-standee__hud-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.2rem;
+  width: 100%;
+}
+
+.unit-standee__hud-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.06rem;
+}
+
+/* 战场将领头像：随格子缩放 */
+.general-avatar {
+  flex-shrink: 0;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.general-avatar__glyph {
+  font-family: "Noto Serif SC", "Source Han Serif SC", "SimSun", serif;
+  font-weight: 800;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.96);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
+  user-select: none;
+}
+
+.general-avatar--standee {
+  width: clamp(22px, calc(var(--cell, 72px) * 0.34), 34px);
+  height: clamp(22px, calc(var(--cell, 72px) * 0.34), 34px);
+}
+
+.general-avatar--standee .general-avatar__glyph {
+  font-size: clamp(11px, calc(var(--cell, 72px) * 0.2), 17px);
+}
+
+.general-avatar__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 15%;
+  border-radius: inherit;
+  display: block;
+}
+
+.general-avatar--raster {
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.22),
+    0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+.unit-standee.enemy .general-avatar {
+  filter: saturate(0.88) brightness(0.92);
+}
+
 .unit-standee__name {
   font-weight: 800;
   color: #fefce8;

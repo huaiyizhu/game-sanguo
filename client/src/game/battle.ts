@@ -8,6 +8,7 @@ import type {
   TacticKind,
   Terrain,
   Unit,
+  WinCondition,
 } from "./types";
 import {
   ARCHER_ATTACK_RANGE,
@@ -262,8 +263,41 @@ function alive(units: Unit[], side: Side) {
   return units.filter((u) => u.side === side && u.hp > 0);
 }
 
+function defaultWinCondition(): WinCondition {
+  return { type: "eliminate_all" };
+}
+
+function normalizeWinCondition(raw: unknown): WinCondition {
+  if (!raw || typeof raw !== "object") return defaultWinCondition();
+  const o = raw as Record<string, unknown>;
+  if (
+    o.type === "eliminate_marked_enemies" &&
+    Array.isArray(o.unitIds) &&
+    o.unitIds.length > 0 &&
+    o.unitIds.every((id) => typeof id === "string")
+  ) {
+    return { type: "eliminate_marked_enemies", unitIds: o.unitIds as string[] };
+  }
+  return defaultWinCondition();
+}
+
+function enemyWinSatisfied(state: BattleState, enemies: Unit[]): boolean {
+  const wc = state.winCondition ?? defaultWinCondition();
+  if (wc.type === "eliminate_all") return enemies.length === 0;
+  return wc.unitIds.every((id) => !enemies.some((u) => u.id === id));
+}
+
+function victoryLogLine(state: BattleState): string {
+  const brief = state.victoryBrief?.trim();
+  if (brief) return brief;
+  const wc = state.winCondition ?? defaultWinCondition();
+  if (wc.type === "eliminate_marked_enemies") return "目标达成，战斗胜利！";
+  return "敌军全灭，战斗胜利！";
+}
+
 function checkOutcome(state: BattleState): BattleState {
-  if (alive(state.units, "enemy").length === 0) {
+  const enemies = alive(state.units, "enemy");
+  if (enemyWinSatisfied(state, enemies)) {
     return {
       ...state,
       outcome: "won",
@@ -276,7 +310,7 @@ function checkOutcome(state: BattleState): BattleState {
       enemyTurnCursor: 0,
       pendingMove: null,
       damagePulse: null,
-      log: [...state.log, "敌军全灭，战斗胜利！"],
+      log: [...state.log, victoryLogLine(state)],
     };
   }
   if (alive(state.units, "player").length === 0) {
@@ -1235,6 +1269,10 @@ function ensureUnitShape(u: Unit | Record<string, unknown>): Unit {
   base.tacticPoints = Math.min(base.tacticMax, base.tacticPoints ?? base.tacticMax);
   if (!isTroopKind(base.troopKind)) base.troopKind = "infantry";
   base.move = movePointsForTroop(base.troopKind);
+  const pc = (base as Unit).portraitCatalogId;
+  if (pc !== undefined && typeof pc !== "string") {
+    delete (base as Unit).portraitCatalogId;
+  }
   return base;
 }
 
@@ -1261,6 +1299,9 @@ export function ensureBattleFields(b: BattleState): BattleState {
     enemyTurnCursor: s.enemyTurnCursor ?? 0,
     pendingMove: s.pendingMove ?? null,
     damagePulse: s.damagePulse ?? null,
+    scenarioBrief: typeof s.scenarioBrief === "string" ? s.scenarioBrief : "",
+    victoryBrief: typeof s.victoryBrief === "string" ? s.victoryBrief : "",
+    winCondition: normalizeWinCondition(s.winCondition),
     terrain:
       s.terrain && s.terrain.length === s.gridH && s.terrain[0]?.length === s.gridW
         ? s.terrain

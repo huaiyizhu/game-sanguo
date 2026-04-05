@@ -11,6 +11,12 @@
   --tile: #243447;
   --tile-alt: #1e2d3d;
   --accent: #bc6c25;
+  /* 滚动条（Firefox / 部分引擎） */
+  --scrollbar-track: #111820;
+  --scrollbar-thumb: #3a4a62;
+  --scrollbar-thumb-hover: #4d6080;
+  --scrollbar-thumb-active: #556a8a;
+  --scrollbar-rim: rgba(138, 112, 32, 0.35);
   font-family: "Noto Serif SC", "ZCOOL XiaoWei", serif;
   color: var(--text);
   background: var(--bg-deep);
@@ -19,6 +25,65 @@
 
 * {
   box-sizing: border-box;
+}
+
+/* 全局自定义滚动条：深色凹槽 + 哑光滑块 + 淡金边，与面板风格统一 */
+*,
+*::before,
+*::after {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: linear-gradient(90deg, var(--scrollbar-track) 0%, #161d28 50%, var(--scrollbar-track) 100%);
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1px rgba(61, 79, 102, 0.55);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    #4a5c78 0%,
+    var(--scrollbar-thumb) 35%,
+    #2a3548 100%
+  );
+  border-radius: 5px;
+  border: 1px solid var(--scrollbar-rim);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 0 0 1px rgba(0, 0, 0, 0.35);
+  min-height: 28px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    #5a6d8c 0%,
+    var(--scrollbar-thumb-hover) 40%,
+    #323e52 100%
+  );
+  border-color: rgba(201, 162, 39, 0.45);
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background: linear-gradient(
+    180deg,
+    var(--scrollbar-thumb-hover) 0%,
+    var(--scrollbar-thumb-active) 50%,
+    #2a3548 100%
+  );
+}
+
+*::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
+  border-top: 1px solid rgba(61, 79, 102, 0.4);
+  border-left: 1px solid rgba(61, 79, 102, 0.4);
 }
 
 body {
@@ -181,9 +246,18 @@ a:hover {
   align-items: start;
 }
 
+.game-layout.game-layout--battle {
+  align-items: stretch;
+  min-height: calc(100vh - 2rem);
+}
+
 @media (max-width: 900px) {
   .game-layout {
     grid-template-columns: 1fr;
+  }
+
+  .game-layout.game-layout--battle {
+    min-height: 0;
   }
 
   .game-main {
@@ -198,6 +272,60 @@ a:hover {
   position: sticky;
   top: 0.5rem;
   align-self: start;
+  max-height: calc(100vh - 1.5rem);
+  overflow-y: auto;
+}
+
+.battle-back-home--sidebar {
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.sidebar-disclosure > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.sidebar-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.battle-roster-disclosure {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-panel);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.battle-roster-disclosure > summary {
+  padding: 0.55rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--gold-dim);
+  letter-spacing: 0.04em;
+}
+
+.battle-roster-disclosure[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.battle-roster--in-sidebar {
+  border: none;
+  border-radius: 0;
+  padding: 0.45rem 0.5rem 0.5rem;
+}
+
+.game-left-stack .battle-roster__list {
+  max-height: min(12rem, 28vh);
+  overflow-y: auto;
+}
+
+@media (min-width: 901px) {
+  .game-left-stack .battle-roster__list {
+    max-height: min(240px, 32vh);
+  }
 }
 
 .game-meta-sidebar {
@@ -390,7 +518,113 @@ a:hover {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  min-width: 0;
 }
+
+.game-main.game-main--battle {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.battle-play-area {
+  position: relative;
+  flex: 1;
+  min-height: 220px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.battle-map-viewport {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.battle-map-viewport > .battle-wrap {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* 文档流排在地图上方，展开时顶开棋盘而非叠在地图上 */
+.unit-inspect-float {
+  position: relative;
+  flex-shrink: 0;
+  width: 100%;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  text-align: left;
+}
+
+.unit-inspect-float__summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(26, 35, 50, 0.96);
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--gold-dim);
+  align-self: flex-end;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.unit-inspect-float__summary::-webkit-details-marker {
+  display: none;
+}
+
+.unit-inspect-float[open] > .unit-inspect-float__summary {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-color: transparent;
+}
+
+.unit-inspect-float__inner {
+  margin: 0;
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 0 0 8px 8px;
+  border: 1px solid var(--border);
+  border-top: none;
+  padding: 0.35rem 0.5rem 0.45rem;
+  max-height: none;
+  overflow: visible;
+  background: var(--bg-panel);
+}
+
+.unit-inspect-float__inner.unit-inspect {
+  padding: 0.35rem 0.5rem 0.45rem;
+}
+
+.unit-inspect-float__inner .terrain-legend.terrain-legend--inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.55rem;
+  margin-top: 0.3rem;
+  padding-top: 0.3rem;
+}
+
+.unit-inspect-float__inner .terrain-legend--inline .terrain-legend-title {
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.unit-inspect-float__inner .terrain-legend--inline .terrain-legend-row {
+  display: contents;
+}
+
 
 .outcome-flash-layer {
   position: absolute;
@@ -464,6 +698,112 @@ a:hover {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 0.75rem 0.85rem;
+}
+
+/* 武将信息：dt/dd 横向流动，多列换行，压低竖直高度 */
+.unit-inspect-dl.unit-inspect-dl--horizontal {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  font-size: 0.74rem;
+  line-height: 1.28;
+}
+
+.unit-inspect-dl.unit-inspect-dl--horizontal .unit-inspect-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.12rem 0.45rem;
+  row-gap: 0.15rem;
+  padding-bottom: 0.22rem;
+  border-bottom: 1px solid rgba(61, 79, 102, 0.45);
+}
+
+.unit-inspect-dl.unit-inspect-dl--horizontal .unit-inspect-row:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.unit-inspect-dl.unit-inspect-dl--horizontal dt {
+  flex: 0 0 auto;
+  margin: 0;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.unit-inspect-dl.unit-inspect-dl--horizontal dt::after {
+  content: '：';
+}
+
+.unit-inspect-dl.unit-inspect-dl--horizontal dd {
+  flex: 0 1 auto;
+  margin: 0;
+  margin-right: 0.4rem;
+  color: var(--text);
+  min-width: 0;
+}
+
+.unit-inspect-dl.unit-inspect-dl--horizontal .unit-inspect-portrait {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+}
+
+.unit-inspect-dd--with-meter {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.2rem;
+  min-width: 5.5rem;
+  max-width: 12rem;
+}
+
+.unit-inspect-meter-label {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.unit-inspect-meter {
+  width: 100%;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.unit-inspect-meter__fill {
+  height: 100%;
+  min-width: 0;
+  border-radius: 2px;
+  transition: width 0.22s ease;
+}
+
+.unit-inspect-meter__fill--hp-player {
+  background: linear-gradient(180deg, #86efac 0%, #22c55e 45%, #15803d 100%);
+}
+
+.unit-inspect-meter__fill--hp-enemy {
+  background: linear-gradient(180deg, #fecaca 0%, #f87171 42%, #b91c1c 100%);
+}
+
+.unit-inspect-meter__fill--exp {
+  background: linear-gradient(180deg, #fde68a 0%, #eab308 42%, #a16207 100%);
+}
+
+.terrain-legend--inline {
+  margin-top: 0.5rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--border);
+}
+
+.meta-sidebar-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--gold-dim);
+  letter-spacing: 0.04em;
 }
 
 .save-list--compact {
@@ -546,6 +886,11 @@ a:hover {
   color: var(--text);
 }
 
+.unit-inspect-portrait {
+  display: flex;
+  align-items: center;
+}
+
 .terrain-bonus-tag {
   color: #86efac;
   font-size: 0.82em;
@@ -554,13 +899,164 @@ a:hover {
 }
 
 .battle-wrap {
-  overflow-x: auto;
-  overflow-y: visible;
+  overflow: auto;
+  max-height: min(78vh, 920px);
   border-radius: 10px;
   border: 1px solid var(--border);
   background: #0a0e14;
   padding: 0.75rem;
   position: relative;
+}
+
+.battle-wrap.battle-wrap--fit {
+  overflow: hidden;
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+/* 从单位列表定位到格子时的短暂高亮 */
+.battle-slot--roster-pulse {
+  z-index: 25;
+  animation: battle-roster-pulse 1.8s ease-out forwards;
+}
+
+@keyframes battle-roster-pulse {
+  0% {
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  15% {
+    filter: drop-shadow(0 0 10px rgba(250, 204, 21, 0.95))
+      drop-shadow(0 0 18px rgba(234, 179, 8, 0.65));
+  }
+  100% {
+    filter: drop-shadow(0 0 0 transparent);
+  }
+}
+
+.battle-back-home {
+  display: block;
+  text-align: center;
+  padding: 0.5rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, #1e2838 0%, #161d28 100%);
+  color: var(--gold);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.battle-back-home:hover {
+  border-color: var(--gold-dim);
+  color: #fef3c7;
+}
+
+.battle-roster {
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  padding: 0.5rem 0.55rem 0.55rem;
+}
+
+.battle-roster__title {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--gold-dim);
+  letter-spacing: 0.06em;
+}
+
+.battle-roster__cols {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.45rem;
+}
+
+@media (max-width: 900px) {
+  .battle-roster__cols {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .battle-roster__cols {
+    grid-template-columns: 1fr;
+  }
+}
+
+.battle-roster__col h4 {
+  margin: 0 0 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.battle-roster__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: min(11rem, 28vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+@media (min-width: 901px) {
+  .battle-roster__list {
+    max-height: min(62vh, 520px);
+  }
+}
+
+.battle-roster__item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  font-size: 0.76rem;
+  padding: 0.28rem 0.35rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: #161d28;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.battle-roster__item:hover {
+  border-color: var(--gold-dim);
+  background: #1a2432;
+}
+
+.battle-roster__item.is-inspected {
+  border-color: rgba(250, 204, 21, 0.45);
+  background: rgba(250, 204, 21, 0.08);
+}
+
+.battle-roster__item-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.06rem;
+  line-height: 1.2;
+}
+
+.battle-roster__item-name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.battle-roster__item-sub {
+  font-size: 0.68rem;
+  color: var(--text-muted);
 }
 
 /* 回合开场字幕结束前拦截战场点击（须低于 .turn-phase-banner-root 的 z-index） */
@@ -650,6 +1146,22 @@ a:hover {
 .battle-scene .battle-grid {
   z-index: 1;
   position: relative;
+}
+
+.battle-scene.battle-scene--fit {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.battle-scene--fit .battle-grid {
+  margin-top: 0;
+  margin-bottom: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1214,4 +1726,153 @@ a:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 秘籍将领图鉴 Ctrl+Shift+J */
+.general-codex-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(6, 10, 16, 0.78);
+  backdrop-filter: blur(4px);
+}
+
+.general-codex-panel {
+  width: min(880px, 100%);
+  max-height: min(85vh, 720px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+}
+
+.general-codex-search {
+  width: 100%;
+  margin-bottom: 0.65rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #141a24;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.88rem;
+}
+
+.general-codex-columns {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(240px, 1.2fr);
+  gap: 0.75rem;
+  min-height: 0;
+  flex: 1;
+}
+
+@media (max-width: 720px) {
+  .general-codex-columns {
+    grid-template-columns: 1fr;
+    max-height: 60vh;
+  }
+}
+
+.general-codex-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #121820;
+}
+
+.general-codex-row {
+  width: 100%;
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 0.45rem;
+  text-align: left;
+  font-family: inherit;
+  font-size: 0.82rem;
+  padding: 0.4rem 0.5rem;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.general-codex-row-avatar {
+  flex-shrink: 0;
+}
+
+.general-codex-row .general-codex-name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.general-codex-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.general-codex-row.is-active {
+  background: rgba(212, 168, 75, 0.12);
+  color: var(--gold);
+}
+
+.general-codex-name {
+  font-weight: 600;
+}
+
+.general-codex-detail {
+  overflow-y: auto;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #1a222e 0%, #141a22 100%);
+}
+
+.general-codex-detail-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.35rem;
+}
+
+.general-codex-detail-name {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--gold);
+  text-align: center;
+}
+
+.general-codex-bio {
+  margin: 0 0 0.65rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.general-codex-dl {
+  margin: 0;
+}
+
+.scenario-story {
+  margin: 0.35rem 0 0.25rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.victory-hint {
+  margin: 0 0 0.5rem;
+  line-height: 1.35;
+  color: var(--accent);
 }

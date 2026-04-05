@@ -49,6 +49,8 @@ export interface Unit {
   move: number;
   moved: boolean;
   acted: boolean;
+  /** 对应 `generals` 图鉴 id，用于战场头像；无则仅按姓名生成配色 */
+  portraitCatalogId?: string;
 }
 
 /** 我军回合开始时各将的状态，用于 Esc/右键撤销 */
@@ -76,6 +78,11 @@ export interface PickTargetState {
   targetIds: string[];
   focusIndex: number;
 }
+
+/** 胜利条件：全歼敌军，或仅歼灭若干指定敌方单位（主将等） */
+export type WinCondition =
+  | { type: "eliminate_all" }
+  | { type: "eliminate_marked_enemies"; unitIds: string[] };
 
 /** 我军/敌军沿路逐格移动中的队列（不含起点，按顺序踩格） */
 export type PendingMove = {
@@ -112,6 +119,12 @@ export interface BattleState {
    * 不应写入存档，加载后应为 null；由 GameBattle 消费后清空。
    */
   damagePulse: { unitId: string; amount: number; key: number } | null;
+  /** 本关背景提要（侧栏与图鉴式说明） */
+  scenarioBrief?: string;
+  /** 胜利条件简述（侧栏展示；实际判定见 winCondition） */
+  victoryBrief?: string;
+  /** 未写则视为全歼敌军 */
+  winCondition?: WinCondition;
 }
 
 export const LOCAL_SAVES_KEY = "sanguo_local_saves";

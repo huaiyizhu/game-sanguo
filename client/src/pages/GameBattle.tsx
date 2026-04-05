@@ -1,5 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { CSSProperties, KeyboardEvent, MouseEvent } from "react";
+import GeneralAvatar from "../components/GeneralAvatar";
 import TroopEmblem from "../components/TroopEmblem";
 import {
   canAffordTactic,
@@ -35,6 +44,8 @@ type Props = {
   onPickHoverEnemy: (enemyId: string) => void;
   /** 为 true 时屏蔽战场键盘（例如父级秘籍选关弹层打开） */
   keyboardBlocked?: boolean;
+  /** 为 true 时棋盘在容器内缩放铺满，不出现滚动条 */
+  fitViewport?: boolean;
 };
 
 const MENU_ORDER: MenuAction[] = ["attack", "tactic", "wait"];
@@ -75,7 +86,13 @@ type DyingVisual = {
 
 type KillBanner = { key: number; text: string };
 
-export default function GameBattle({
+export type GameBattleHandle = {
+  /** 滚动战场使该单位所在格进入视野，并短暂高亮；单位须存活 */
+  focusUnitOnMap: (unitId: string) => boolean;
+};
+
+const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
+  {
   battle,
   visualEpoch,
   turnIntroLocked,
@@ -90,7 +107,10 @@ export default function GameBattle({
   onPickConfirmFocused,
   onPickHoverEnemy,
   keyboardBlocked = false,
-}: Props) {
+  fitViewport = false,
+  }: Props,
+  ref
+) {
   const {
     gridW,
     gridH,
@@ -104,6 +124,78 @@ export default function GameBattle({
     terrain,
     pendingMove,
   } = battle;
+  const cellCss = useMemo(() => {
+    const maxPx = 68;
+    return `min(${maxPx}px, max(26px, calc((min(96vw, 1240px) - 280px) / ${gridW})))`;
+  }, [gridW]);
+  const [fitCellPx, setFitCellPx] = useState(0);
+  const fitSceneRef = useRef<HTMLDivElement>(null);
+  const cellCssEffective = useMemo(() => {
+    if (fitViewport) return fitCellPx > 0 ? `${fitCellPx}px` : "24px";
+    return cellCss;
+  }, [fitViewport, fitCellPx, cellCss]);
+  const battleWrapRef = useRef<HTMLDivElement>(null);
+  const battleSnapRef = useRef(battle);
+  battleSnapRef.current = battle;
+  const [rosterPulse, setRosterPulse] = useState<{ x: number; y: number } | null>(null);
+  const rosterPulseTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    focusUnitOnMap(unitId: string) {
+      const u = battleSnapRef.current.units.find((z) => z.id === unitId && z.hp > 0);
+      if (!u) return false;
+      if (rosterPulseTimerRef.current) {
+        window.clearTimeout(rosterPulseTimerRef.current);
+        rosterPulseTimerRef.current = null;
+      }
+      setRosterPulse({ x: u.x, y: u.y });
+      rosterPulseTimerRef.current = window.setTimeout(() => {
+        setRosterPulse(null);
+        rosterPulseTimerRef.current = null;
+      }, 2000);
+      if (!fitViewport) {
+        requestAnimationFrame(() => {
+          const wrap = battleWrapRef.current;
+          const cell = wrap?.querySelector(`[data-battle-cell="${u.x},${u.y}"]`);
+          cell?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+        });
+      }
+      return true;
+    },
+  }), [fitViewport]);
+
+  useEffect(() => {
+    return () => {
+      if (rosterPulseTimerRef.current) {
+        window.clearTimeout(rosterPulseTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!fitViewport) {
+      setFitCellPx(0);
+      return;
+    }
+    const el = fitSceneRef.current;
+    if (!el) return;
+    const gap = 3;
+    const measure = () => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (w < 8 || h < 8) return;
+      const cw = (w - gap * (gridW - 1)) / gridW;
+      const ch = (h - gap * (gridH - 1)) / gridH;
+      const raw = Math.min(cw, ch);
+      const next = Math.max(20, Math.min(68, Math.floor(raw)));
+      setFitCellPx((prev) => (prev === next ? prev : next));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [fitViewport, gridW, gridH]);
+
   const moveSet = new Set(moveTargets.map((t) => `${t.x},${t.y}`));
   const [menuFocus, setMenuFocus] = useState(0);
   const [tacticFocus, setTacticFocus] = useState(0);
@@ -551,7 +643,8 @@ export default function GameBattle({
 
   return (
     <div
-      className="battle-wrap"
+      ref={battleWrapRef}
+      className={["battle-wrap", fitViewport ? "battle-wrap--fit" : ""].filter(Boolean).join(" ")}
       role="application"
       aria-label="battlefield"
       onContextMenu={onContextMenu}
@@ -580,16 +673,22 @@ export default function GameBattle({
           ))}
         </div>
       )}
-      <div className="battle-scene">
+      <div
+        ref={fitSceneRef}
+        className={["battle-scene", fitViewport ? "battle-scene--fit" : ""].filter(Boolean).join(" ")}
+      >
         <div className="battle-scene__ground" aria-hidden />
         <div
           className={["battle-grid", showMoveRange ? "battle-grid--move-preview" : ""]
             .filter(Boolean)
             .join(" ")}
-          style={{
-            gridTemplateColumns: `repeat(${gridW}, var(--cell))`,
-            gridTemplateRows: `repeat(${gridH}, var(--cell))`,
-          }}
+          style={
+            {
+              ["--cell" as string]: cellCssEffective,
+              gridTemplateColumns: `repeat(${gridW}, var(--cell))`,
+              gridTemplateRows: `repeat(${gridH}, var(--cell))`,
+            } as CSSProperties
+          }
         >
         {cells.map(({ x, y }) => {
           const u = byPos.get(`${x},${y}`);
@@ -638,14 +737,19 @@ export default function GameBattle({
 
           const deathHere = dyingVisuals.find((d) => d.x === x && d.y === y);
 
+          const rosterPulseHere =
+            rosterPulse !== null && rosterPulse.x === x && rosterPulse.y === y;
+
           return (
             <div
               key={`${x}-${y}`}
+              data-battle-cell={`${x},${y}`}
               className={[
                 "battle-slot",
                 showMenu || showTacticMenu ? "battle-slot--menu-open" : "",
                 pickCand ? "battle-slot--pick-candidate" : "",
                 pickFocus ? "battle-slot--pick-focus" : "",
+                rosterPulseHere ? "battle-slot--roster-pulse" : "",
               ]
                 .filter(Boolean)
                 .join(" ")}
@@ -676,12 +780,17 @@ export default function GameBattle({
                     ].join(" ")}
                   >
                     <div className="unit-standee__hud unit-standee__hud--ghost">
-                      <span className="unit-standee__name">{deathHere.name}</span>
-                      <span className="unit-standee__tags">
-                        {TROOP_KIND_LABEL[deathHere.troopKind]} · Lv.{deathHere.level}
-                      </span>
-                      <div className="unit-standee__hpbar" aria-hidden>
-                        <div className="unit-standee__hpfill" style={{ width: "0%" }} />
+                      <div className="unit-standee__hud-row">
+                        <GeneralAvatar name={deathHere.name} variant="standee" />
+                        <div className="unit-standee__hud-main">
+                          <span className="unit-standee__name">{deathHere.name}</span>
+                          <span className="unit-standee__tags">
+                            {TROOP_KIND_LABEL[deathHere.troopKind]} · Lv.{deathHere.level}
+                          </span>
+                          <div className="unit-standee__hpbar" aria-hidden>
+                            <div className="unit-standee__hpfill" style={{ width: "0%" }} />
+                          </div>
+                        </div>
                       </div>
                     </div>
                     <div
@@ -715,17 +824,26 @@ export default function GameBattle({
                   }
                 >
                   <div className="unit-standee__hud">
-                    <span className="unit-standee__name">{u.name}</span>
-                    <span className="unit-standee__tags">
-                      {TROOP_KIND_LABEL[u.troopKind]} · Lv.{u.level}
-                    </span>
-                    <div className="unit-standee__hpbar" aria-hidden>
-                      <div
-                        className="unit-standee__hpfill"
-                        style={{
-                          width: `${Math.max(0, Math.min(100, (u.hp / Math.max(1, u.maxHp)) * 100))}%`,
-                        }}
+                    <div className="unit-standee__hud-row">
+                      <GeneralAvatar
+                        name={u.name}
+                        catalogId={u.portraitCatalogId}
+                        variant="standee"
                       />
+                      <div className="unit-standee__hud-main">
+                        <span className="unit-standee__name">{u.name}</span>
+                        <span className="unit-standee__tags">
+                          {TROOP_KIND_LABEL[u.troopKind]} · Lv.{u.level}
+                        </span>
+                        <div className="unit-standee__hpbar" aria-hidden>
+                          <div
+                            className="unit-standee__hpfill"
+                            style={{
+                              width: `${Math.max(0, Math.min(100, (u.hp / Math.max(1, u.maxHp)) * 100))}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                   <div
@@ -901,4 +1019,6 @@ export default function GameBattle({
       </div>
     </div>
   );
-}
+});
+
+export default GameBattle;

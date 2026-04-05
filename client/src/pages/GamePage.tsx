@@ -32,12 +32,14 @@ import {
   tacticMenuChoose,
   waitAfterMove,
 } from "../game/battle";
+import { listGeneralsSorted } from "../game/generals";
 import { listScenarioEntries } from "../game/scenarios";
-import type { BattleState, Terrain } from "../game/types";
+import type { BattleState, Terrain, Unit } from "../game/types";
 import {
   ARMY_TYPE_LABEL,
   expToNextLevel,
   isArmyPreferredTerrain,
+  tacticMaxForUnit,
   TERRAIN_LABEL,
   TROOP_KIND_LABEL,
   type TacticKind,
@@ -51,7 +53,8 @@ const TERRAIN_LEGEND: { id: Terrain; ch: string }[] = [
   { id: "desert", ch: "沙" },
 ];
 import { LOCAL_SAVES_KEY } from "../game/types";
-import GameBattle, { type MenuAction } from "./GameBattle";
+import GeneralAvatar from "../components/GeneralAvatar";
+import GameBattle, { type GameBattleHandle, type MenuAction } from "./GameBattle";
 
 /** 敌军每名单位行动之间的间隔（毫秒）；队列中第一名立即行动 */
 const ENEMY_ACTION_GAP_MS = 2000;
@@ -60,7 +63,11 @@ const ENEMY_ACTION_GAP_MS = 2000;
 const CHEAT_STAGE_PICKER_COMBO = (e: KeyboardEvent) =>
   e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.code === "KeyK";
 
+const CHEAT_GENERAL_CODEX_COMBO = (e: KeyboardEvent) =>
+  e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.code === "KeyJ";
+
 const SCENARIO_PICKER_ENTRIES = listScenarioEntries();
+const GENERALS_CODEX_LIST = listGeneralsSorted();
 
 function isTypingTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -148,6 +155,10 @@ function applyTerminalOutcomeTransition(
   return b;
 }
 
+function ratioPercent(value: number, cap: number): number {
+  return Math.max(0, Math.min(100, (value / Math.max(1, cap)) * 100));
+}
+
 export default function GamePage() {
   const { user, token } = useAuth();
   const [battle, setBattle] = useState<BattleState>(() => createInitialBattle());
@@ -165,8 +176,13 @@ export default function GamePage() {
       return false;
     }
   });
+  const [rosterExpanded, setRosterExpanded] = useState(true);
+  const [unitInspectExpanded, setUnitInspectExpanded] = useState(true);
   const [turnIntroLocked, setTurnIntroLocked] = useState(true);
   const [stagePickerOpen, setStagePickerOpen] = useState(false);
+  const [generalCodexOpen, setGeneralCodexOpen] = useState(false);
+  const [generalCodexQuery, setGeneralCodexQuery] = useState("");
+  const [generalCodexPickId, setGeneralCodexPickId] = useState<string | null>(null);
   const turnIntroLockedRef = useRef(true);
   turnIntroLockedRef.current = turnIntroLocked;
   const onTurnActionReady = useCallback((ready: boolean) => {
@@ -224,20 +240,37 @@ export default function GamePage() {
         return;
       }
 
-      if (stagePickerOpen && e.key === "Escape") {
+      if (CHEAT_GENERAL_CODEX_COMBO(e)) {
         e.preventDefault();
         e.stopImmediatePropagation();
-        setStagePickerOpen(false);
+        setGeneralCodexOpen((open) => !open);
+        return;
+      }
+
+      if (e.key === "Escape") {
+        if (generalCodexOpen) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          setGeneralCodexOpen(false);
+          setGeneralCodexPickId(null);
+          return;
+        }
+        if (stagePickerOpen) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          setStagePickerOpen(false);
+        }
       }
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [stagePickerOpen]);
+  }, [stagePickerOpen, generalCodexOpen]);
 
   const jumpToScenario = useCallback(
     (scenarioId: string, title: string) => {
       setBattle(createBattleForScenario(scenarioId));
       setStagePickerOpen(false);
+      setGeneralCodexOpen(false);
       setInspectUnitId(null);
       setMessage(`秘籍：已进入「${title}」`);
       bumpVisualEpoch();
@@ -247,6 +280,8 @@ export default function GamePage() {
 
   const battleRef = useRef(battle);
   battleRef.current = battle;
+
+  const gameBattleRef = useRef<GameBattleHandle>(null);
 
   const outcomeScheduledRef = useRef(false);
   const tabWasHiddenRef = useRef(false);
@@ -516,8 +551,52 @@ export default function GamePage() {
     return isArmyPreferredTerrain(inspectedUnit.armyType, t);
   }, [battle.terrain, inspectedUnit]);
 
+  const generalCodexFiltered = useMemo(() => {
+    const raw = generalCodexQuery.trim();
+    if (!raw) return GENERALS_CODEX_LIST;
+    const low = raw.toLowerCase();
+    return GENERALS_CODEX_LIST.filter(
+      (g) =>
+        g.name.includes(raw) || g.id.toLowerCase().includes(low) || g.faction.includes(raw)
+    );
+  }, [generalCodexQuery]);
+
+  const generalCodexSelected = useMemo(() => {
+    if (!generalCodexPickId) return null;
+    return GENERALS_CODEX_LIST.find((g) => g.id === generalCodexPickId) ?? null;
+  }, [generalCodexPickId]);
+
+  const rosterPlayers = useMemo(() => {
+    const alive = battle.units.filter((u) => u.side === "player" && u.hp > 0);
+    const order = ["p1", "p2", "p3"];
+    return [...alive].sort((a, b) => {
+      const ia = order.indexOf(a.id);
+      const ib = order.indexOf(b.id);
+      if (ia >= 0 && ib >= 0) return ia - ib;
+      if (ia >= 0) return -1;
+      if (ib >= 0) return 1;
+      return a.name.localeCompare(b.name, "zh-Hans-CN");
+    });
+  }, [battle.units]);
+
+  const rosterEnemies = useMemo(() => {
+    return battle.units
+      .filter((u) => u.side === "enemy" && u.hp > 0)
+      .sort(
+        (a, b) =>
+          a.y - b.y || a.x - b.x || a.name.localeCompare(b.name, "zh-Hans-CN")
+      );
+  }, [battle.units]);
+
+  const onRosterPickUnit = useCallback((u: Unit) => {
+    setInspectUnitId(u.id);
+    requestAnimationFrame(() => {
+      gameBattleRef.current?.focusUnitOnMap(u.id);
+    });
+  }, []);
+
   return (
-    <div className="page game-layout">
+    <div className="page game-layout game-layout--battle">
       {stagePickerOpen && (
         <div
           className="stage-picker-overlay"
@@ -554,87 +633,97 @@ export default function GamePage() {
           </div>
         </div>
       )}
-      <div className="game-left-stack">
-        <aside className="unit-inspect" aria-label="武将信息">
-          <h3>武将信息</h3>
-          {!inspectedUnit && (
-            <p className="muted small">点击场上武将查看等级、防御、兵力与计策值。</p>
-          )}
-          {inspectedUnit && (
-            <dl className="unit-inspect-dl">
-              <dt>姓名</dt>
-              <dd>{inspectedUnit.name}</dd>
-              <dt>阵营</dt>
-              <dd>{inspectedUnit.side === "player" ? "我军" : "敌军"}</dd>
-              <dt>等级</dt>
-              <dd>Lv.{inspectedUnit.level}</dd>
-              {inspectedUnit.side === "player" && (
-                <>
-                  <dt>经验</dt>
-                  <dd>
-                    {inspectedUnit.exp} / {expToNextLevel(inspectedUnit.level)}
-                  </dd>
-                </>
-              )}
-              <dt>兵力</dt>
-              <dd>
-                {inspectedUnit.hp} / {inspectedUnit.maxHp}
-              </dd>
-              <dt>兵种</dt>
-              <dd>{ARMY_TYPE_LABEL[inspectedUnit.armyType]}</dd>
-              <dt>将领种类</dt>
-              <dd>
-                {TROOP_KIND_LABEL[inspectedUnit.troopKind]}
-                {inspectedUnit.troopKind === "archer" && "（普攻射程 2 格）"}
-              </dd>
-              <dt>移动力</dt>
-              <dd>{inspectedUnit.move}</dd>
-              <dt>武力</dt>
-              <dd>{inspectedUnit.might}</dd>
-              <dt>防御</dt>
-              <dd>{inspectedUnit.defense}</dd>
-              <dt>智力</dt>
-              <dd>{inspectedUnit.intel}</dd>
-              {inspectedUnit.side === "player" && (
-                <>
-                  <dt>计策值</dt>
-                  <dd>
-                    {inspectedUnit.tacticPoints} / {inspectedUnit.tacticMax}
-                  </dd>
-                </>
-              )}
-                {inspectedTerrain && (
+      {generalCodexOpen && (
+        <div
+          className="general-codex-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="general-codex-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setGeneralCodexOpen(false);
+              setGeneralCodexPickId(null);
+            }
+          }}
+        >
+          <div className="general-codex-panel" onMouseDown={(e) => e.stopPropagation()}>
+            <h2 id="general-codex-title" className="stage-picker-title">
+              秘籍 · 将领图鉴（{GENERALS_CODEX_LIST.length}）
+            </h2>
+            <p className="stage-picker-hint muted small">
+              <kbd className="kbd-chip">Ctrl</kbd>+<kbd className="kbd-chip">Shift</kbd>+
+              <kbd className="kbd-chip">J</kbd> 关闭 · <kbd className="kbd-chip">Esc</kbd> 关闭
+            </p>
+            <input
+              type="search"
+              className="general-codex-search"
+              placeholder="按姓名、势力或 id 筛选…"
+              value={generalCodexQuery}
+              onChange={(e) => setGeneralCodexQuery(e.target.value)}
+              aria-label="筛选将领"
+            />
+            <div className="general-codex-columns">
+              <ul className="general-codex-list">
+                {generalCodexFiltered.map((g) => (
+                  <li key={g.id}>
+                    <button
+                      type="button"
+                      className={
+                        generalCodexPickId === g.id ? "general-codex-row is-active" : "general-codex-row"
+                      }
+                      onClick={() => setGeneralCodexPickId(g.id)}
+                    >
+                      <GeneralAvatar name={g.name} catalogId={g.id} size={32} className="general-codex-row-avatar" />
+                      <span className="general-codex-name">{g.name}</span>
+                      <span className="muted small">{g.faction}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="general-codex-detail">
+                {!generalCodexSelected && (
+                  <p className="muted small">点击左侧将领查看演义列传与图鉴基准属性（非本关场内实时数值）。</p>
+                )}
+                {generalCodexSelected && (
                   <>
-                    <dt>脚下地形</dt>
-                    <dd>
-                      {inspectedTerrain}
-                      {inspectedOnPreferredTerrain && (
-                        <span className="terrain-bonus-tag"> 兵种优势（攻防↑）</span>
-                      )}
-                    </dd>
+                    <div className="general-codex-detail-head">
+                      <GeneralAvatar name={generalCodexSelected.name} catalogId={generalCodexSelected.id} size={72} />
+                      <h3 className="general-codex-detail-name">{generalCodexSelected.name}</h3>
+                    </div>
+                    <p className="general-codex-bio">{generalCodexSelected.bio}</p>
+                    <dl className="unit-inspect-dl general-codex-dl">
+                      <dt>势力</dt>
+                      <dd>{generalCodexSelected.faction}</dd>
+                      <dt>图鉴等级</dt>
+                      <dd>Lv.{generalCodexSelected.refLevel}</dd>
+                      <dt>兵种</dt>
+                      <dd>{ARMY_TYPE_LABEL[generalCodexSelected.armyType]}</dd>
+                      <dt>将领种类</dt>
+                      <dd>{TROOP_KIND_LABEL[generalCodexSelected.troopKind]}</dd>
+                      <dt>兵力（基准）</dt>
+                      <dd>{generalCodexSelected.maxHp}</dd>
+                      <dt>武力</dt>
+                      <dd>{generalCodexSelected.might}</dd>
+                      <dt>智力</dt>
+                      <dd>{generalCodexSelected.intel}</dd>
+                      <dt>防御</dt>
+                      <dd>{generalCodexSelected.defense}</dd>
+                      <dt>计策上限（按图鉴等级推算）</dt>
+                      <dd>{tacticMaxForUnit(generalCodexSelected.intel, generalCodexSelected.refLevel)}</dd>
+                      <dt>内部 id</dt>
+                      <dd className="muted small">{generalCodexSelected.id}</dd>
+                    </dl>
                   </>
                 )}
-            </dl>
-          )}
-          <div className="terrain-legend">
-            <p className="terrain-legend-title">战场地形</p>
-            <div className="terrain-legend-row">
-              {TERRAIN_LEGEND.map(({ id, ch }) => (
-                <span key={id} className="terrain-legend-item">
-                  <span
-                    className={`terrain-legend-swatch ${id}`}
-                    title={TERRAIN_LABEL[id]}
-                    aria-hidden
-                  >
-                    {ch}
-                  </span>
-                  <span>{TERRAIN_LABEL[id]}</span>
-                </span>
-              ))}
+              </div>
             </div>
           </div>
-        </aside>
-
+        </div>
+      )}
+      <div className="game-left-stack">
+        <Link to="/" className="battle-back-home battle-back-home--sidebar">
+          ← 返回首页
+        </Link>
         {metaSidebarCollapsed ? (
           <button
             type="button"
@@ -646,9 +735,7 @@ export default function GamePage() {
         ) : (
           <aside className="game-meta-sidebar" aria-label="战局与存档">
             <div className="meta-sidebar-header">
-              <Link to="/" className="back-link">
-                ← 返回首页
-              </Link>
+              <span className="meta-sidebar-title">战局与存档</span>
               <button
                 type="button"
                 className="btn-collapse-sidebar"
@@ -663,6 +750,15 @@ export default function GamePage() {
               <br />
               <span className="status-inline">{statusLine}</span>
             </p>
+            {battle.scenarioBrief ? (
+              <p className="scenario-story small">{battle.scenarioBrief}</p>
+            ) : null}
+            {battle.victoryBrief ? (
+              <p className="victory-hint small">
+                <strong>胜利条件：</strong>
+                {battle.victoryBrief}
+              </p>
+            ) : null}
             {message && <p className="toast-msg">{message}</p>}
             <div className="sidebar-actions">
               <button type="button" className="btn" onClick={onNewGame}>
@@ -752,9 +848,82 @@ export default function GamePage() {
             </details>
           </aside>
         )}
+        <details
+          className="sidebar-disclosure battle-roster-disclosure"
+          open={rosterExpanded}
+          onToggle={(e) => setRosterExpanded(e.currentTarget.open)}
+        >
+          <summary>战场单位 · 点击定位</summary>
+          <aside className="battle-roster battle-roster--in-sidebar" aria-label="战场单位列表">
+            <div className="battle-roster__cols">
+              <div className="battle-roster__col">
+                <h4>我军 ({rosterPlayers.length})</h4>
+                <ul className="battle-roster__list">
+                  {rosterPlayers.map((u) => (
+                    <li key={u.id}>
+                      <button
+                        type="button"
+                        className={[
+                          "battle-roster__item",
+                          inspectUnitId === u.id ? "is-inspected" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        onClick={() => onRosterPickUnit(u)}
+                      >
+                        <GeneralAvatar
+                          name={u.name}
+                          catalogId={u.portraitCatalogId}
+                          size={28}
+                        />
+                        <span className="battle-roster__item-meta">
+                          <span className="battle-roster__item-name">{u.name}</span>
+                          <span className="battle-roster__item-sub">
+                            {u.hp}/{u.maxHp} · ({u.x + 1},{u.y + 1})
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="battle-roster__col">
+                <h4>敌军 ({rosterEnemies.length})</h4>
+                <ul className="battle-roster__list">
+                  {rosterEnemies.map((u) => (
+                    <li key={u.id}>
+                      <button
+                        type="button"
+                        className={[
+                          "battle-roster__item",
+                          inspectUnitId === u.id ? "is-inspected" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        onClick={() => onRosterPickUnit(u)}
+                      >
+                        <GeneralAvatar
+                          name={u.name}
+                          catalogId={u.portraitCatalogId}
+                          size={28}
+                        />
+                        <span className="battle-roster__item-meta">
+                          <span className="battle-roster__item-name">{u.name}</span>
+                          <span className="battle-roster__item-sub">
+                            Lv.{u.level} · {u.hp}/{u.maxHp} · ({u.x + 1},{u.y + 1})
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </aside>
+        </details>
       </div>
 
-      <main className="game-main">
+      <main className="game-main game-main--battle">
         {(battle.outcome === "won" || battle.outcome === "lost") && (
           <div className="outcome-flash-layer" role="alert" aria-live="assertive">
             <p className={`outcome-flash-text outcome-flash-text--${battle.outcome}`}>
@@ -762,22 +931,175 @@ export default function GamePage() {
             </p>
           </div>
         )}
-        <GameBattle
-          battle={battle}
-          visualEpoch={visualEpoch}
-          turnIntroLocked={turnIntroLocked}
-          keyboardBlocked={stagePickerOpen}
-          onTurnActionReady={onTurnActionReady}
-          onDamagePulseConsumed={onDamagePulseConsumed}
-          onCellClick={onCellClick}
-          onUnitClick={onUnitClick}
-          onMenuAction={onMenuAction}
-          onTacticPick={onTacticPick}
-          onEscapeOrRevert={onEscapeOrRevert}
-          onPickNavigate={onPickNavigate}
-          onPickConfirmFocused={onPickConfirmFocused}
-          onPickHoverEnemy={onPickHoverEnemy}
-        />
+        <div className="battle-play-area">
+          <details
+            className="unit-inspect-float"
+            open={unitInspectExpanded}
+            onToggle={(e) => setUnitInspectExpanded(e.currentTarget.open)}
+          >
+            <summary className="unit-inspect-float__summary">武将信息</summary>
+            <div className="unit-inspect unit-inspect-float__inner" aria-label="武将信息详情">
+              {!inspectedUnit && (
+                <p className="muted small">点击场上武将或左侧列表查看详情。</p>
+              )}
+              {inspectedUnit && (
+                <dl className="unit-inspect-dl unit-inspect-dl--horizontal">
+                  <div className="unit-inspect-row unit-inspect-row--identity">
+                    <dt>头像</dt>
+                    <dd className="unit-inspect-portrait">
+                      <GeneralAvatar
+                        name={inspectedUnit.name}
+                        catalogId={inspectedUnit.portraitCatalogId}
+                        size={44}
+                        title={inspectedUnit.name}
+                      />
+                    </dd>
+                    <dt>姓名</dt>
+                    <dd>{inspectedUnit.name}</dd>
+                    <dt>阵营</dt>
+                    <dd>{inspectedUnit.side === "player" ? "我军" : "敌军"}</dd>
+                  </div>
+                  <div className="unit-inspect-row unit-inspect-row--class">
+                    <dt>等级</dt>
+                    <dd>Lv.{inspectedUnit.level}</dd>
+                    {inspectedUnit.side === "player" && (
+                      <>
+                        <dt>经验</dt>
+                        <dd className="unit-inspect-dd--with-meter">
+                          {(() => {
+                            const expCap = expToNextLevel(inspectedUnit.level);
+                            const expPct = ratioPercent(inspectedUnit.exp, expCap);
+                            return (
+                              <>
+                                <span className="unit-inspect-meter-label">
+                                  {inspectedUnit.exp} / {expCap}
+                                </span>
+                                <div
+                                  className="unit-inspect-meter"
+                                  role="progressbar"
+                                  aria-valuemin={0}
+                                  aria-valuemax={100}
+                                  aria-valuenow={Math.round(expPct)}
+                                  aria-label="经验进度"
+                                >
+                                  <div
+                                    className="unit-inspect-meter__fill unit-inspect-meter__fill--exp"
+                                    style={{ width: `${expPct}%` }}
+                                  />
+                                </div>
+                              </>
+                            );
+                          })()}
+                        </dd>
+                      </>
+                    )}
+                    <dt>兵种</dt>
+                    <dd>{ARMY_TYPE_LABEL[inspectedUnit.armyType]}</dd>
+                    <dt>将领种类</dt>
+                    <dd>
+                      {TROOP_KIND_LABEL[inspectedUnit.troopKind]}
+                      {inspectedUnit.troopKind === "archer" && "（普攻射程 2 格）"}
+                    </dd>
+                    <dt>移动力</dt>
+                    <dd>{inspectedUnit.move}</dd>
+                    <dt>兵力</dt>
+                    <dd className="unit-inspect-dd--with-meter">
+                      <span className="unit-inspect-meter-label">
+                        {inspectedUnit.hp} / {inspectedUnit.maxHp}
+                      </span>
+                      <div
+                        className="unit-inspect-meter"
+                        role="progressbar"
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={Math.round(
+                          ratioPercent(inspectedUnit.hp, inspectedUnit.maxHp)
+                        )}
+                        aria-label="兵力"
+                      >
+                        <div
+                          className={[
+                            "unit-inspect-meter__fill",
+                            inspectedUnit.side === "player"
+                              ? "unit-inspect-meter__fill--hp-player"
+                              : "unit-inspect-meter__fill--hp-enemy",
+                          ].join(" ")}
+                          style={{
+                            width: `${ratioPercent(inspectedUnit.hp, inspectedUnit.maxHp)}%`,
+                          }}
+                        />
+                      </div>
+                    </dd>
+                  </div>
+                  <div className="unit-inspect-row unit-inspect-row--attrs">
+                    <dt>武力</dt>
+                    <dd>{inspectedUnit.might}</dd>
+                    <dt>防御</dt>
+                    <dd>{inspectedUnit.defense}</dd>
+                    <dt>智力</dt>
+                    <dd>{inspectedUnit.intel}</dd>
+                    {inspectedUnit.side === "player" && (
+                      <>
+                        <dt>计策值</dt>
+                        <dd>
+                          {inspectedUnit.tacticPoints} / {inspectedUnit.tacticMax}
+                        </dd>
+                      </>
+                    )}
+                  </div>
+                  {inspectedTerrain && (
+                    <div className="unit-inspect-row unit-inspect-row--terrain">
+                      <dt>脚下地形</dt>
+                      <dd>
+                        {inspectedTerrain}
+                        {inspectedOnPreferredTerrain && (
+                          <span className="terrain-bonus-tag"> 兵种优势（攻防↑）</span>
+                        )}
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+              )}
+              <div className="terrain-legend terrain-legend--inline">
+                <p className="terrain-legend-title">战场地形</p>
+                <div className="terrain-legend-row">
+                  {TERRAIN_LEGEND.map(({ id, ch }) => (
+                    <span key={id} className="terrain-legend-item">
+                      <span
+                        className={`terrain-legend-swatch ${id}`}
+                        title={TERRAIN_LABEL[id]}
+                        aria-hidden
+                      >
+                        {ch}
+                      </span>
+                      <span>{TERRAIN_LABEL[id]}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </details>
+          <div className="battle-map-viewport">
+            <GameBattle
+              ref={gameBattleRef}
+              battle={battle}
+              visualEpoch={visualEpoch}
+              turnIntroLocked={turnIntroLocked}
+              keyboardBlocked={stagePickerOpen || generalCodexOpen}
+              fitViewport
+              onTurnActionReady={onTurnActionReady}
+              onDamagePulseConsumed={onDamagePulseConsumed}
+              onCellClick={onCellClick}
+              onUnitClick={onUnitClick}
+              onMenuAction={onMenuAction}
+              onTacticPick={onTacticPick}
+              onEscapeOrRevert={onEscapeOrRevert}
+              onPickNavigate={onPickNavigate}
+              onPickConfirmFocused={onPickConfirmFocused}
+              onPickHoverEnemy={onPickHoverEnemy}
+            />
+          </div>
+        </div>
         <div className="battle-log">
           <h3>战报</h3>
           <ol reversed>
