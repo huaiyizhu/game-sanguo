@@ -1,0 +1,185 @@
+/* 进入游戏前：卷轴展开 + 乱世序章 */
+
+.game-intro {
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
+  padding: clamp(1.25rem, 5vmin, 2.75rem) clamp(1rem, 4vw, 2rem);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 20%, rgba(60, 25, 15, 0.5) 0%, transparent 55%),
+    linear-gradient(180deg, #120a08 0%, #1a0f0c 45%, #0d0806 100%);
+  color: #e8dcc8;
+  box-sizing: border-box;
+}
+
+.game-intro__scroll {
+  width: 100%;
+  max-width: min(32rem, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  filter: drop-shadow(0 12px 32px rgba(0, 0, 0, 0.65));
+}
+
+.game-intro__roller {
+  height: clamp(14px, 2.5vw, 20px);
+  border-radius: 6px;
+  background: linear-gradient(
+    180deg,
+    #6b4423 0%,
+    #8b5a2b 25%,
+    #4a2c14 55%,
+    #3d2410 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 220, 180, 0.25),
+    inset 0 -2px 6px rgba(0, 0, 0, 0.45),
+    0 2px 4px rgba(0, 0, 0, 0.5);
+  position: relative;
+  z-index: 2;
+}
+
+.game-intro__roller--top {
+  margin-bottom: -2px;
+}
+
+.game-intro__roller--bot {
+  margin-top: -2px;
+}
+
+.game-intro__roller::after {
+  content: "";
+  position: absolute;
+  inset: 2px 8px;
+  border-radius: 3px;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0,
+    transparent 3px,
+    rgba(0, 0, 0, 0.12) 3px,
+    rgba(0, 0, 0, 0.12) 4px
+  );
+  pointer-events: none;
+}
+
+.game-intro__paper-outer {
+  overflow: hidden;
+  max-height: 0;
+  animation: game-intro-unroll 2.85s cubic-bezier(0.25, 0.85, 0.35, 1) 0.35s forwards;
+}
+
+.game-intro__paper {
+  padding: clamp(1.35rem, 4.5vw, 2rem) clamp(1.4rem, 5vw, 2.15rem);
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.06) 0%, transparent 8%, transparent 92%, rgba(0, 0, 0, 0.06) 100%),
+    linear-gradient(180deg, #f5e6d0 0%, #e8d4b8 40%, #dcc9a8 100%);
+  border-left: 2px solid rgba(90, 55, 30, 0.35);
+  border-right: 2px solid rgba(90, 55, 30, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.game-intro__text {
+  margin: 0;
+  font-size: clamp(1rem, 2.6vw, 1.12rem);
+  line-height: 1.9;
+  letter-spacing: 0.06em;
+  color: #2a1810;
+  text-align: justify;
+  text-justify: inter-ideograph;
+  opacity: 0;
+  transform: translate3d(0, 6px, 0);
+  animation: game-intro-text-in 1.4s ease-out 1.15s forwards;
+}
+
+.game-intro__text strong {
+  color: #5c2010;
+  font-weight: 700;
+}
+
+.game-intro__actions {
+  flex-shrink: 0;
+  margin-top: clamp(1.5rem, 4vh, 2.25rem);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+  opacity: 0;
+  animation: game-intro-text-in 0.9s ease-out 2.6s forwards;
+}
+
+.game-intro__start {
+  padding: 0.65rem 2.25rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-indent: 0.2em;
+  border: 2px solid rgba(180, 120, 40, 0.85);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #c9a050 0%, #8b6914 100%);
+  color: #1a0f08;
+  cursor: pointer;
+  font-family: inherit;
+  box-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.35),
+    0 0 24px rgba(200, 100, 30, 0.35);
+  transition:
+    transform 0.15s ease,
+    filter 0.15s ease;
+}
+
+.game-intro__start:hover {
+  transform: scale(1.03);
+  filter: brightness(1.08);
+}
+
+.game-intro__start:active {
+  transform: scale(0.98);
+}
+
+.game-intro__skip {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.82rem;
+  color: rgba(232, 220, 200, 0.55);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.game-intro__skip:hover {
+  color: rgba(232, 220, 200, 0.85);
+}
+
+@keyframes game-intro-unroll {
+  to {
+    /* 足够容纳全文：展开后纸面随内容增高，由整页滚动阅读，无嵌套滚动条 */
+    max-height: min(3200px, 500vh);
+  }
+}
+
+@keyframes game-intro-text-in {
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-intro__paper-outer {
+    animation: none;
+    max-height: none;
+  }
+
+  .game-intro__text,
+  .game-intro__actions {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}

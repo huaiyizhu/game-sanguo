@@ -1,48 +1,70 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import "./home-landing.css";
+
+const HERO_SRC = "/images/home-hero.png";
 
 export default function Home() {
   const { user, logout } = useAuth();
+  const [heroOk, setHeroOk] = useState(true);
+
   return (
-    <div className="page home">
-      <header className="hero">
-        <h1>三国英杰传</h1>
-        <p className="tagline">网页版 · 序章试玩</p>
-      </header>
-      <nav className="home-actions">
-        <Link className="btn primary" to="/game">
-          进入战场
-        </Link>
-        {user ? (
-          <>
-            <p className="user-line">
-              已登录：<strong>{user.username}</strong>
-            </p>
-            <button type="button" className="btn ghost" onClick={logout}>
-              退出登录
-            </button>
-          </>
+    <div className="home-landing">
+      <div className="home-landing__bg-wrap" aria-hidden>
+        {heroOk ? (
+          <img
+            className="home-landing__bg-img"
+            src={HERO_SRC}
+            alt=""
+            decoding="async"
+            onError={() => setHeroOk(false)}
+          />
         ) : (
-          <>
-            <Link className="btn" to="/login">
-              登录
-            </Link>
-            <Link className="btn" to="/register">
-              注册
-            </Link>
-            <p className="hint">登录后可将存档同步到服务器；未登录也可本地游玩。</p>
-          </>
+          <div className="home-landing__bg-fallback" />
         )}
-      </nav>
-      <section className="rules">
-        <h2>操作说明</h2>
-        <ul>
-          <li>回合制战棋：点击尚未行动的我军单位，蓝色格为可移动范围，再点目标格移动。</li>
-          <li>不想移动时，在移动阶段再点同一武将或脚下格子可原地打开菜单。移动后同样弹出菜单；多目标时方向键或鼠标选敌，Enter 或点击确认。</li>
-          <li>Esc 或右键：选目标时返回菜单；在菜单时撤销本武将本回合操作并恢复回合初位置与状态。</li>
-          <li>三名武将全数行动完毕后进入敌军回合。</li>
-        </ul>
-      </section>
+      </div>
+      <div className="home-landing__veil" aria-hidden />
+      <div className="home-landing__fire" aria-hidden />
+      <div className="home-landing__vigor" aria-hidden />
+      <div className="home-landing__embers" aria-hidden>
+        {Array.from({ length: 14 }, (_, i) => (
+          <span key={i} />
+        ))}
+      </div>
+
+      <main className="home-landing__main">
+        <header className="home-landing__header">
+          <h1 className="home-landing__title">三国</h1>
+          <p className="home-landing__subtitle">——铁马金戈 志吞山河——</p>
+          <p className="home-landing__war-cry">是英雄，便来战</p>
+        </header>
+
+        <nav className="home-landing__panel" aria-label="主导航">
+          <div className="home-landing__cta-row">
+            <Link className="home-landing__cta-battle" to="/prelude">
+              进入游戏
+            </Link>
+            {user ? (
+              <>
+                <p className="home-landing__user">{user.username}</p>
+                <button type="button" className="btn ghost home-landing__logout" onClick={logout}>
+                  退出登录
+                </button>
+              </>
+            ) : (
+              <div className="home-landing__cta-sub">
+                <Link className="home-landing__cta-link" to="/login">
+                  登录
+                </Link>
+                <Link className="home-landing__cta-link" to="/register">
+                  注册
+                </Link>
+              </div>
+            )}
+          </div>
+        </nav>
+      </main>
     </div>
   );
 }

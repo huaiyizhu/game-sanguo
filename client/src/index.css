@@ -58,36 +58,6 @@ a:hover {
   padding: 2rem 1.25rem;
 }
 
-.home .hero {
-  text-align: center;
-  margin-bottom: 2rem;
-}
-
-.home .hero h1 {
-  font-size: clamp(2rem, 5vw, 3rem);
-  color: var(--gold);
-  letter-spacing: 0.2em;
-  margin: 0 0 0.5rem;
-}
-
-.tagline {
-  color: var(--text-muted);
-  margin: 0;
-}
-
-.home-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 2.5rem;
-}
-
-.user-line {
-  margin: 0;
-  color: var(--text-muted);
-}
-
 .hint {
   margin: 0;
   font-size: 0.9rem;
