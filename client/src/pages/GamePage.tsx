@@ -34,7 +34,7 @@ import {
 } from "../game/battle";
 import { listGeneralsSorted } from "../game/generals";
 import { listScenarioEntries } from "../game/scenarios";
-import type { BattleState, Terrain, Unit } from "../game/types";
+import type { BattleState, Side, Terrain, Unit } from "../game/types";
 import {
   ARMY_TYPE_LABEL,
   expToNextLevel,
@@ -157,6 +157,18 @@ function applyTerminalOutcomeTransition(
 
 function ratioPercent(value: number, cap: number): number {
   return Math.max(0, Math.min(100, (value / Math.max(1, cap)) * 100));
+}
+
+function rosterItemVisualClass(u: Unit): string {
+  if (u.hp <= 0) return "battle-roster__item--dead";
+  if (u.moved && u.acted) return "battle-roster__item--done";
+  return "battle-roster__item--ready";
+}
+
+function rosterStatusTag(u: Unit, side: Side): string {
+  if (u.hp <= 0) return "阵亡";
+  if (u.moved && u.acted) return "行动完毕";
+  return side === "player" ? "待行动" : "待机";
 }
 
 export default function GamePage() {
@@ -532,10 +544,13 @@ export default function GamePage() {
     return battle.turn === "player" ? "我军回合" : "敌军行动中…";
   }, [battle.outcome, battle.turn]);
 
-  const inspectedUnit = useMemo(() => {
+  const inspectedRosterTarget = useMemo(() => {
     if (!inspectUnitId) return null;
-    return battle.units.find((u) => u.id === inspectUnitId && u.hp > 0) ?? null;
+    return battle.units.find((u) => u.id === inspectUnitId) ?? null;
   }, [battle.units, inspectUnitId]);
+
+  const inspectedUnit =
+    inspectedRosterTarget && inspectedRosterTarget.hp > 0 ? inspectedRosterTarget : null;
 
   const inspectedTerrain = useMemo(() => {
     if (!inspectedUnit) return null;
@@ -567,9 +582,12 @@ export default function GamePage() {
   }, [generalCodexPickId]);
 
   const rosterPlayers = useMemo(() => {
-    const alive = battle.units.filter((u) => u.side === "player" && u.hp > 0);
+    const all = battle.units.filter((u) => u.side === "player");
     const order = ["p1", "p2", "p3"];
-    return [...alive].sort((a, b) => {
+    return [...all].sort((a, b) => {
+      const da = a.hp <= 0 ? 1 : 0;
+      const db = b.hp <= 0 ? 1 : 0;
+      if (da !== db) return da - db;
       const ia = order.indexOf(a.id);
       const ib = order.indexOf(b.id);
       if (ia >= 0 && ib >= 0) return ia - ib;
@@ -581,11 +599,13 @@ export default function GamePage() {
 
   const rosterEnemies = useMemo(() => {
     return battle.units
-      .filter((u) => u.side === "enemy" && u.hp > 0)
-      .sort(
-        (a, b) =>
-          a.y - b.y || a.x - b.x || a.name.localeCompare(b.name, "zh-Hans-CN")
-      );
+      .filter((u) => u.side === "enemy")
+      .sort((a, b) => {
+        const da = a.hp <= 0 ? 1 : 0;
+        const db = b.hp <= 0 ? 1 : 0;
+        if (da !== db) return da - db;
+        return a.y - b.y || a.x - b.x || a.name.localeCompare(b.name, "zh-Hans-CN");
+      });
   }, [battle.units]);
 
   const onRosterPickUnit = useCallback((u: Unit) => {
@@ -865,11 +885,13 @@ export default function GamePage() {
                         type="button"
                         className={[
                           "battle-roster__item",
+                          rosterItemVisualClass(u),
                           inspectUnitId === u.id ? "is-inspected" : "",
                         ]
                           .filter(Boolean)
                           .join(" ")}
                         onClick={() => onRosterPickUnit(u)}
+                        aria-label={`${u.name}，${rosterStatusTag(u, "player")}`}
                       >
                         <GeneralAvatar
                           name={u.name}
@@ -879,7 +901,14 @@ export default function GamePage() {
                         <span className="battle-roster__item-meta">
                           <span className="battle-roster__item-name">{u.name}</span>
                           <span className="battle-roster__item-sub">
-                            {u.hp}/{u.maxHp} · ({u.x + 1},{u.y + 1})
+                            <span className="battle-roster__item-tag">{rosterStatusTag(u, "player")}</span>
+                            {u.hp <= 0 ? (
+                              <>({u.x + 1},{u.y + 1})</>
+                            ) : (
+                              <>
+                                {u.hp}/{u.maxHp} · ({u.x + 1},{u.y + 1})
+                              </>
+                            )}
                           </span>
                         </span>
                       </button>
@@ -896,11 +925,13 @@ export default function GamePage() {
                         type="button"
                         className={[
                           "battle-roster__item",
+                          rosterItemVisualClass(u),
                           inspectUnitId === u.id ? "is-inspected" : "",
                         ]
                           .filter(Boolean)
                           .join(" ")}
                         onClick={() => onRosterPickUnit(u)}
+                        aria-label={`${u.name}，${rosterStatusTag(u, "enemy")}`}
                       >
                         <GeneralAvatar
                           name={u.name}
@@ -910,7 +941,14 @@ export default function GamePage() {
                         <span className="battle-roster__item-meta">
                           <span className="battle-roster__item-name">{u.name}</span>
                           <span className="battle-roster__item-sub">
-                            Lv.{u.level} · {u.hp}/{u.maxHp} · ({u.x + 1},{u.y + 1})
+                            <span className="battle-roster__item-tag">{rosterStatusTag(u, "enemy")}</span>
+                            {u.hp <= 0 ? (
+                              <>({u.x + 1},{u.y + 1})</>
+                            ) : (
+                              <>
+                                Lv.{u.level} · {u.hp}/{u.maxHp} · ({u.x + 1},{u.y + 1})
+                              </>
+                            )}
                           </span>
                         </span>
                       </button>
@@ -939,8 +977,13 @@ export default function GamePage() {
           >
             <summary className="unit-inspect-float__summary">武将信息</summary>
             <div className="unit-inspect unit-inspect-float__inner" aria-label="武将信息详情">
-              {!inspectedUnit && (
+              {!inspectedUnit && !inspectedRosterTarget && (
                 <p className="muted small">点击场上武将或左侧列表查看详情。</p>
+              )}
+              {inspectedRosterTarget && inspectedRosterTarget.hp <= 0 && (
+                <p className="unit-inspect-dead-note muted small">
+                  <strong>{inspectedRosterTarget.name}</strong> 已阵亡，坐标（{inspectedRosterTarget.x + 1}，{inspectedRosterTarget.y + 1}）。
+                </p>
               )}
               {inspectedUnit && (
                 <dl className="unit-inspect-dl unit-inspect-dl--horizontal">

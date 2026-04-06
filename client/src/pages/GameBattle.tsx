@@ -27,6 +27,9 @@ export type MenuAction = "attack" | "tactic" | "wait";
 
 const TACTIC_ORDER: TacticKind[] = ["fire", "water", "trap"];
 
+/** 移动结束进入菜单后，先留白这段时间再显示菜单，便于看清落点再选行动 */
+const ACTION_MENU_REVEAL_DELAY_MS = 480;
+
 type Props = {
   battle: BattleState;
   visualEpoch: number;
@@ -173,7 +176,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
 
   useImperativeHandle(ref, () => ({
     focusUnitOnMap(unitId: string) {
-      const u = battleSnapRef.current.units.find((z) => z.id === unitId && z.hp > 0);
+      const u = battleSnapRef.current.units.find((z) => z.id === unitId);
       if (!u) return false;
       if (rosterPulseTimerRef.current) {
         window.clearTimeout(rosterPulseTimerRef.current);
@@ -236,6 +239,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     key: number;
   } | null>(null);
   const [moveSlide, setMoveSlide] = useState<Record<string, { dx: number; dy: number }>>({});
+  const [actionMenuRevealReady, setActionMenuRevealReady] = useState(false);
   const [dyingVisuals, setDyingVisuals] = useState<DyingVisual[]>([]);
   const [killBanners, setKillBanners] = useState<KillBanner[]>([]);
   const prevHpRef = useRef<Record<string, number> | null>(null);
@@ -263,10 +267,36 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     window.clearTimeout(turnGateTimerRef.current);
     setTurnBanner(null);
     setMoveSlide({});
+    setActionMenuRevealReady(false);
     setDyingVisuals([]);
     setKillBanners([]);
     setDmgFx(null);
   }, [visualEpoch]);
+
+  const battleMenuActive =
+    outcome === "playing" &&
+    turn === "player" &&
+    Boolean(selectedId) &&
+    (phase === "menu" || phase === "tactic-menu");
+
+  useEffect(() => {
+    if (!battleMenuActive) {
+      setActionMenuRevealReady(false);
+      return;
+    }
+    const reduced =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) {
+      setActionMenuRevealReady(true);
+      return;
+    }
+    setActionMenuRevealReady(false);
+    const t = window.setTimeout(() => {
+      setActionMenuRevealReady(true);
+    }, ACTION_MENU_REVEAL_DELAY_MS);
+    return () => window.clearTimeout(t);
+  }, [battleMenuActive, phase, selectedId]);
 
   useEffect(() => {
     if (battle.outcome !== "playing") {
@@ -504,6 +534,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
         onEscapeOrRevert();
         return;
       }
+      if (!actionMenuRevealReady) return;
       if (e.key === "ArrowDown" || e.key === "ArrowRight") {
         e.preventDefault();
         setMenuFocus((f) => nextEnabledFocus(f, 1, attackOk, tacticOk));
@@ -525,6 +556,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       menuFocus,
       attackOk,
       tacticOk,
+      actionMenuRevealReady,
       onMenuAction,
       onEscapeOrRevert,
     ]
@@ -538,6 +570,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
         onEscapeOrRevert();
         return;
       }
+      if (!actionMenuRevealReady) return;
       if (e.key === "ArrowDown" || e.key === "ArrowRight") {
         e.preventDefault();
         setTacticFocus((f) => nextTacticFocus(f, 1, tacticEnabled));
@@ -556,6 +589,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       turn,
       tacticFocus,
       tacticEnabled,
+      actionMenuRevealReady,
       onTacticPick,
       onEscapeOrRevert,
     ]
@@ -1016,9 +1050,14 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                   </div>
                   {showMenu && (
                     <div
-                      className="action-menu"
+                      className={[
+                        "action-menu",
+                        actionMenuRevealReady ? "action-menu--revealed" : "action-menu--pre-reveal",
+                      ].join(" ")}
                       role="menu"
                       aria-label="Actions"
+                      aria-hidden={!actionMenuRevealReady}
+                      inert={!actionMenuRevealReady ? true : undefined}
                       onClick={(e: MouseEvent) => e.stopPropagation()}
                       onKeyDown={(e: KeyboardEvent) => e.stopPropagation()}
                     >
@@ -1071,9 +1110,15 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                   )}
                   {showTacticMenu && (
                     <div
-                      className="action-menu tactic-submenu"
+                      className={[
+                        "action-menu",
+                        "tactic-submenu",
+                        actionMenuRevealReady ? "action-menu--revealed" : "action-menu--pre-reveal",
+                      ].join(" ")}
                       role="menu"
                       aria-label="Tactics"
+                      aria-hidden={!actionMenuRevealReady}
+                      inert={!actionMenuRevealReady ? true : undefined}
                       onClick={(e: MouseEvent) => e.stopPropagation()}
                       onKeyDown={(e: KeyboardEvent) => e.stopPropagation()}
                     >
@@ -1117,12 +1162,12 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
         </div>
       </div>
       <div className="battle-menu-hint-slot" aria-live="polite">
-        {phase === "menu" && (
+        {phase === "menu" && actionMenuRevealReady && (
           <p className="menu-hint">
             方向键选择 · Enter 确认 · Esc / 右键 取消并恢复回合初状态
           </p>
         )}
-        {phase === "tactic-menu" && (
+        {phase === "tactic-menu" && actionMenuRevealReady && (
           <p className="menu-hint">
             方向键选择计策 · Enter 确认 · Esc / 右键 返回行动菜单
           </p>
