@@ -303,6 +303,8 @@ type BaseMeta = {
   victoryBrief: string;
   winCondition: WinCondition;
   extraLog?: string[];
+  /** 本关允许的我军回合轮数上限；省略则用关卡内默认值 */
+  maxBattleRounds?: number;
 };
 
 function baseState(
@@ -339,6 +341,8 @@ function baseState(
     scenarioBrief: meta.scenarioBrief,
     victoryBrief: meta.victoryBrief,
     winCondition: meta.winCondition,
+    battleRound: 1,
+    maxBattleRounds: meta.maxBattleRounds ?? 60,
   };
 }
 

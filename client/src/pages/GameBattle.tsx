@@ -165,6 +165,8 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     pickTarget,
     terrain,
     pendingMove,
+    battleRound,
+    maxBattleRounds,
   } = battle;
   const cellCss = useMemo(() => {
     const maxPx = 96;
@@ -775,8 +777,16 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   const terrainAt = (x: number, y: number): Terrain => terrain[y]?.[x] ?? "plain";
   const terrainClass = (x: number, y: number) => `terrain-${terrainAt(x, y)}`;
 
+  const roundNum = battleRound >= 1 ? battleRound : 1;
+  const roundCap =
+    typeof maxBattleRounds === "number" && maxBattleRounds > 0 ? maxBattleRounds : null;
+  const roundTitle = roundCap ? `第 ${roundNum} / ${roundCap} 回合` : `第 ${roundNum} 回合`;
   const turnBannerLabel =
-    turnBanner === "player" ? "我方回合" : turnBanner === "enemy" ? "敌方回合" : "";
+    turnBanner === "player"
+      ? `${roundTitle} · 我方回合`
+      : turnBanner === "enemy"
+        ? `${roundTitle} · 敌方回合`
+        : "";
 
   const showMoveRange =
     outcome === "playing" &&

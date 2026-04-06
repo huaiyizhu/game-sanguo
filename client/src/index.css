@@ -315,12 +315,30 @@ a:hover {
 }
 
 .battle-overview__title {
-  margin: 0 0 0.35rem;
+  margin: 0 0 0.2rem;
   font-size: 0.72rem;
   font-weight: 700;
   color: var(--gold-dim);
   letter-spacing: 0.06em;
   text-align: center;
+}
+
+.battle-overview__rounds {
+  margin: 0 0 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #c4b896;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.battle-overview__rounds-num {
+  color: #f0e6c8;
+  font-variant-numeric: tabular-nums;
+}
+
+.battle-overview__rounds-sep {
+  opacity: 0.75;
 }
 
 .battle-overview__frame {

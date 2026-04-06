@@ -14,13 +14,23 @@ type Props = {
   terrain: Terrain[][];
   units: readonly Unit[];
   viewport: BattleViewportNorm | null;
+  battleRound: number;
+  maxBattleRounds: number;
 };
 
 function terrainAt(terrain: Terrain[][], x: number, y: number): Terrain {
   return terrain[y]?.[x] ?? "plain";
 }
 
-export default function BattleOverviewMap({ gridW, gridH, terrain, units, viewport }: Props) {
+export default function BattleOverviewMap({
+  gridW,
+  gridH,
+  terrain,
+  units,
+  viewport,
+  battleRound,
+  maxBattleRounds,
+}: Props) {
   const cells: { x: number; y: number; t: Terrain }[] = [];
   for (let y = 0; y < gridH; y++) {
     for (let x = 0; x < gridW; x++) {
@@ -35,9 +45,17 @@ export default function BattleOverviewMap({ gridW, gridH, terrain, units, viewpo
     vp.height > 0 &&
     (vp.width < 0.998 || vp.height < 0.998 || vp.left > 0.002 || vp.top > 0.002);
 
+  const r = battleRound >= 1 ? battleRound : 1;
+  const cap = maxBattleRounds > 0 ? maxBattleRounds : 0;
+
   return (
     <div className="battle-overview" aria-label="战场缩略图">
       <p className="battle-overview__title">战局略图</p>
+      <p className="battle-overview__rounds" aria-live="polite">
+        回合 <span className="battle-overview__rounds-num">{r}</span>
+        <span className="battle-overview__rounds-sep"> / </span>
+        <span className="battle-overview__rounds-num">{cap > 0 ? cap : "—"}</span>
+      </p>
       <div
         className="battle-overview__frame"
         style={{

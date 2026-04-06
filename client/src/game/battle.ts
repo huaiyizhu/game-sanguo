@@ -1072,9 +1072,29 @@ function refreshPlayerTacticPools(units: Unit[]): Unit[] {
 }
 
 function finishEnemyTurnAndStartPlayer(s: BattleState): BattleState {
+  const prevRound = s.battleRound ?? 1;
+  const nextRound = prevRound + 1;
+  const cap = s.maxBattleRounds;
+  if (typeof cap === "number" && cap > 0 && nextRound > cap) {
+    return {
+      ...s,
+      outcome: "lost",
+      turn: "player",
+      phase: "select",
+      selectedId: null,
+      moveTargets: [],
+      pickTarget: null,
+      enemyTurnQueue: null,
+      enemyTurnCursor: 0,
+      pendingMove: null,
+      damagePulse: null,
+      log: [...s.log, `回合数已达上限（${cap}），未能取胜。`],
+    };
+  }
   const withPools = refreshPlayerTacticPools(s.units);
   const next: BattleState = {
     ...s,
+    battleRound: nextRound,
     units: withPools.map((u) =>
       u.side === "player" && u.hp > 0 ? { ...u, moved: false, acted: false } : u
     ),
@@ -1332,6 +1352,12 @@ export function ensureBattleFields(b: BattleState): BattleState {
     scenarioBrief: typeof s.scenarioBrief === "string" ? s.scenarioBrief : "",
     victoryBrief: typeof s.victoryBrief === "string" ? s.victoryBrief : "",
     winCondition: normalizeWinCondition(s.winCondition),
+    battleRound:
+      typeof s.battleRound === "number" && s.battleRound >= 1 ? Math.floor(s.battleRound) : 1,
+    maxBattleRounds:
+      typeof s.maxBattleRounds === "number" && s.maxBattleRounds > 0
+        ? Math.floor(s.maxBattleRounds)
+        : 60,
     terrain:
       s.terrain && s.terrain.length === s.gridH && s.terrain[0]?.length === s.gridW
         ? s.terrain

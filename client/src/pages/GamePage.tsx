@@ -757,6 +757,8 @@ export default function GamePage() {
           terrain={battle.terrain}
           units={battle.units}
           viewport={battleViewportNorm}
+          battleRound={battle.battleRound}
+          maxBattleRounds={battle.maxBattleRounds ?? 60}
         />
         {metaSidebarCollapsed ? (
           <button

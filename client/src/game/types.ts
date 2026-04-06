@@ -132,6 +132,12 @@ export interface BattleState {
   victoryBrief?: string;
   /** 未写则视为全歼敌军 */
   winCondition?: WinCondition;
+  /**
+   * 从 1 起计：每个「我军回合」阶段的序号（同一条目内敌方行动仍属同一回合数，直至下次我军回合开始才 +1）。
+   */
+  battleRound: number;
+  /** 回合上限；超过后仍未达成胜利则败北。未设则由关卡默认 */
+  maxBattleRounds?: number;
 }
 
 export const LOCAL_SAVES_KEY = "sanguo_local_saves";
