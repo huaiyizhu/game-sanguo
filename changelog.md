@@ -6,6 +6,25 @@
 
 ## 2026-04-03
 
+### 走格前属性浮窗渐隐
+
+- 我军开始沿路走格时，若场上 **半透明属性浮窗** 仍打开：使用 **较短渐隐**（约 **260ms**，减弱动效下约 **120ms**），与 CSS 类 **`unit-attr-float--fade-move`** 一致；避免久等才开走，又比瞬间消失更自然。
+- 自然超时关闭的浮窗仍为 **约 0.9s** 淡出（不变）。
+
+### 敌军回合：不保留检视、不弹人物浮窗
+
+- 进入 **敌军回合** 时清空 **`inspectUnitId`**，避免上一回合检视残留；敌军 **`pendingMove` 结束后** 也不会再因同一检视 id 把属性浮窗 **重新打开**。
+- **敌军行动中**：场上点击格子/单位、侧栏点将 **不再设置检视**（与 `turnIntroLocked` 无关的独立门控）。
+- **`GameBattle`**：仅 **`turn === "player"`** 时参与属性浮窗的展示逻辑与 DOM 渲染（防御性一致）。
+
+### 战斗页手机横屏 / 竖屏布局
+
+- **根因**：`.game-layout.game-layout--battle` 的 **双列 grid** 选择器比 `max-width: 900px` 更具体，窄屏仍两列 + `game-main` 的 `order: -1`，导致 **战场被挤进约 220px 宽一列**、侧栏反而更宽。
+- **`max-width: 900px`**：对战斗页强制 **`grid-template-columns: 1fr`**，并 **`min-height: min(100dvh, 100vh)`**。
+- **竖屏**（`orientation: portrait`）：主区 **`minmax(0, 1fr)`** 尽量把高度留给地图；侧栏 **`position: static`**、取消 sticky 限高；**武将信息** 展开区 **`max-height`** 约 **`30dvh`**。
+- **横屏**（`orientation: landscape`）：**侧栏窄列 + 战场 `1fr`** 同行；**`game-main` `order: 0`** 与 DOM 一致（战局在左、地图在右）；略缩 **`武将信息` / 单位列表** 最大高度以免压扁地图。
+- **`index.html`**：`viewport-fit=cover`；战斗页 **`padding`** 使用 **`env(safe-area-inset-*)`** 适配刘海与底部安全区。
+
 ### 回合计数、上限与界面展示
 
 - **`BattleState`**：增加 **`battleRound`**（从 1 起，每进入新一轮 **我军回合** 递增；同一轮内敌方阶段仍属同一回合）、**`maxBattleRounds`**（可选，关卡 **`scenarios` meta** 可设；**`baseState`** 默认 **60**）。
