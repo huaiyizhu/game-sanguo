@@ -149,7 +149,9 @@ a:hover {
   max-width: none;
   width: 100%;
   margin: 0;
-  padding: 0.35rem 0.45rem 0.45rem;
+  padding: max(0.35rem, env(safe-area-inset-top, 0px))
+    max(0.45rem, env(safe-area-inset-right, 0px)) max(0.45rem, env(safe-area-inset-bottom, 0px))
+    max(0.45rem, env(safe-area-inset-left, 0px));
   min-height: 100vh;
   min-height: 100dvh;
   box-sizing: border-box;
@@ -295,12 +297,66 @@ a:hover {
     grid-template-columns: 1fr;
   }
 
+  /* 战斗页桌面规则是双列；若不覆盖，窄屏仍会挤成「窄战场 + 宽侧栏」，地图只剩 ~220px */
   .game-layout.game-layout--battle {
-    min-height: 0;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+    align-items: stretch;
+    min-height: min(100dvh, 100vh);
   }
 
   .game-main {
     order: -1;
+  }
+}
+
+/* 竖屏手机：主区域占满宽度，战局/列表在下方；取消 sticky 限高以免遮挡 */
+@media (max-width: 900px) and (orientation: portrait) {
+  .game-layout.game-layout--battle {
+    grid-template-rows: minmax(0, 1fr) auto;
+    min-height: min(100dvh, 100vh);
+  }
+
+  .game-layout.game-layout--battle .game-left-stack {
+    position: static;
+    max-height: none;
+    overflow-y: visible;
+    align-self: stretch;
+  }
+
+  .unit-inspect-float__inner {
+    max-height: min(30dvh, 15rem);
+  }
+}
+
+/* 横屏手机：侧栏条 + 大地图同一行，避免纵向堆叠把地图压成一条 */
+@media (max-width: 900px) and (orientation: landscape) {
+  .game-layout.game-layout--battle {
+    grid-template-columns: minmax(140px, min(200px, 32vw)) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    min-height: min(100dvh, 100vh);
+    max-height: 100dvh;
+    max-height: 100vh;
+  }
+
+  .game-layout.game-layout--battle .game-main.game-main--battle {
+    order: 0;
+    min-height: 0;
+  }
+
+  .game-layout.game-layout--battle .game-left-stack {
+    min-height: 0;
+    max-height: none;
+    align-self: stretch;
+    overflow-y: auto;
+  }
+
+  .unit-inspect-float__inner {
+    max-height: min(42dvh, 12rem);
+  }
+
+  .game-layout.game-layout--battle .game-left-stack .battle-roster__list {
+    max-height: min(36dvh, 11rem);
   }
 }
 
