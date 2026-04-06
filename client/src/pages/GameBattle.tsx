@@ -963,8 +963,11 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                       <TroopEmblem kind={deathHere.troopKind} side={deathHere.side} showTroopBadge={false} />
                     </div>
                     <div className="unit-standee__hud unit-standee__hud--ghost unit-standee__hud--hp-only" aria-hidden>
-                      <div className="unit-standee__hpbar" aria-hidden>
-                        <div className="unit-standee__hpfill" style={{ width: "0%" }} />
+                      <div className="unit-standee__hud-hp-row">
+                        <span className="unit-standee__lv unit-standee__lv--ghost">Lv.{deathHere.level}</span>
+                        <div className="unit-standee__hpbar" aria-hidden>
+                          <div className="unit-standee__hpfill" style={{ width: "0%" }} />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1115,13 +1118,25 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                     </span>
                   )}
                   <div className="unit-standee__hud unit-standee__hud--hp-only" aria-hidden>
-                    <div className="unit-standee__hpbar" aria-hidden>
-                      <div
-                        className="unit-standee__hpfill"
-                        style={{
-                          width: `${Math.max(0, Math.min(100, (hpForBar / Math.max(1, u.maxHp)) * 100))}%`,
-                        }}
-                      />
+                    <div className="unit-standee__hud-hp-row">
+                      <span
+                        className={[
+                          "unit-standee__lv",
+                          u.side === "enemy" ? "unit-standee__lv--enemy" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                      >
+                        Lv.{u.level}
+                      </span>
+                      <div className="unit-standee__hpbar" aria-hidden>
+                        <div
+                          className="unit-standee__hpfill"
+                          style={{
+                            width: `${Math.max(0, Math.min(100, (hpForBar / Math.max(1, u.maxHp)) * 100))}%`,
+                          }}
+                        />
+                      </div>
                     </div>
                   </div>
                   {showMenu && (

@@ -79,7 +79,48 @@
 }
 
 .unit-standee__hud--hp-only {
-  padding: 0.14rem 0.22rem 0.16rem;
+  padding: 0.12rem 0.2rem 0.14rem;
+}
+
+/* 等级 + 血条同一行，竖向高度与单条血线接近 */
+.unit-standee__hud-hp-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.24rem;
+  min-height: 0;
+}
+
+.unit-standee__lv {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 与 6px 血条 + 上下各 1px 边线总高约一致 */
+  padding: 0.05rem 0.22rem 0.06rem;
+  min-height: 6px;
+  font-size: clamp(0.54rem, 1.5vw, 0.64rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: #fde68a;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  background: rgba(40, 28, 10, 0.92);
+  border: 1px solid rgba(245, 158, 11, 0.42);
+  border-radius: 3px;
+  box-sizing: border-box;
+}
+
+.unit-standee__lv--enemy {
+  color: #fecaca;
+  background: rgba(50, 16, 16, 0.92);
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+.unit-standee__lv--ghost {
+  color: rgba(226, 232, 240, 0.75);
+  background: rgba(20, 24, 32, 0.75);
+  border-color: rgba(148, 163, 184, 0.28);
 }
 
 /* 侧栏/图鉴等使用的将领头像（非格上 HUD） */
@@ -131,14 +172,17 @@
 }
 
 .unit-standee__hpbar {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
   height: 6px;
   border-radius: 3px;
   background: rgba(0, 0, 0, 0.55);
   border: 1px solid rgba(255, 255, 255, 0.2);
   overflow: hidden;
-  box-sizing: border-box;
+  box-sizing: content-box;
   flex-shrink: 0;
+  align-self: center;
 }
 
 .unit-standee__hpfill {
