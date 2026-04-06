@@ -49,7 +49,15 @@ const BATTLE_CELL_PX_VIEWPORT = BATTLE_CELL_MAX_PX;
 
 /** 选中单位后属性浮窗：停留时长 + 淡出时长 */
 const UNIT_ATTR_FLOAT_HOLD_MS = 3400;
-const UNIT_ATTR_FLOAT_FADE_MS = 900;
+/** 与 .unit-attr-float--fading 一致（自然超时淡出） */
+export const UNIT_ATTR_FLOAT_FADE_MS = 900;
+/** 走格前打断浮窗：较短渐隐，与 CSS .unit-attr-float--fade-move 一致 */
+export const UNIT_ATTR_FLOAT_FADE_MS_MOVE = 260;
+
+function getAttrFloatFadeWaitMsForMove(): number {
+  if (typeof window === "undefined") return UNIT_ATTR_FLOAT_FADE_MS_MOVE;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 120 : UNIT_ATTR_FLOAT_FADE_MS_MOVE;
+}
 
 function ratioPercent(value: number, cap: number): number {
   if (cap <= 0) return 0;
@@ -58,11 +66,12 @@ function ratioPercent(value: number, cap: number): number {
 
 type AttrFloatSide = "right" | "left" | "top" | "bottom";
 
-/** 在视口内为浮窗选一侧：优先右→左→下→上，放不下则取可见面积最大的 clamp 位置 */
+/** 在视口内为浮窗选一侧：优先右→左→下→上；skipSides 用于避开行动菜单占用的侧（与 index.css 中 .action-menu 一致） */
 function pickAttrFloatPlacement(
   cellRect: DOMRect,
   floatW: number,
-  floatH: number
+  floatH: number,
+  skipSides?: ReadonlySet<AttrFloatSide>
 ): { left: number; top: number; side: AttrFloatSide } {
   const M = 10;
   const GAP = 10;
@@ -74,17 +83,28 @@ function pickAttrFloatPlacement(
   const fits = (l: number, t: number) =>
     l >= M && t >= M && l + floatW <= vw - M && t + floatH <= vh - M;
 
-  if (fits(cellRect.right + GAP, yCenter)) {
-    return { left: cellRect.right + GAP, top: yCenter, side: "right" };
-  }
-  if (fits(cellRect.left - GAP - floatW, yCenter)) {
-    return { left: cellRect.left - GAP - floatW, top: yCenter, side: "left" };
-  }
-  if (fits(xCenter, cellRect.bottom + GAP)) {
-    return { left: xCenter, top: cellRect.bottom + GAP, side: "bottom" };
-  }
-  if (fits(xCenter, cellRect.top - GAP - floatH)) {
-    return { left: xCenter, top: cellRect.top - GAP - floatH, side: "top" };
+  const primaryOrder: AttrFloatSide[] = ["right", "left", "bottom", "top"];
+  const tryOrder = skipSides?.size
+    ? primaryOrder.filter((s) => !skipSides.has(s))
+    : primaryOrder;
+
+  for (const side of tryOrder) {
+    let left = 0;
+    let top = 0;
+    if (side === "right") {
+      left = cellRect.right + GAP;
+      top = yCenter;
+    } else if (side === "left") {
+      left = cellRect.left - GAP - floatW;
+      top = yCenter;
+    } else if (side === "bottom") {
+      left = xCenter;
+      top = cellRect.bottom + GAP;
+    } else {
+      left = xCenter;
+      top = cellRect.top - GAP - floatH;
+    }
+    if (fits(left, top)) return { left, top, side };
   }
 
   const candidates: { l: number; t: number; side: AttrFloatSide }[] = [
@@ -116,6 +136,8 @@ type Props = {
   battle: BattleState;
   /** 当前检视/点选单位（含敌军与侧栏点将），用于属性浮窗 */
   inspectUnitId?: string | null;
+  /** 每次场上/侧栏点将递增，便于再次点同一 id 时重播浮窗 */
+  inspectTapSeq?: number;
   visualEpoch: number;
   /** 为 true 时回合开场字幕流程尚未结束，须屏蔽战场操作（由父组件根据 onTurnActionReady 驱动） */
   turnIntroLocked: boolean;
@@ -123,7 +145,7 @@ type Props = {
   onTurnActionReady: (ready: boolean) => void;
   /** 消费 battle.damagePulse，避免受击动画推断错误 */
   onDamagePulseConsumed: () => void;
-  onCellClick: (x: number, y: number) => void;
+  onCellClick: (x: number, y: number) => void | Promise<void>;
   onUnitClick: (unitId: string, side: Side) => void;
   onMenuAction: (action: MenuAction) => void;
   onTacticPick: (kind: TacticKind) => void;
@@ -209,6 +231,11 @@ function battleSlotStackZ(
 export type GameBattleHandle = {
   /** 滚动战场使该单位所在格进入视野，并短暂高亮；单位须存活 */
   focusUnitOnMap: (unitId: string) => boolean;
+  /**
+   * 我军即将沿路走格前调用：若属性浮窗正展示该将，则先渐隐再 resolve，
+   * 以便父组件在写入 pendingMove 前等待，避免浮窗与滑步重叠。
+   */
+  beforePlayerMoveStart: (movingUnitId: string) => Promise<void>;
 };
 
 const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
@@ -230,6 +257,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   fitViewport = false,
   onScrollViewportChange,
   inspectUnitId = null,
+  inspectTapSeq = 0,
   }: Props,
   ref
 ) {
@@ -272,6 +300,8 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
 
   const [attrFloatVisible, setAttrFloatVisible] = useState(false);
   const [attrFloatFading, setAttrFloatFading] = useState(false);
+  /** 走格前渐隐：用更短 transition，避免久等又不至于瞬间消失 */
+  const [attrFloatFadeMove, setAttrFloatFadeMove] = useState(false);
   const [attrFloatPlacement, setAttrFloatPlacement] = useState<{
     left: number;
     top: number;
@@ -282,6 +312,21 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     hold: ReturnType<typeof window.setTimeout> | null;
     done: ReturnType<typeof window.setTimeout> | null;
   }>({ hold: null, done: null });
+  const attrFloatVisibleRef = useRef(false);
+  attrFloatVisibleRef.current = attrFloatVisible;
+  const inspectUnitIdPropRef = useRef<string | null>(null);
+  inspectUnitIdPropRef.current = inspectUnitId;
+
+  const [narrowUi, setNarrowUi] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 900px)").matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 900px)");
+    const sync = () => setNarrowUi(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
 
   useImperativeHandle(ref, () => ({
     focusUnitOnMap(unitId: string) {
@@ -302,6 +347,36 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
         cell?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
       });
       return true;
+    },
+    beforePlayerMoveStart(movingUnitId: string) {
+      return new Promise<void>((resolve) => {
+        const ft = attrFloatTimersRef.current;
+        if (ft.hold != null) {
+          window.clearTimeout(ft.hold);
+          ft.hold = null;
+        }
+        if (ft.done != null) {
+          window.clearTimeout(ft.done);
+          ft.done = null;
+        }
+        const needFade =
+          attrFloatVisibleRef.current &&
+          inspectUnitIdPropRef.current === movingUnitId;
+        if (!needFade) {
+          resolve();
+          return;
+        }
+        setAttrFloatFadeMove(true);
+        setAttrFloatFading(true);
+        const wait = getAttrFloatFadeWaitMsForMove();
+        window.setTimeout(() => {
+          setAttrFloatFadeMove(false);
+          setAttrFloatFading(false);
+          setAttrFloatVisible(false);
+          setAttrFloatPlacement(null);
+          resolve();
+        }, wait);
+      });
     },
   }), []);
 
@@ -589,9 +664,15 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
 
     clearAttrFloatTimers();
     setAttrFloatFading(false);
+    setAttrFloatFadeMove(false);
     setAttrFloatPlacement(null);
 
     if (outcome !== "playing" || !inspectUnitId) {
+      setAttrFloatVisible(false);
+      return clearAttrFloatTimers;
+    }
+
+    if (battleSnapRef.current.pendingMove) {
       setAttrFloatVisible(false);
       return clearAttrFloatTimers;
     }
@@ -612,12 +693,13 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     ft.done = window.setTimeout(() => {
       ft.done = null;
       setAttrFloatFading(false);
+      setAttrFloatFadeMove(false);
       setAttrFloatVisible(false);
       setAttrFloatPlacement(null);
     }, UNIT_ATTR_FLOAT_HOLD_MS + UNIT_ATTR_FLOAT_FADE_MS);
 
     return clearAttrFloatTimers;
-  }, [inspectUnitId, outcome]);
+  }, [inspectUnitId, inspectTapSeq, outcome, pendingMove]);
 
   useEffect(() => {
     if (!attrFloatVisible || !inspectUnitId) return;
@@ -633,12 +715,13 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       ft.done = null;
     }
     setAttrFloatFading(false);
+    setAttrFloatFadeMove(false);
     setAttrFloatVisible(false);
     setAttrFloatPlacement(null);
   }, [attrFloatVisible, inspectUnitId, units]);
 
   useLayoutEffect(() => {
-    if (!attrFloatVisible || !floatUnit) {
+    if (!attrFloatVisible || !floatUnit || pendingMove) {
       setAttrFloatPlacement(null);
       return;
     }
@@ -653,6 +736,15 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       const fh =
         root && root.offsetHeight > 48 ? root.offsetHeight : ATTR_FLOAT_EST_H;
       const cr = cell?.getBoundingClientRect();
+      const menuOpenForFloatUnit =
+        floatUnit &&
+        selectedId === floatUnit.id &&
+        (phase === "menu" || phase === "tactic-menu");
+      const skipSides = new Set<AttrFloatSide>();
+      if (menuOpenForFloatUnit) {
+        if (narrowUi) skipSides.add("bottom");
+        else skipSides.add("right");
+      }
       if (!cr || cr.width < 2 || cr.height < 2) {
         setAttrFloatPlacement({
           left: Math.max(12, window.innerWidth / 2 - fw / 2),
@@ -661,7 +753,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
         });
         return;
       }
-      setAttrFloatPlacement(pickAttrFloatPlacement(cr, fw, fh));
+      setAttrFloatPlacement(pickAttrFloatPlacement(cr, fw, fh, skipSides));
     };
     run();
     let innerRaf = 0;
@@ -682,10 +774,15 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     floatUnit?.id,
     floatUnit?.x,
     floatUnit?.y,
+    inspectTapSeq,
     visualEpoch,
     cellCssEffective,
     gridW,
     gridH,
+    pendingMove,
+    phase,
+    selectedId,
+    narrowUi,
     pendingMove,
   ]);
 
@@ -1011,6 +1108,18 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     Boolean(selectedId) &&
     moveTargets.length > 0;
 
+  /** 浮窗与行动/计策菜单同侧时的回退：镜像菜单位置（与 index.css 中 .action-menu 默认侧一致） */
+  const mirrorActionMenu =
+    Boolean(
+      attrFloatPlacement &&
+        floatUnit &&
+        selectedId === floatUnit.id &&
+        (phase === "menu" || phase === "tactic-menu") &&
+        (narrowUi
+          ? attrFloatPlacement.side === "bottom"
+          : attrFloatPlacement.side === "right")
+    );
+
   const battleCellCtxList = cells.map(({ x, y }) => {
     const u = byPos.get(`${x},${y}`);
     const isMove = moveSet.has(`${x},${y}`);
@@ -1107,12 +1216,13 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
           </p>
         </div>
       )}
-      {outcome === "playing" && attrFloatVisible && floatUnit && (
+      {outcome === "playing" && !pendingMove && attrFloatVisible && floatUnit && (
         <div
           ref={attrFloatRootRef}
           className={[
             "unit-attr-float",
             attrFloatFading ? "unit-attr-float--fading" : "",
+            attrFloatFadeMove ? "unit-attr-float--fade-move" : "",
             !attrFloatPlacement ? "unit-attr-float--unplaced" : "",
           ]
             .filter(Boolean)
@@ -1463,8 +1573,11 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                     <div
                       className={[
                         "action-menu",
+                        mirrorActionMenu ? "action-menu--mirror" : "",
                         actionMenuRevealReady ? "action-menu--revealed" : "action-menu--pre-reveal",
-                      ].join(" ")}
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
                       role="menu"
                       aria-label="Actions"
                       aria-hidden={!actionMenuRevealReady}
@@ -1524,8 +1637,11 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                       className={[
                         "action-menu",
                         "tactic-submenu",
+                        mirrorActionMenu ? "action-menu--mirror" : "",
                         actionMenuRevealReady ? "action-menu--revealed" : "action-menu--pre-reveal",
-                      ].join(" ")}
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
                       role="menu"
                       aria-label="Tactics"
                       aria-hidden={!actionMenuRevealReady}

@@ -186,6 +186,8 @@ export default function GamePage() {
   const [remoteLoading, setRemoteLoading] = useState(false);
   const [visualEpoch, setVisualEpoch] = useState(0);
   const [inspectUnitId, setInspectUnitId] = useState<string | null>(null);
+  /** 每次点将/检视递增，使 GameBattle 在再次点同一单位时仍能重播属性浮窗 */
+  const [inspectTapSeq, setInspectTapSeq] = useState(0);
   const [metaSidebarCollapsed, setMetaSidebarCollapsed] = useState(() => {
     try {
       return localStorage.getItem("sanguo_meta_sidebar_collapsed") === "1";
@@ -393,10 +395,17 @@ export default function GamePage() {
     turnIntroLocked,
   ]);
 
-  const onCellClick = useCallback((x: number, y: number) => {
+  const onCellClick = useCallback(async (x: number, y: number) => {
     if (battleRef.current.pendingMove) return;
     if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
-    setBattle((s) => {
+    const occupant = battleRef.current.units.find(
+      (unit) => unit.x === x && unit.y === y && unit.hp > 0
+    );
+    if (occupant) {
+      setInspectUnitId(occupant.id);
+      setInspectTapSeq((n) => n + 1);
+    }
+    const applyCellClick = (s: BattleState) => {
       if (s.phase === "pick-target" && s.pickTarget) {
         const u = s.units.find(
           (unit) =>
@@ -405,13 +414,21 @@ export default function GamePage() {
         if (u && s.pickTarget.targetIds.includes(u.id)) return confirmPickTarget(s, u.id);
       }
       return gridCellClick(s, x, y);
-    });
+    };
+    const s0 = battleRef.current;
+    const preview = applyCellClick(s0);
+    const pm = preview.pendingMove;
+    if (pm?.kind === "player" && pm.unitId) {
+      await gameBattleRef.current?.beforePlayerMoveStart(pm.unitId);
+    }
+    setBattle((s) => applyCellClick(s));
   }, []);
 
   const onUnitClick = useCallback((unitId: string, side: "player" | "enemy") => {
     if (battleRef.current.pendingMove) return;
     if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
     setInspectUnitId(unitId);
+    setInspectTapSeq((n) => n + 1);
     setBattle((s) => {
       if (side === "player") return selectPlayerUnit(s, unitId);
       if (s.phase === "pick-target" && s.pickTarget?.targetIds.includes(unitId)) {
@@ -619,6 +636,7 @@ export default function GamePage() {
 
   const onRosterPickUnit = useCallback((u: Unit) => {
     setInspectUnitId(u.id);
+    setInspectTapSeq((n) => n + 1);
     requestAnimationFrame(() => {
       gameBattleRef.current?.focusUnitOnMap(u.id);
     });
@@ -1145,6 +1163,7 @@ export default function GamePage() {
               ref={gameBattleRef}
               battle={battle}
               inspectUnitId={inspectUnitId}
+              inspectTapSeq={inspectTapSeq}
               visualEpoch={visualEpoch}
               turnIntroLocked={turnIntroLocked}
               keyboardBlocked={stagePickerOpen || generalCodexOpen}

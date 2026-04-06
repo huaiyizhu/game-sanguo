@@ -1135,6 +1135,11 @@ a:hover {
   opacity: 0;
 }
 
+/* 即将走格时的快速渐隐（短于自然 0.9s，仍可见淡出过程） */
+.unit-attr-float.unit-attr-float--fade-move {
+  transition: opacity 0.26s ease-out;
+}
+
 .unit-attr-float__card {
   padding: 0.5rem 0.65rem 0.45rem;
   border-radius: 10px;
@@ -1245,6 +1250,10 @@ a:hover {
 @media (prefers-reduced-motion: reduce) {
   .unit-attr-float {
     transition-duration: 0.2s;
+  }
+
+  .unit-attr-float.unit-attr-float--fade-move {
+    transition-duration: 0.12s;
   }
 
   .unit-attr-float__hp-fill {
@@ -1955,6 +1964,14 @@ a:hover {
   transform-origin: left center;
 }
 
+/* 与属性浮窗同侧时的回退：宽屏菜单改到格左侧，避免与右侧/下方浮窗重叠 */
+.action-menu.action-menu--mirror {
+  left: auto;
+  right: calc(100% + 6px);
+  transform: translateY(-50%);
+  transform-origin: right center;
+}
+
 .action-menu.action-menu--pre-reveal {
   opacity: 0;
   visibility: hidden;
@@ -1974,6 +1991,16 @@ a:hover {
     top: calc(100% + 6px);
     transform: translateX(-50%);
     transform-origin: top center;
+  }
+
+  /* 窄屏菜单默认在格下方；浮窗也在下方时改到格上方 */
+  .action-menu.action-menu--mirror {
+    left: 50%;
+    right: auto;
+    top: auto;
+    bottom: calc(100% + 6px);
+    transform: translateX(-50%);
+    transform-origin: bottom center;
   }
 
   .action-menu.action-menu--revealed {
