@@ -6,6 +6,17 @@
 
 ## 2026-04-03
 
+### 回合计数、上限与界面展示
+
+- **`BattleState`**：增加 **`battleRound`**（从 1 起，每进入新一轮 **我军回合** 递增；同一轮内敌方阶段仍属同一回合）、**`maxBattleRounds`**（可选，关卡 **`scenarios` meta** 可设；**`baseState`** 默认 **60**）。
+- **`battle.ts`**：**`finishEnemyTurnAndStartPlayer`** 在进入下一我军回合前递增回合；若超过 **`maxBattleRounds`** 则 **判负** 并写入战报；**`ensureBattleFields`** 为旧存档补齐/规范化上述字段。
+- **战局略图**（**`BattleOverviewMap`**）：标题下显示 **当前回合 / 回合上限**（`GamePage` 传入 `battleRound`、`maxBattleRounds`）。
+- **回合开场横幅**（**`GameBattle`**）：显示「我方 / 敌方回合」时同时带上 **第 n / m 回合**（无有效上限时仅 **第 n 回合**）。
+
+### 战斗页布局与战局略图视口
+
+- **战斗主区域**贴近全屏/视口高度布局，主战场网格可滚动；**`GameBattle`** 在滚动时上报 **归一化视口**（**`BattleViewportNorm`**），**`GamePage`** 传入 **战局略图**，侧栏略图上 **黄框** 标示当前网页内可见的战场范围（与主战场 scroll 同步）。
+
 ### 将领图鉴（100+）、大地图、胜利条件与秘籍图鉴（白天 · 续）
 
 - **`client/src/game/generals.ts`**：三国演义向 **将领图鉴**（名将列传 + 批量部将/文臣），合计 **超过 100 人**；`unitFromCatalog` 按关卡 tier 缩放等级与兵力，供 `scenarios` 摆将。
