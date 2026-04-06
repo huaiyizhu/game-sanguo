@@ -1540,7 +1540,7 @@ a:hover {
 
 .battle-grid {
   /* 默认格尺寸；内联 style 会覆盖 --cell。大地图由 .battle-wrap 滚动 */
-  --cell: min(88px, 13vw);
+  --cell: min(72px, 11vw);
   position: relative;
   z-index: 0;
   display: grid;

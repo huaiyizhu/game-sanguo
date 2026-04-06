@@ -40,8 +40,12 @@ const TACTIC_ORDER: TacticKind[] = ["fire", "water", "trap"];
 /** 移动结束进入菜单后，先留白这段时间再显示菜单，便于看清落点再选行动 */
 const ACTION_MENU_REVEAL_DELAY_MS = 480;
 
-/** 主战场（fit 视口）单格像素边长；大地图时靠外层滚动，不再把格压小塞满一屏 */
-const BATTLE_CELL_PX_VIEWPORT = 96;
+/** 格子边长上限（px）；低于旧版 96 便于一屏多看地图，立绘随 --cell 仍可读 */
+const BATTLE_CELL_MAX_PX = 76;
+/** 极宽地图时每格不低于此值，避免点选过难 */
+const BATTLE_CELL_MIN_PX = 32;
+/** fitViewport 下每格固定为该值（与上限一致） */
+const BATTLE_CELL_PX_VIEWPORT = BATTLE_CELL_MAX_PX;
 
 /** 选中单位后属性浮窗：停留时长 + 淡出时长 */
 const UNIT_ATTR_FLOAT_HOLD_MS = 3400;
@@ -251,8 +255,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   }, [inspectUnitId, units]);
 
   const cellCss = useMemo(() => {
-    const maxPx = 96;
-    return `min(${maxPx}px, max(34px, calc((min(96vw, 1240px) - 280px) / ${gridW})))`;
+    return `min(${BATTLE_CELL_MAX_PX}px, max(${BATTLE_CELL_MIN_PX}px, calc((min(96vw, 1240px) - 280px) / ${gridW})))`;
   }, [gridW]);
   const [fitCellPx, setFitCellPx] = useState(0);
   const cellCssEffective = useMemo(() => {
