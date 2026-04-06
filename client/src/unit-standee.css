@@ -1,5 +1,5 @@
 /**
- * 战场单位立牌：格子仅地形；兵种立绘叠在格上，名字/兵种/血条在头顶 HUD。
+ * 战场单位立牌：格内仅血条 HUD + 兵种立绘；姓名等在侧栏/详情。单位层默认裁剪在格内，菜单打开时放开 overflow。
  */
 
 .battle-slot {
@@ -14,6 +14,13 @@
 
 .battle-slot--units {
   pointer-events: none;
+  /* 需可见 overflow，否则 .dmg-float 向上飘出时被裁切 */
+  overflow: visible;
+  border-radius: 4px;
+}
+
+.battle-slot--units.battle-slot--menu-open {
+  overflow: visible;
 }
 
 .battle-slot--units .action-menu {
@@ -32,59 +39,50 @@
 
 .unit-standee {
   position: absolute;
-  left: 50%;
-  bottom: 0;
-  transform: translateX(-50%);
+  inset: 0;
+  width: auto;
+  height: auto;
+  transform: none;
   transform-origin: 50% 100%;
-  /* 略宽于格宽，立绘更抢眼；随 --cell 缩放 */
-  width: min(calc(var(--cell, 72px) * 1.38), 7.25rem);
-  max-width: none;
   z-index: 5;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 0.12rem;
+  align-items: stretch;
+  justify-content: flex-end;
+  gap: 0;
+  padding: 0;
+  box-sizing: border-box;
   pointer-events: none;
-  font-size: clamp(0.72rem, 2.65vw, 0.95rem);
   line-height: 1.15;
 }
 
+/* 血条叠在「上一格」与当前格交界处：贴当前格上沿、伸入上方格（与 .battle-grid gap 对齐） */
 .unit-standee__hud {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  margin-bottom: 3px;
+  z-index: 6;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 0.06rem;
+  align-items: stretch;
+  gap: 0;
   width: 100%;
-  max-width: 10rem;
-  padding: 0 2px;
+  flex-shrink: 0;
   pointer-events: none;
-  text-align: center;
-  font-family: "VT323", ui-monospace, monospace;
-  letter-spacing: 0.04em;
-  text-shadow:
-    0 0 3px rgba(0, 0, 0, 0.85),
-    0 1px 2px rgba(0, 0, 0, 0.75);
+  border-radius: 4px;
+  background: rgba(6, 10, 18, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
 }
 
-.unit-standee__hud-row {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 0.2rem;
-  width: 100%;
+.unit-standee__hud--hp-only {
+  padding: 0.14rem 0.22rem 0.16rem;
 }
 
-.unit-standee__hud-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.06rem;
-}
-
-/* 战场将领头像：随格子缩放 */
+/* 侧栏/图鉴等使用的将领头像（非格上 HUD） */
 .general-avatar {
   flex-shrink: 0;
   border-radius: 5px;
@@ -104,15 +102,6 @@
   user-select: none;
 }
 
-.general-avatar--standee {
-  width: clamp(22px, calc(var(--cell, 72px) * 0.34), 34px);
-  height: clamp(22px, calc(var(--cell, 72px) * 0.34), 34px);
-}
-
-.general-avatar--standee .general-avatar__glyph {
-  font-size: clamp(11px, calc(var(--cell, 72px) * 0.2), 17px);
-}
-
 .general-avatar__img {
   width: 100%;
   height: 100%;
@@ -128,50 +117,35 @@
     0 2px 10px rgba(0, 0, 0, 0.5);
 }
 
-.unit-standee.enemy .general-avatar {
-  filter: saturate(0.88) brightness(0.92);
-}
-
 .unit-standee__name {
   font-weight: 800;
-  color: #fefce8;
+  color: #fffef5;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.unit-standee__tags {
-  font-weight: 700;
-  font-size: 0.88em;
-  color: rgba(254, 249, 195, 0.92);
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-}
-
-.unit-standee.player .unit-standee__tags {
-  color: rgba(220, 252, 231, 0.95);
-}
-
-.unit-standee.enemy .unit-standee__tags {
-  color: rgba(254, 215, 170, 0.95);
+  text-shadow:
+    0 0 1px rgba(0, 0, 0, 1),
+    0 1px 0 rgba(0, 0, 0, 0.9),
+    0 2px 6px rgba(0, 0, 0, 0.85);
 }
 
 .unit-standee__hpbar {
   width: 100%;
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   overflow: hidden;
   box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .unit-standee__hpfill {
   height: 100%;
   border-radius: 1px;
   background: linear-gradient(180deg, #86efac 0%, #22c55e 45%, #15803d 100%);
-  transition: width 0.22s ease;
+  transition: width 0.48s cubic-bezier(0.33, 1, 0.68, 1);
 }
 
 .unit-standee.enemy .unit-standee__hpfill {
@@ -182,6 +156,7 @@
 .unit-standee__hud--ghost {
   opacity: 0.88;
   filter: saturate(0.55);
+  background: rgba(8, 10, 16, 0.78);
 }
 
 .unit-standee__body {
@@ -192,12 +167,22 @@
   justify-content: flex-end;
   width: 100%;
   min-height: 0;
+  flex: 1 1 auto;
   border-radius: 4px;
-  padding: 2px 3px 3px;
+  padding: 0;
   cursor: default;
   border: 1px solid transparent;
-  overflow: visible;
+  /* 裁剪立绘，避免选中/菜单抬高 z-index 后大图溢出盖住上方「武将信息」 */
+  overflow: hidden;
   pointer-events: auto;
+}
+
+/* 飘字挂在 standee 上，在 body 外，不受 body overflow 裁剪；z 须高于 HUD/邻格叠层 */
+.unit-standee__dmg-float.dmg-float {
+  top: auto;
+  bottom: 30%;
+  left: 50%;
+  z-index: 40;
 }
 
 .unit-standee .action-menu {

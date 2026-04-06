@@ -36,21 +36,32 @@ const key = (x: number, y: number) => `${x},${y}`;
 
 let nextDamagePulseKey = 1;
 
-function attachDamagePulse(state: BattleState, unitId: string, amount: number): BattleState {
+function attachDamagePulse(
+  state: BattleState,
+  unitId: string,
+  amount: number,
+  hpBefore: number,
+  kind: "melee" | "tactic"
+): BattleState {
   return {
     ...state,
-    damagePulse: { unitId, amount, key: nextDamagePulseKey++ },
+    damagePulse: { unitId, amount, key: nextDamagePulseKey++, hpBefore, kind },
   };
 }
+
+/** 扣血飘字：进攻后先等这段时间再出现数字（须与 GameBattle 一致） */
+export const DAMAGE_FLOAT_DELAY_MS = 400;
+/** 扣血飘字 CSS 动画时长（须与 index.css `.dmg-float` 一致） */
+export const DAMAGE_FLOAT_ANIM_MS = 1200;
 
 /** 回合转场字幕时长（毫秒），须与 CSS 中字幕动画时长一致 */
 export const TURN_PHASE_BANNER_MS = 1000;
 
 /**
- * 回合从一方切到另一方后，再延后这么久才弹出回合字幕（我方↔敌方），
- * 以便先播完本客户端里位移滑入 / 受击飘字 / 阵亡淡出等效果（见 GameBattle 与 index.css 中的时长）。
+ * 与扣血飘字总时长对齐，以便先播完受击飘字再出回合字幕（见 GameBattle、index.css）。
  */
-export const POST_ACTION_TURN_BANNER_DELAY_MS = 1000;
+export const POST_ACTION_TURN_BANNER_DELAY_MS =
+  DAMAGE_FLOAT_DELAY_MS + DAMAGE_FLOAT_ANIM_MS + 280;
 
 /**
  * 与 `index.css` 中 `.unit-standee.unit-move-slide` 的 `animation-duration` 一致（毫秒）。
@@ -808,6 +819,7 @@ function applyPlayerMeleeDamage(
   const target = state.units.find((x) => x.id === enemyId);
   if (!attacker || !target || target.side !== "enemy") return state;
   const dmg = meleeDamageDealt(state, attacker, target);
+  const hpBeforeMelee = target.hp;
   const newHp = Math.max(0, target.hp - dmg);
   const killed = newHp <= 0;
   const xp = xpForDamage(dmg, killed, attacker.level, target.level);
@@ -833,7 +845,7 @@ function applyPlayerMeleeDamage(
     pickTarget: null,
     log: [...state.log, ...lines],
   };
-  if (newHp > 0) next = attachDamagePulse(next, enemyId, dmg);
+  if (dmg > 0) next = attachDamagePulse(next, enemyId, dmg, hpBeforeMelee, "melee");
   next = checkOutcome(next);
   if (next.outcome !== "playing") return next;
   return maybeEndPlayerTurn(next);
@@ -854,6 +866,7 @@ function applyPlayerTacticDamage(
   if (manhattan(attacker, target) > 2) return state;
 
   const dmg = tacticDamageDealt(state, attacker, target, tacticKind);
+  const hpBeforeTactic = target.hp;
   const newHp = Math.max(0, target.hp - dmg);
   const killed = newHp <= 0;
   const xp = xpForDamage(dmg, killed, attacker.level, target.level);
@@ -884,7 +897,7 @@ function applyPlayerTacticDamage(
     pickTarget: null,
     log: [...state.log, ...lines],
   };
-  if (newHp > 0) next = attachDamagePulse(next, enemyId, dmg);
+  if (dmg > 0) next = attachDamagePulse(next, enemyId, dmg, hpBeforeTactic, "tactic");
   next = checkOutcome(next);
   if (next.outcome !== "playing") return next;
   return maybeEndPlayerTurn(next);
@@ -1087,6 +1100,7 @@ function enemyAttackAfterAdvance(s: BattleState, eid: string): BattleState {
   if (!adj2) return s;
   const dmg = meleeDamageDealt(s, eu, adj2);
   const hint = combatHints(s, eu, adj2);
+  const hpBeforeEnemyHit = adj2.hp;
   const newHp = Math.max(0, adj2.hp - dmg);
   let hit: BattleState = {
     ...s,
@@ -1096,7 +1110,7 @@ function enemyAttackAfterAdvance(s: BattleState, eid: string): BattleState {
       `${eu.name} ${eu.troopKind === "archer" ? "箭射" : "攻击"} ${adj2.name}，造成 ${dmg} 点伤害${hint ? ` ${hint}` : ""}。`,
     ],
   };
-  if (newHp > 0) hit = attachDamagePulse(hit, adj2.id, dmg);
+  if (dmg > 0) hit = attachDamagePulse(hit, adj2.id, dmg, hpBeforeEnemyHit, "melee");
   return hit;
 }
 
@@ -1112,6 +1126,7 @@ function executeEnemyUnitAction(state: BattleState, eid: string): BattleState {
   if (adj) {
     const dmg = meleeDamageDealt(s, eu, adj);
     const hint = combatHints(s, eu, adj);
+    const hpBeforeEnemyMelee = adj.hp;
     const newHp = Math.max(0, adj.hp - dmg);
     let hit: BattleState = {
       ...s,
@@ -1121,7 +1136,7 @@ function executeEnemyUnitAction(state: BattleState, eid: string): BattleState {
         `${eu.name} ${eu.troopKind === "archer" ? "箭射" : "攻击"} ${adj.name}，造成 ${dmg} 点伤害${hint ? ` ${hint}` : ""}。`,
       ],
     };
-    if (newHp > 0) hit = attachDamagePulse(hit, adj.id, dmg);
+    if (dmg > 0) hit = attachDamagePulse(hit, adj.id, dmg, hpBeforeEnemyMelee, "melee");
     return checkOutcome(hit);
   }
   const target = players.reduce((a, b) => {
@@ -1307,7 +1322,13 @@ export function ensureBattleFields(b: BattleState): BattleState {
     enemyTurnQueue: s.enemyTurnQueue ?? null,
     enemyTurnCursor: s.enemyTurnCursor ?? 0,
     pendingMove: s.pendingMove ?? null,
-    damagePulse: s.damagePulse ?? null,
+    damagePulse: (() => {
+      const dp = s.damagePulse;
+      if (!dp || typeof (dp as { hpBefore?: unknown }).hpBefore !== "number") return null;
+      const k = (dp as { kind?: unknown }).kind;
+      if (k !== "melee" && k !== "tactic") return null;
+      return dp as NonNullable<BattleState["damagePulse"]>;
+    })(),
     scenarioBrief: typeof s.scenarioBrief === "string" ? s.scenarioBrief : "",
     victoryBrief: typeof s.victoryBrief === "string" ? s.victoryBrief : "",
     winCondition: normalizeWinCondition(s.winCondition),

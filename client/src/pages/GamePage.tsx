@@ -53,6 +53,9 @@ const TERRAIN_LEGEND: { id: Terrain; ch: string }[] = [
   { id: "desert", ch: "沙" },
 ];
 import { LOCAL_SAVES_KEY } from "../game/types";
+import BattleOverviewMap, {
+  type BattleViewportNorm,
+} from "../components/BattleOverviewMap";
 import GeneralAvatar from "../components/GeneralAvatar";
 import GameBattle, { type GameBattleHandle, type MenuAction } from "./GameBattle";
 
@@ -195,6 +198,10 @@ export default function GamePage() {
   const [generalCodexOpen, setGeneralCodexOpen] = useState(false);
   const [generalCodexQuery, setGeneralCodexQuery] = useState("");
   const [generalCodexPickId, setGeneralCodexPickId] = useState<string | null>(null);
+  const [battleViewportNorm, setBattleViewportNorm] = useState<BattleViewportNorm | null>(null);
+  const onBattleScrollViewportChange = useCallback((n: BattleViewportNorm) => {
+    setBattleViewportNorm(n);
+  }, []);
   const turnIntroLockedRef = useRef(true);
   turnIntroLockedRef.current = turnIntroLocked;
   const onTurnActionReady = useCallback((ready: boolean) => {
@@ -744,6 +751,13 @@ export default function GamePage() {
         <Link to="/" className="battle-back-home battle-back-home--sidebar">
           ← 返回首页
         </Link>
+        <BattleOverviewMap
+          gridW={battle.gridW}
+          gridH={battle.gridH}
+          terrain={battle.terrain}
+          units={battle.units}
+          viewport={battleViewportNorm}
+        />
         {metaSidebarCollapsed ? (
           <button
             type="button"
@@ -1130,6 +1144,7 @@ export default function GamePage() {
               turnIntroLocked={turnIntroLocked}
               keyboardBlocked={stagePickerOpen || generalCodexOpen}
               fitViewport
+              onScrollViewportChange={onBattleScrollViewportChange}
               onTurnActionReady={onTurnActionReady}
               onDamagePulseConsumed={onDamagePulseConsumed}
               onCellClick={onCellClick}

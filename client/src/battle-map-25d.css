@@ -13,6 +13,11 @@
   margin: 2.35rem auto 0;
 }
 
+/* fit 主战场：去掉 perspective，避免与行动菜单 transform 叠加后错位、放大感 */
+.battle-scene.battle-scene--fit {
+  perspective: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .battle-scene .battle-grid {
     margin: 2.35rem auto 0;

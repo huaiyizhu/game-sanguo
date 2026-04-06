@@ -118,7 +118,14 @@ export interface BattleState {
    * 本帧造成的伤害提示（受害者 id + 数值），供 UI 在正确单位上播放受击/飘字；
    * 不应写入存档，加载后应为 null；由 GameBattle 消费后清空。
    */
-  damagePulse: { unitId: string; amount: number; key: number } | null;
+  damagePulse: {
+    unitId: string;
+    amount: number;
+    key: number;
+    hpBefore: number;
+    /** UI 受击光色：普攻 / 计策 */
+    kind: "melee" | "tactic";
+  } | null;
   /** 本关背景提要（侧栏与图鉴式说明） */
   scenarioBrief?: string;
   /** 胜利条件简述（侧栏展示；实际判定见 winCondition） */

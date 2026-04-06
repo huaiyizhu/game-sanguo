@@ -9,17 +9,19 @@ import {
   useState,
 } from "react";
 import type { AnimationEvent, CSSProperties, KeyboardEvent, MouseEvent } from "react";
-import GeneralAvatar from "../components/GeneralAvatar";
 import TroopEmblem from "../components/TroopEmblem";
 import {
   canAffordTactic,
   canMeleeAttack,
   canUseTactic,
+  DAMAGE_FLOAT_ANIM_MS,
+  DAMAGE_FLOAT_DELAY_MS,
   MOVE_SLIDE_DURATION_MS,
   POST_ACTION_TURN_BANNER_DELAY_MS,
   physicalAttackMenuLabel,
   TURN_PHASE_BANNER_MS,
 } from "../game/battle";
+import type { BattleViewportNorm } from "../components/BattleOverviewMap";
 import type { BattlePhase, BattleState, Side, TacticKind, Terrain, TroopKind } from "../game/types";
 import { TACTIC_DEF, TERRAIN_LABEL, TROOP_KIND_LABEL } from "../game/types";
 
@@ -29,6 +31,9 @@ const TACTIC_ORDER: TacticKind[] = ["fire", "water", "trap"];
 
 /** 移动结束进入菜单后，先留白这段时间再显示菜单，便于看清落点再选行动 */
 const ACTION_MENU_REVEAL_DELAY_MS = 480;
+
+/** 主战场（fit 视口）单格像素边长；大地图时靠外层滚动，不再把格压小塞满一屏 */
+const BATTLE_CELL_PX_VIEWPORT = 96;
 
 type Props = {
   battle: BattleState;
@@ -51,6 +56,8 @@ type Props = {
   keyboardBlocked?: boolean;
   /** 为 true 时棋盘在容器内缩放铺满，不出现滚动条 */
   fitViewport?: boolean;
+  /** 主战场滚动容器视口相对整张地图的比例（用于侧栏缩略图） */
+  onScrollViewportChange?: (norm: BattleViewportNorm) => void;
 };
 
 const MENU_ORDER: MenuAction[] = ["attack", "tactic", "wait"];
@@ -142,6 +149,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   onPickHoverEnemy,
   keyboardBlocked = false,
   fitViewport = false,
+  onScrollViewportChange,
   }: Props,
   ref
 ) {
@@ -159,16 +167,17 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     pendingMove,
   } = battle;
   const cellCss = useMemo(() => {
-    const maxPx = 68;
-    return `min(${maxPx}px, max(26px, calc((min(96vw, 1240px) - 280px) / ${gridW})))`;
+    const maxPx = 96;
+    return `min(${maxPx}px, max(34px, calc((min(96vw, 1240px) - 280px) / ${gridW})))`;
   }, [gridW]);
   const [fitCellPx, setFitCellPx] = useState(0);
-  const fitSceneRef = useRef<HTMLDivElement>(null);
   const cellCssEffective = useMemo(() => {
-    if (fitViewport) return fitCellPx > 0 ? `${fitCellPx}px` : "24px";
+    if (fitViewport) return fitCellPx > 0 ? `${fitCellPx}px` : `${BATTLE_CELL_PX_VIEWPORT}px`;
     return cellCss;
   }, [fitViewport, fitCellPx, cellCss]);
   const battleWrapRef = useRef<HTMLDivElement>(null);
+  const onScrollViewportChangeRef = useRef(onScrollViewportChange);
+  onScrollViewportChangeRef.current = onScrollViewportChange;
   const battleSnapRef = useRef(battle);
   battleSnapRef.current = battle;
   const [rosterPulse, setRosterPulse] = useState<{ x: number; y: number } | null>(null);
@@ -187,16 +196,14 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
         setRosterPulse(null);
         rosterPulseTimerRef.current = null;
       }, 2000);
-      if (!fitViewport) {
-        requestAnimationFrame(() => {
-          const wrap = battleWrapRef.current;
-          const cell = wrap?.querySelector(`[data-battle-cell="${u.x},${u.y}"]`);
-          cell?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
-        });
-      }
+      requestAnimationFrame(() => {
+        const wrap = battleWrapRef.current;
+        const cell = wrap?.querySelector(`[data-battle-cell="${u.x},${u.y}"]`);
+        cell?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+      });
       return true;
     },
-  }), [fitViewport]);
+  }), []);
 
   useEffect(() => {
     return () => {
@@ -211,24 +218,40 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       setFitCellPx(0);
       return;
     }
-    const el = fitSceneRef.current;
+    setFitCellPx(BATTLE_CELL_PX_VIEWPORT);
+  }, [fitViewport]);
+
+  const reportScrollViewport = useCallback(() => {
+    const el = battleWrapRef.current;
+    const cb = onScrollViewportChangeRef.current;
+    if (!el || !cb || !fitViewport) return;
+    const sw = el.scrollWidth;
+    const sh = el.scrollHeight;
+    if (sw < 2 || sh < 2) return;
+    const cw = el.clientWidth;
+    const ch = el.clientHeight;
+    const left = Math.max(0, Math.min(1, el.scrollLeft / sw));
+    const top = Math.max(0, Math.min(1, el.scrollTop / sh));
+    const width = Math.max(0, Math.min(1, cw / sw));
+    const height = Math.max(0, Math.min(1, ch / sh));
+    cb({ left, top, width, height });
+  }, [fitViewport]);
+
+  useEffect(() => {
+    if (!fitViewport || !onScrollViewportChange) return;
+    const el = battleWrapRef.current;
     if (!el) return;
-    const gap = 3;
-    const measure = () => {
-      const w = el.clientWidth;
-      const h = el.clientHeight;
-      if (w < 8 || h < 8) return;
-      const cw = (w - gap * (gridW - 1)) / gridW;
-      const ch = (h - gap * (gridH - 1)) / gridH;
-      const raw = Math.min(cw, ch);
-      const next = Math.max(20, Math.min(68, Math.floor(raw)));
-      setFitCellPx((prev) => (prev === next ? prev : next));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
+    reportScrollViewport();
+    el.addEventListener("scroll", reportScrollViewport, { passive: true });
+    const ro = new ResizeObserver(() => reportScrollViewport());
     ro.observe(el);
-    return () => ro.disconnect();
-  }, [fitViewport, gridW, gridH]);
+    window.addEventListener("resize", reportScrollViewport);
+    return () => {
+      el.removeEventListener("scroll", reportScrollViewport);
+      ro.disconnect();
+      window.removeEventListener("resize", reportScrollViewport);
+    };
+  }, [fitViewport, onScrollViewportChange, reportScrollViewport, gridW, gridH]);
 
   const moveSet = new Set(moveTargets.map((t) => `${t.x},${t.y}`));
   const [menuFocus, setMenuFocus] = useState(0);
@@ -238,6 +261,14 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     amount: number;
     key: number;
   } | null>(null);
+  /** 扣血飘字结束前，血条仍显示受伤前血量 */
+  const [hpBarLag, setHpBarLag] = useState<Record<string, number>>({});
+  /** 与 hpBarLag 同步：受击光效配色（普攻红 / 计策青） */
+  const [hitFxKind, setHitFxKind] = useState<Record<string, "melee" | "tactic">>({});
+  const dmgFloatTimersRef = useRef<{
+    delay?: ReturnType<typeof window.setTimeout>;
+    end?: ReturnType<typeof window.setTimeout>;
+  }>({});
   const [moveSlide, setMoveSlide] = useState<Record<string, { dx: number; dy: number }>>({});
   const [actionMenuRevealReady, setActionMenuRevealReady] = useState(false);
   const [dyingVisuals, setDyingVisuals] = useState<DyingVisual[]>([]);
@@ -271,6 +302,13 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     setDyingVisuals([]);
     setKillBanners([]);
     setDmgFx(null);
+    setHpBarLag({});
+    setHitFxKind({});
+    const ft = dmgFloatTimersRef.current;
+    if (ft.delay) window.clearTimeout(ft.delay);
+    if (ft.end) window.clearTimeout(ft.end);
+    ft.delay = undefined;
+    ft.end = undefined;
   }, [visualEpoch]);
 
   const battleMenuActive =
@@ -513,18 +551,58 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     }
   }, [units]);
 
+  /**
+   * damagePulse 会在微任务里被 onDamagePulseConsumed 清空。
+   * 若本 effect 依赖 damagePulse 且 return 里 clearTimeout，下一帧 pulse=null 时会误清掉刚安排的飘字定时器。
+   * 因此：不在 cleanup 里清定时器；仅在新脉冲到来时覆盖旧定时器，并由 visualEpoch / 卸载时统一清理。
+   */
   useEffect(() => {
     const p = battle.damagePulse;
     if (!p) return;
-    setDmgFx({ unitId: p.unitId, amount: p.amount, key: p.key });
+
+    const reduced =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const delayMs = reduced ? 80 : DAMAGE_FLOAT_DELAY_MS;
+    const animMs = reduced ? 480 : DAMAGE_FLOAT_ANIM_MS;
+
+    const ft = dmgFloatTimersRef.current;
+    if (ft.delay) window.clearTimeout(ft.delay);
+    if (ft.end) window.clearTimeout(ft.end);
+
+    setHpBarLag((prev) => ({ ...prev, [p.unitId]: p.hpBefore }));
+    setHitFxKind((prev) => ({ ...prev, [p.unitId]: p.kind }));
+    setDmgFx(null);
     queueMicrotask(() => onDamagePulseConsumed());
+
+    ft.delay = window.setTimeout(() => {
+      setDmgFx({ unitId: p.unitId, amount: p.amount, key: p.key });
+    }, delayMs);
+
+    ft.end = window.setTimeout(() => {
+      setDmgFx(null);
+      setHpBarLag((prev) => {
+        const next = { ...prev };
+        delete next[p.unitId];
+        return next;
+      });
+      setHitFxKind((prev) => {
+        const next = { ...prev };
+        delete next[p.unitId];
+        return next;
+      });
+    }, delayMs + animMs);
   }, [battle.damagePulse, onDamagePulseConsumed]);
 
   useEffect(() => {
-    if (!dmgFx) return;
-    const t = window.setTimeout(() => setDmgFx(null), 720);
-    return () => window.clearTimeout(t);
-  }, [dmgFx]);
+    return () => {
+      const ft = dmgFloatTimersRef.current;
+      if (ft.delay) window.clearTimeout(ft.delay);
+      if (ft.end) window.clearTimeout(ft.end);
+      ft.delay = undefined;
+      ft.end = undefined;
+    };
+  }, []);
 
   const onMenuKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -739,7 +817,11 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       phase === "tactic-menu" &&
       outcome === "playing" &&
       turn === "player";
-    const hitActive = dmgFx?.unitId === u?.id;
+    /* 受伤起就播受击（与血条滞后一致）；飘字延迟期间也要有抖动/闪光 */
+    const hitActive = Boolean(
+      u && (Object.prototype.hasOwnProperty.call(hpBarLag, u.id) || dmgFx?.unitId === u.id)
+    );
+    const hitKind: "melee" | "tactic" | undefined = u ? hitFxKind[u.id] : undefined;
     const pickCand = Boolean(u && u.side === "enemy" && isPickCandidate(u.id));
     const pickFocus = Boolean(u && u.id === focusedEnemyId);
     const slide = u && moveSlide[u.id];
@@ -766,6 +848,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       showMenu,
       showTacticMenu,
       hitActive,
+      hitKind,
       pickCand,
       pickFocus,
       slide,
@@ -808,7 +891,6 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
         </div>
       )}
       <div
-        ref={fitSceneRef}
         className={["battle-scene", fitViewport ? "battle-scene--fit" : ""].filter(Boolean).join(" ")}
       >
         <div className="battle-scene__ground" aria-hidden />
@@ -871,20 +953,6 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                       "unit-death-fade",
                     ].join(" ")}
                   >
-                    <div className="unit-standee__hud unit-standee__hud--ghost">
-                      <div className="unit-standee__hud-row">
-                        <GeneralAvatar name={deathHere.name} variant="standee" />
-                        <div className="unit-standee__hud-main">
-                          <span className="unit-standee__name">{deathHere.name}</span>
-                          <span className="unit-standee__tags">
-                            {TROOP_KIND_LABEL[deathHere.troopKind]} · Lv.{deathHere.level}
-                          </span>
-                          <div className="unit-standee__hpbar" aria-hidden>
-                            <div className="unit-standee__hpfill" style={{ width: "0%" }} />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
                     <div
                       className={[
                         "unit-standee__body",
@@ -893,6 +961,11 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                       ].join(" ")}
                     >
                       <TroopEmblem kind={deathHere.troopKind} side={deathHere.side} showTroopBadge={false} />
+                    </div>
+                    <div className="unit-standee__hud unit-standee__hud--ghost unit-standee__hud--hp-only" aria-hidden>
+                      <div className="unit-standee__hpbar" aria-hidden>
+                        <div className="unit-standee__hpfill" style={{ width: "0%" }} />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -910,14 +983,17 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
             showMenu,
             showTacticMenu,
             hitActive,
+            hitKind,
             pickCand,
             pickFocus,
             slide,
             pendingSelectionGlow,
             isMove,
             rosterPulseHere,
-          }) =>
-            u ? (
+          }) => {
+            if (!u) return null;
+            const hpForBar = hpBarLag[u.id] ?? u.hp;
+            return (
               <div
                 key={`unit-${u.id}`}
                 className={[
@@ -972,29 +1048,6 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                     });
                   }}
                 >
-                  <div className="unit-standee__hud">
-                    <div className="unit-standee__hud-row">
-                      <GeneralAvatar
-                        name={u.name}
-                        catalogId={u.portraitCatalogId}
-                        variant="standee"
-                      />
-                      <div className="unit-standee__hud-main">
-                        <span className="unit-standee__name">{u.name}</span>
-                        <span className="unit-standee__tags">
-                          {TROOP_KIND_LABEL[u.troopKind]} · Lv.{u.level}
-                        </span>
-                        <div className="unit-standee__hpbar" aria-hidden>
-                          <div
-                            className="unit-standee__hpfill"
-                            style={{
-                              width: `${Math.max(0, Math.min(100, (u.hp / Math.max(1, u.maxHp)) * 100))}%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
                   <div
                     role="button"
                     tabIndex={0}
@@ -1005,7 +1058,11 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                       isSelected ? "selected" : "",
                       turnDone ? "unit-turn-done" : "",
                       pendingSelectionGlow ? "unit-pending-highlight" : "",
-                      hitActive ? "unit-hit" : "",
+                      hitActive
+                        ? hitKind === "tactic"
+                          ? "unit-hit unit-hit--tactic"
+                          : "unit-hit"
+                        : "",
                       pickCand ? "pick-target-candidate" : "",
                       pickFocus ? "pick-target-focus" : "",
                       outcome === "playing" &&
@@ -1042,11 +1099,30 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                     }}
                   >
                     <TroopEmblem kind={u.troopKind} side={u.side} showTroopBadge={false} />
-                    {hitActive && dmgFx && (
-                      <span className="dmg-float" key={dmgFx.key}>
-                        -{dmgFx.amount}
-                      </span>
-                    )}
+                  </div>
+                  {dmgFx?.unitId === u.id && (
+                    <span
+                      className={[
+                        "dmg-float",
+                        "unit-standee__dmg-float",
+                        hitKind === "tactic" ? "dmg-float--tactic" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      key={dmgFx.key}
+                    >
+                      -{dmgFx.amount}
+                    </span>
+                  )}
+                  <div className="unit-standee__hud unit-standee__hud--hp-only" aria-hidden>
+                    <div className="unit-standee__hpbar" aria-hidden>
+                      <div
+                        className="unit-standee__hpfill"
+                        style={{
+                          width: `${Math.max(0, Math.min(100, (hpForBar / Math.max(1, u.maxHp)) * 100))}%`,
+                        }}
+                      />
+                    </div>
                   </div>
                   {showMenu && (
                     <div
@@ -1157,7 +1233,8 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                   )}
                 </div>
               </div>
-            ) : null
+            );
+          }
         )}
         </div>
       </div>

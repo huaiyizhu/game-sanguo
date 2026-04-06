@@ -24,9 +24,10 @@
   align-items: flex-end;
   justify-content: center;
   width: 100%;
-  max-width: min(calc(var(--cell, 72px) * 1.22), 118px);
-  height: min(calc(var(--cell, 72px) * 1.52), 168px);
-  min-height: min(calc(var(--cell, 72px) * 1.28), 138px);
+  max-width: min(calc(var(--cell, 72px) * 1.06), 148px);
+  max-height: min(calc(var(--cell, 72px) * 1.02), 148px);
+  height: min(calc(var(--cell, 72px) * 1.02), 148px);
+  min-height: 0;
   transform: none;
   transition: transform 0.18s ease;
   overflow: visible;

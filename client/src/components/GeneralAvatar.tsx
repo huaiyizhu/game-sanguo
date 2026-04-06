@@ -39,10 +39,13 @@ export default function GeneralAvatar({
   const tryUrl = imgFailIdx < candidates.length ? candidates[imgFailIdx] : null;
   const showRaster = tryUrl !== null;
 
+  const standeePx = Math.round(Math.min(34, Math.max(22, size * 0.75)));
   const wrapStyle: CSSProperties = {
     background: showRaster ? "transparent" : background,
     boxShadow: showRaster ? "none" : boxShadow,
-    ...(isStandee ? {} : { width: size, height: size }),
+    ...(isStandee
+      ? { width: standeePx, height: standeePx, borderRadius: "50%" }
+      : { width: size, height: size }),
   };
 
   return (
@@ -73,7 +76,9 @@ export default function GeneralAvatar({
       ) : (
         <span
           className="general-avatar__glyph"
-          style={isStandee ? undefined : { fontSize: Math.max(11, Math.round(size * 0.42)) }}
+          style={{
+            fontSize: Math.max(11, Math.round((isStandee ? standeePx : size) * 0.42)),
+          }}
         >
           {ch}
         </span>
