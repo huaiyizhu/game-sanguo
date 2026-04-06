@@ -51,6 +51,8 @@ const TERRAIN_LEGEND: { id: Terrain; ch: string }[] = [
   { id: "water", ch: "水" },
   { id: "mountain", ch: "山" },
   { id: "desert", ch: "沙" },
+  { id: "wall", ch: "墙" },
+  { id: "gate", ch: "门" },
 ];
 import { LOCAL_SAVES_KEY } from "../game/types";
 import BattleOverviewMap, {

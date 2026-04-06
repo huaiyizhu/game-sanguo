@@ -19,6 +19,7 @@ import {
   TROOP_DEFENSE_COUNTERS,
   expToNextLevel,
   isArmyPreferredTerrain,
+  normalizeTerrainCell,
   isTroopKind,
   movePointsForTroop,
   PREFERRED_TERRAIN_ATK_MUL,
@@ -83,6 +84,8 @@ function terrainAt(state: BattleState, x: number, y: number): Terrain {
 
 /** 走入该格消耗的移动力；Infinity 表示不可进入 */
 export function stepCostForUnit(u: Unit, t: Terrain): number {
+  if (t === "wall") return Infinity;
+  if (t === "gate") return 1;
   if (t === "water") return u.armyType === "shui" ? 1 : Infinity;
   if (t === "mountain") return u.armyType === "shan" ? 1 : 2;
   return 1;
@@ -1358,10 +1361,12 @@ export function ensureBattleFields(b: BattleState): BattleState {
       typeof s.maxBattleRounds === "number" && s.maxBattleRounds > 0
         ? Math.floor(s.maxBattleRounds)
         : 60,
-    terrain:
-      s.terrain && s.terrain.length === s.gridH && s.terrain[0]?.length === s.gridW
-        ? s.terrain
-        : createDefaultTerrain(s.gridW, s.gridH),
+    terrain: (() => {
+      if (!s.terrain || s.terrain.length !== s.gridH || s.terrain[0]?.length !== s.gridW) {
+        return createDefaultTerrain(s.gridW, s.gridH);
+      }
+      return s.terrain.map((row) => row.map((c) => normalizeTerrainCell(c)));
+    })(),
   };
   s = { ...s, units: s.units.map((u) => ensureUnitShape(u as Unit | Record<string, unknown>)) };
   if (!s.playerTurnStart || Object.keys(s.playerTurnStart).length === 0) {

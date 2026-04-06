@@ -1,7 +1,32 @@
 export type Side = "player" | "enemy";
 
 /** 地形：影响移动力消耗与可用计策 */
-export type Terrain = "plain" | "forest" | "water" | "mountain" | "desert";
+export type Terrain =
+  | "plain"
+  | "forest"
+  | "water"
+  | "mountain"
+  | "desert"
+  | "wall"
+  | "gate";
+
+/** 用于旧存档或异常 JSON 回填 */
+const ALL_TERRAINS: readonly Terrain[] = [
+  "plain",
+  "forest",
+  "water",
+  "mountain",
+  "desert",
+  "wall",
+  "gate",
+];
+
+export function normalizeTerrainCell(v: unknown): Terrain {
+  if (typeof v === "string" && (ALL_TERRAINS as readonly string[]).includes(v)) {
+    return v as Terrain;
+  }
+  return "plain";
+}
 
 /** 兵种：平军 / 山军 / 水军，影响涉水与山地移耗 */
 export type ArmyType = "ping" | "shan" | "shui";
@@ -184,6 +209,7 @@ export function expToNextLevel(level: number): number {
 
 /** 兵种是否在优势地形（攻防加成） */
 export function isArmyPreferredTerrain(army: ArmyType, t: Terrain): boolean {
+  if (t === "wall" || t === "gate") return false;
   if (army === "ping") return t === "plain" || t === "forest" || t === "desert";
   if (army === "shan") return t === "mountain";
   return army === "shui" && t === "water";
@@ -256,4 +282,6 @@ export const TERRAIN_LABEL: Record<Terrain, string> = {
   water: "水",
   mountain: "山地",
   desert: "沙漠",
+  wall: "城墙",
+  gate: "城门",
 };

@@ -86,10 +86,31 @@
   border-left: 1px solid rgba(61, 79, 102, 0.4);
 }
 
+/* 禁止划选、双击选词、长按呼出菜单；避免普通文本上出现文本光标（I 形） */
+html {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
   background: radial-gradient(ellipse 120% 80% at 50% -20%, #2a3a52 0%, var(--bg-deep) 55%);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 登录/注册等可编辑控件仍可选中与显示插入光标 */
+input:not([readonly]):not([disabled]),
+textarea:not([readonly]):not([disabled]),
+select:not([disabled]),
+[contenteditable="true"],
+[contenteditable="plaintext-only"] {
+  -webkit-user-select: text;
+  user-select: text;
+  caret-color: auto;
 }
 
 #root {
@@ -384,6 +405,14 @@ a:hover {
 
 .battle-overview__cell--desert {
   background: linear-gradient(180deg, #b45309 0%, #78350f 100%);
+}
+
+.battle-overview__cell--wall {
+  background: linear-gradient(180deg, #57534e 0%, #292524 100%);
+}
+
+.battle-overview__cell--gate {
+  background: linear-gradient(180deg, #78716c 0%, #44403c 100%);
 }
 
 .battle-overview__unit {

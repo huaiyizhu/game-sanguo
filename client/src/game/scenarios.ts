@@ -26,6 +26,25 @@ export function getNextScenarioId(currentId: string): string | null {
   return SCENARIO_ORDER[idx + 1];
 }
 
+/** 在指定横排铺城墙，仅 gateX 为城门（可通行），其余格为不可通行的城墙 */
+function addCityWallRow(
+  rows: Terrain[][],
+  y: number,
+  gateX: number,
+  marginX = 2
+): void {
+  const h = rows.length;
+  const w = rows[0]?.length ?? 0;
+  if (y < 0 || y >= h || w === 0) return;
+  const lo = Math.max(marginX, 1);
+  const hi = w - marginX;
+  if (lo >= hi) return;
+  const gx = Math.max(lo, Math.min(hi - 1, gateX));
+  for (let x = lo; x < hi; x++) {
+    rows[y][x] = x === gx ? "gate" : "wall";
+  }
+}
+
 /** 与旧 12×8 序章兼容的默认地形；其余尺寸为算法生成 */
 export function createDefaultTerrain(gridW: number, gridH: number): Terrain[][] {
   if (gridW === 12 && gridH === 8) return terrainClassic(12, 8);
@@ -172,6 +191,7 @@ function terrainXuzhouSiege(w: number, h: number): Terrain[][] {
     }
     rows.push(row);
   }
+  addCityWallRow(rows, Math.floor(h * 0.42), Math.floor(w / 2));
   return rows;
 }
 
@@ -443,6 +463,7 @@ export function buildBattleStateForScenario(scenarioId: string): BattleState {
       const w = 20;
       const h = 12;
       const t = terrainForestCore(w, h);
+      addCityWallRow(t, Math.floor(h * 0.42), Math.floor(w / 2));
       const pb = playersBottom(w, h);
       const tier = 3;
       return baseState(
