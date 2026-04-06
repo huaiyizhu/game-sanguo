@@ -1144,6 +1144,7 @@ export default function GamePage() {
             <GameBattle
               ref={gameBattleRef}
               battle={battle}
+              inspectUnitId={inspectUnitId}
               visualEpoch={visualEpoch}
               turnIntroLocked={turnIntroLocked}
               keyboardBlocked={stagePickerOpen || generalCodexOpen}

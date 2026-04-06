@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import type { AnimationEvent, CSSProperties, KeyboardEvent, MouseEvent } from "react";
+import GeneralAvatar from "../components/GeneralAvatar";
 import TroopEmblem from "../components/TroopEmblem";
 import {
   canAffordTactic,
@@ -23,7 +24,14 @@ import {
 } from "../game/battle";
 import type { BattleViewportNorm } from "../components/BattleOverviewMap";
 import type { BattlePhase, BattleState, Side, TacticKind, Terrain, TroopKind } from "../game/types";
-import { TACTIC_DEF, TERRAIN_LABEL, TROOP_KIND_LABEL } from "../game/types";
+import {
+  ARMY_TYPE_LABEL,
+  ARCHER_ATTACK_RANGE,
+  expToNextLevel,
+  TACTIC_DEF,
+  TERRAIN_LABEL,
+  TROOP_KIND_LABEL,
+} from "../game/types";
 
 export type MenuAction = "attack" | "tactic" | "wait";
 
@@ -35,8 +43,75 @@ const ACTION_MENU_REVEAL_DELAY_MS = 480;
 /** 主战场（fit 视口）单格像素边长；大地图时靠外层滚动，不再把格压小塞满一屏 */
 const BATTLE_CELL_PX_VIEWPORT = 96;
 
+/** 选中单位后属性浮窗：停留时长 + 淡出时长 */
+const UNIT_ATTR_FLOAT_HOLD_MS = 3400;
+const UNIT_ATTR_FLOAT_FADE_MS = 900;
+
+function ratioPercent(value: number, cap: number): number {
+  if (cap <= 0) return 0;
+  return Math.min(100, Math.round((100 * value) / cap));
+}
+
+type AttrFloatSide = "right" | "left" | "top" | "bottom";
+
+/** 在视口内为浮窗选一侧：优先右→左→下→上，放不下则取可见面积最大的 clamp 位置 */
+function pickAttrFloatPlacement(
+  cellRect: DOMRect,
+  floatW: number,
+  floatH: number
+): { left: number; top: number; side: AttrFloatSide } {
+  const M = 10;
+  const GAP = 10;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const yCenter = cellRect.top + cellRect.height / 2 - floatH / 2;
+  const xCenter = cellRect.left + cellRect.width / 2 - floatW / 2;
+
+  const fits = (l: number, t: number) =>
+    l >= M && t >= M && l + floatW <= vw - M && t + floatH <= vh - M;
+
+  if (fits(cellRect.right + GAP, yCenter)) {
+    return { left: cellRect.right + GAP, top: yCenter, side: "right" };
+  }
+  if (fits(cellRect.left - GAP - floatW, yCenter)) {
+    return { left: cellRect.left - GAP - floatW, top: yCenter, side: "left" };
+  }
+  if (fits(xCenter, cellRect.bottom + GAP)) {
+    return { left: xCenter, top: cellRect.bottom + GAP, side: "bottom" };
+  }
+  if (fits(xCenter, cellRect.top - GAP - floatH)) {
+    return { left: xCenter, top: cellRect.top - GAP - floatH, side: "top" };
+  }
+
+  const candidates: { l: number; t: number; side: AttrFloatSide }[] = [
+    { l: cellRect.right + GAP, t: yCenter, side: "right" },
+    { l: cellRect.left - GAP - floatW, t: yCenter, side: "left" },
+    { l: xCenter, t: cellRect.bottom + GAP, side: "bottom" },
+    { l: xCenter, t: cellRect.top - GAP - floatH, side: "top" },
+  ];
+  let best = candidates[0];
+  let bestArea = -1;
+  for (const c of candidates) {
+    const cl = Math.min(Math.max(M, c.l), vw - floatW - M);
+    const ct = Math.min(Math.max(M, c.t), vh - floatH - M);
+    const visW = Math.min(cl + floatW, vw - M) - Math.max(cl, M);
+    const visH = Math.min(ct + floatH, vh - M) - Math.max(ct, M);
+    const area = Math.max(0, visW) * Math.max(0, visH);
+    if (area > bestArea) {
+      bestArea = area;
+      best = { l: cl, t: ct, side: c.side };
+    }
+  }
+  return { left: best.l, top: best.t, side: best.side };
+}
+
+const ATTR_FLOAT_EST_W = 288;
+const ATTR_FLOAT_EST_H = 240;
+
 type Props = {
   battle: BattleState;
+  /** 当前检视/点选单位（含敌军与侧栏点将），用于属性浮窗 */
+  inspectUnitId?: string | null;
   visualEpoch: number;
   /** 为 true 时回合开场字幕流程尚未结束，须屏蔽战场操作（由父组件根据 onTurnActionReady 驱动） */
   turnIntroLocked: boolean;
@@ -150,6 +225,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   keyboardBlocked = false,
   fitViewport = false,
   onScrollViewportChange,
+  inspectUnitId = null,
   }: Props,
   ref
 ) {
@@ -168,6 +244,12 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     battleRound,
     maxBattleRounds,
   } = battle;
+
+  const floatUnit = useMemo(() => {
+    if (!inspectUnitId) return null;
+    return units.find((u) => u.id === inspectUnitId && u.hp > 0) ?? null;
+  }, [inspectUnitId, units]);
+
   const cellCss = useMemo(() => {
     const maxPx = 96;
     return `min(${maxPx}px, max(34px, calc((min(96vw, 1240px) - 280px) / ${gridW})))`;
@@ -184,6 +266,19 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   battleSnapRef.current = battle;
   const [rosterPulse, setRosterPulse] = useState<{ x: number; y: number } | null>(null);
   const rosterPulseTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+
+  const [attrFloatVisible, setAttrFloatVisible] = useState(false);
+  const [attrFloatFading, setAttrFloatFading] = useState(false);
+  const [attrFloatPlacement, setAttrFloatPlacement] = useState<{
+    left: number;
+    top: number;
+    side: AttrFloatSide;
+  } | null>(null);
+  const attrFloatRootRef = useRef<HTMLDivElement>(null);
+  const attrFloatTimersRef = useRef<{
+    hold: ReturnType<typeof window.setTimeout> | null;
+    done: ReturnType<typeof window.setTimeout> | null;
+  }>({ hold: null, done: null });
 
   useImperativeHandle(ref, () => ({
     focusUnitOnMap(unitId: string) {
@@ -212,6 +307,9 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       if (rosterPulseTimerRef.current) {
         window.clearTimeout(rosterPulseTimerRef.current);
       }
+      const ft = attrFloatTimersRef.current;
+      if (ft.hold != null) window.clearTimeout(ft.hold);
+      if (ft.done != null) window.clearTimeout(ft.done);
     };
   }, []);
 
@@ -472,6 +570,121 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     phase === "pick-target" && pickTarget && pickTarget.targetIds.length > 0
       ? pickTarget.targetIds[pickTarget.focusIndex]
       : null;
+
+  useEffect(() => {
+    const ft = attrFloatTimersRef.current;
+    const clearAttrFloatTimers = () => {
+      if (ft.hold != null) {
+        window.clearTimeout(ft.hold);
+        ft.hold = null;
+      }
+      if (ft.done != null) {
+        window.clearTimeout(ft.done);
+        ft.done = null;
+      }
+    };
+
+    clearAttrFloatTimers();
+    setAttrFloatFading(false);
+    setAttrFloatPlacement(null);
+
+    if (outcome !== "playing" || !inspectUnitId) {
+      setAttrFloatVisible(false);
+      return clearAttrFloatTimers;
+    }
+
+    const su = battleSnapRef.current.units.find((z) => z.id === inspectUnitId);
+    if (!su || su.hp <= 0) {
+      setAttrFloatVisible(false);
+      return clearAttrFloatTimers;
+    }
+
+    setAttrFloatVisible(true);
+
+    ft.hold = window.setTimeout(() => {
+      ft.hold = null;
+      setAttrFloatFading(true);
+    }, UNIT_ATTR_FLOAT_HOLD_MS);
+
+    ft.done = window.setTimeout(() => {
+      ft.done = null;
+      setAttrFloatFading(false);
+      setAttrFloatVisible(false);
+      setAttrFloatPlacement(null);
+    }, UNIT_ATTR_FLOAT_HOLD_MS + UNIT_ATTR_FLOAT_FADE_MS);
+
+    return clearAttrFloatTimers;
+  }, [inspectUnitId, outcome]);
+
+  useEffect(() => {
+    if (!attrFloatVisible || !inspectUnitId) return;
+    const u = units.find((z) => z.id === inspectUnitId);
+    if (u && u.hp > 0) return;
+    const ft = attrFloatTimersRef.current;
+    if (ft.hold != null) {
+      window.clearTimeout(ft.hold);
+      ft.hold = null;
+    }
+    if (ft.done != null) {
+      window.clearTimeout(ft.done);
+      ft.done = null;
+    }
+    setAttrFloatFading(false);
+    setAttrFloatVisible(false);
+    setAttrFloatPlacement(null);
+  }, [attrFloatVisible, inspectUnitId, units]);
+
+  useLayoutEffect(() => {
+    if (!attrFloatVisible || !floatUnit) {
+      setAttrFloatPlacement(null);
+      return;
+    }
+    const run = () => {
+      const wrap = battleWrapRef.current;
+      const cell = wrap?.querySelector(
+        `[data-battle-cell="${floatUnit.x},${floatUnit.y}"]`
+      ) as HTMLElement | null;
+      const root = attrFloatRootRef.current;
+      const fw =
+        root && root.offsetWidth > 48 ? root.offsetWidth : ATTR_FLOAT_EST_W;
+      const fh =
+        root && root.offsetHeight > 48 ? root.offsetHeight : ATTR_FLOAT_EST_H;
+      const cr = cell?.getBoundingClientRect();
+      if (!cr || cr.width < 2 || cr.height < 2) {
+        setAttrFloatPlacement({
+          left: Math.max(12, window.innerWidth / 2 - fw / 2),
+          top: 80,
+          side: "right",
+        });
+        return;
+      }
+      setAttrFloatPlacement(pickAttrFloatPlacement(cr, fw, fh));
+    };
+    run();
+    let innerRaf = 0;
+    const outerRaf = requestAnimationFrame(() => {
+      innerRaf = requestAnimationFrame(run);
+    });
+    const wrap = battleWrapRef.current;
+    wrap?.addEventListener("scroll", run, { passive: true });
+    window.addEventListener("resize", run);
+    return () => {
+      cancelAnimationFrame(outerRaf);
+      cancelAnimationFrame(innerRaf);
+      wrap?.removeEventListener("scroll", run);
+      window.removeEventListener("resize", run);
+    };
+  }, [
+    attrFloatVisible,
+    floatUnit?.id,
+    floatUnit?.x,
+    floatUnit?.y,
+    visualEpoch,
+    cellCssEffective,
+    gridW,
+    gridH,
+    pendingMove,
+  ]);
 
   useEffect(() => {
     const prev = prevPhaseRef.current;
@@ -889,6 +1102,100 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
           <p key={turnBannerSeq} className="turn-phase-banner-text">
             {turnBannerLabel}
           </p>
+        </div>
+      )}
+      {outcome === "playing" && attrFloatVisible && floatUnit && (
+        <div
+          ref={attrFloatRootRef}
+          className={[
+            "unit-attr-float",
+            attrFloatFading ? "unit-attr-float--fading" : "",
+            !attrFloatPlacement ? "unit-attr-float--unplaced" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          style={
+            attrFloatPlacement
+              ? { left: attrFloatPlacement.left, top: attrFloatPlacement.top }
+              : undefined
+          }
+          data-attr-float-side={attrFloatPlacement?.side}
+          role="status"
+          aria-label={`${floatUnit.name} 属性`}
+        >
+          <div className="unit-attr-float__card">
+            <div className="unit-attr-float__head">
+              <GeneralAvatar
+                name={floatUnit.name}
+                catalogId={floatUnit.portraitCatalogId}
+                size={44}
+                title={floatUnit.name}
+              />
+              <div className="unit-attr-float__head-text">
+                <div className="unit-attr-float__name">{floatUnit.name}</div>
+                <div className="unit-attr-float__meta">
+                  {floatUnit.side === "player" ? "我军" : "敌军"} · Lv.{floatUnit.level} ·{" "}
+                  {TROOP_KIND_LABEL[floatUnit.troopKind]}
+                  {floatUnit.troopKind === "archer" && ` · 射程${ARCHER_ATTACK_RANGE}`}
+                </div>
+              </div>
+            </div>
+            <div className="unit-attr-float__grid">
+              <span className="unit-attr-float__tag">{ARMY_TYPE_LABEL[floatUnit.armyType]}</span>
+              <span className="unit-attr-float__tag">移动力 {floatUnit.move}</span>
+              <span className="unit-attr-float__tag">武力 {floatUnit.might}</span>
+              <span className="unit-attr-float__tag">防御 {floatUnit.defense}</span>
+              <span className="unit-attr-float__tag">智力 {floatUnit.intel}</span>
+              {floatUnit.side === "player" && (
+                <span className="unit-attr-float__tag">
+                  计策 {floatUnit.tacticPoints}/{floatUnit.tacticMax}
+                </span>
+              )}
+            </div>
+            <div className="unit-attr-float__hp">
+              <span className="unit-attr-float__hp-label">
+                兵力 {floatUnit.hp} / {floatUnit.maxHp}
+              </span>
+              <div
+                className="unit-attr-float__hp-bar"
+                role="presentation"
+                aria-hidden
+              >
+                <div
+                  className={[
+                    "unit-attr-float__hp-fill",
+                    floatUnit.side === "player"
+                      ? "unit-attr-float__hp-fill--player"
+                      : "unit-attr-float__hp-fill--enemy",
+                  ].join(" ")}
+                  style={{
+                    width: `${ratioPercent(floatUnit.hp, floatUnit.maxHp)}%`,
+                  }}
+                />
+              </div>
+            </div>
+            {floatUnit.side === "player" && (
+              <div className="unit-attr-float__exp">
+                <span className="unit-attr-float__exp-label">
+                  经验 {floatUnit.exp} / {expToNextLevel(floatUnit.level)}
+                </span>
+                <div className="unit-attr-float__exp-bar" aria-hidden>
+                  <div
+                    className="unit-attr-float__exp-fill"
+                    style={{
+                      width: `${ratioPercent(
+                        floatUnit.exp,
+                        expToNextLevel(floatUnit.level)
+                      )}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+            <div className="unit-attr-float__terrain">
+              脚下 {TERRAIN_LABEL[terrainAt(floatUnit.x, floatUnit.y)]}
+            </div>
+          </div>
         </div>
       )}
       {killBanners.length > 0 && (
