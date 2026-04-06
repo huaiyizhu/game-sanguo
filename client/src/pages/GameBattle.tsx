@@ -672,6 +672,11 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       return clearAttrFloatTimers;
     }
 
+    if (battleSnapRef.current.turn !== "player") {
+      setAttrFloatVisible(false);
+      return clearAttrFloatTimers;
+    }
+
     if (battleSnapRef.current.pendingMove) {
       setAttrFloatVisible(false);
       return clearAttrFloatTimers;
@@ -699,7 +704,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     }, UNIT_ATTR_FLOAT_HOLD_MS + UNIT_ATTR_FLOAT_FADE_MS);
 
     return clearAttrFloatTimers;
-  }, [inspectUnitId, inspectTapSeq, outcome, pendingMove]);
+  }, [inspectUnitId, inspectTapSeq, outcome, pendingMove, turn]);
 
   useEffect(() => {
     if (!attrFloatVisible || !inspectUnitId) return;
@@ -1216,7 +1221,11 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
           </p>
         </div>
       )}
-      {outcome === "playing" && !pendingMove && attrFloatVisible && floatUnit && (
+      {outcome === "playing" &&
+        turn === "player" &&
+        !pendingMove &&
+        attrFloatVisible &&
+        floatUnit && (
         <div
           ref={attrFloatRootRef}
           className={[

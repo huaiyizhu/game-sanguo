@@ -395,9 +395,17 @@ export default function GamePage() {
     turnIntroLocked,
   ]);
 
+  /** 敌军行动中不保留检视/浮窗，避免 pendingMove 结束后属性浮窗再次弹出 */
+  useEffect(() => {
+    if (battle.outcome !== "playing") return;
+    if (battle.turn !== "enemy") return;
+    setInspectUnitId(null);
+  }, [battle.outcome, battle.turn]);
+
   const onCellClick = useCallback(async (x: number, y: number) => {
     if (battleRef.current.pendingMove) return;
     if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
+    if (battleRef.current.outcome === "playing" && battleRef.current.turn !== "player") return;
     const occupant = battleRef.current.units.find(
       (unit) => unit.x === x && unit.y === y && unit.hp > 0
     );
@@ -427,6 +435,7 @@ export default function GamePage() {
   const onUnitClick = useCallback((unitId: string, side: "player" | "enemy") => {
     if (battleRef.current.pendingMove) return;
     if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
+    if (battleRef.current.outcome === "playing" && battleRef.current.turn !== "player") return;
     setInspectUnitId(unitId);
     setInspectTapSeq((n) => n + 1);
     setBattle((s) => {
@@ -635,6 +644,7 @@ export default function GamePage() {
   }, [battle.units]);
 
   const onRosterPickUnit = useCallback((u: Unit) => {
+    if (battleRef.current.outcome === "playing" && battleRef.current.turn !== "player") return;
     setInspectUnitId(u.id);
     setInspectTapSeq((n) => n + 1);
     requestAnimationFrame(() => {
