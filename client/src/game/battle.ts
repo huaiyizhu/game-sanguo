@@ -1256,6 +1256,24 @@ export function waitAfterMove(state: BattleState): BattleState {
   return maybeEndPlayerTurn(next);
 }
 
+/** 强制结束我方回合：将存活我军标记为已行动并直接进入敌军回合流程。 */
+export function endPlayerTurnImmediately(state: BattleState): BattleState {
+  if (state.outcome !== "playing" || state.turn !== "player") return state;
+  if (state.pendingMove) return state;
+  const next: BattleState = {
+    ...state,
+    units: state.units.map((u) =>
+      u.side === "player" && u.hp > 0 ? { ...u, moved: true, acted: true } : u
+    ),
+    selectedId: null,
+    phase: "select",
+    moveTargets: [],
+    pickTarget: null,
+    log: [...state.log, "我方主动结束本回合。"],
+  };
+  return maybeEndPlayerTurn(next);
+}
+
 function migrateV1Unit(raw: Record<string, unknown>): Unit {
   const atk = typeof raw.atk === "number" ? raw.atk : 25;
   const intel = typeof raw.intel === "number" ? raw.intel : 50;

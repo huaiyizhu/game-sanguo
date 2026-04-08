@@ -39,6 +39,8 @@ const TACTIC_ORDER: TacticKind[] = ["fire", "water", "trap"];
 
 /** 移动结束进入菜单后，先留白这段时间再显示菜单，便于看清落点再选行动 */
 const ACTION_MENU_REVEAL_DELAY_MS = 480;
+/** 敌方回合：字幕完全收尾后再放行 AI，避免与首个敌方动作重叠 */
+const ENEMY_TURN_BANNER_FINISH_BUFFER_MS = 120;
 
 /** 格子边长上限（px）；低于旧版 96 便于一屏多看地图，立绘随 --cell 仍可读 */
 const BATTLE_CELL_MAX_PX = 76;
@@ -197,7 +199,13 @@ type DyingVisual = {
   troopKind: TroopKind;
 };
 
-type KillBanner = { key: number; text: string };
+/** 阵亡条带横向跨多格，以死亡格为中心对齐（约 5 格宽） */
+const DEATH_TEXT_COL_SPAN = 5;
+function deathTextGridColumn(deathX: number, gridW: number): string {
+  const span = Math.min(DEATH_TEXT_COL_SPAN, gridW);
+  const startX = Math.max(0, Math.min(deathX - Math.floor((span - 1) / 2), gridW - span));
+  return `${startX + 1} / span ${span}`;
+}
 
 /**
  * 整格 z-index：越大越在上层。有单位的格必须整体高于纯地形格（否则后序 DOM 邻格会盖住立绘溢出）；
@@ -450,7 +458,6 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   const [moveSlide, setMoveSlide] = useState<Record<string, { dx: number; dy: number }>>({});
   const [actionMenuRevealReady, setActionMenuRevealReady] = useState(false);
   const [dyingVisuals, setDyingVisuals] = useState<DyingVisual[]>([]);
-  const [killBanners, setKillBanners] = useState<KillBanner[]>([]);
   const prevHpRef = useRef<Record<string, number> | null>(null);
   const prevSnapRef = useRef<Record<string, UnitSnap> | null>(null);
   const prevEpochRef = useRef(visualEpoch);
@@ -478,7 +485,6 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     setMoveSlide({});
     setActionMenuRevealReady(false);
     setDyingVisuals([]);
-    setKillBanners([]);
     setDmgFx(null);
     setHpBarLag({});
     setHitFxKind({});
@@ -584,9 +590,10 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     const deferBannerForActionAnims =
       prev !== undefined &&
       ((prev === "enemy" && curr === "player") || (prev === "player" && curr === "enemy"));
-    const lockMs = deferBannerForActionAnims
+    const enemyExtraMs = curr === "enemy" ? ENEMY_TURN_BANNER_FINISH_BUFFER_MS : 0;
+    const lockMs = (deferBannerForActionAnims
       ? POST_ACTION_TURN_BANNER_DELAY_MS + TURN_PHASE_BANNER_MS
-      : TURN_PHASE_BANNER_MS;
+      : TURN_PHASE_BANNER_MS) + enemyExtraMs;
 
     turnGateTimerRef.current = window.setTimeout(() => {
       onTurnActionReady(true);
@@ -841,15 +848,9 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
               troopKind: u.troopKind,
             },
           ]);
-          setKillBanners((list) =>
-            [...list, { key: k, text: `${u.name}被斩于阵前` }].slice(-8)
-          );
           window.setTimeout(() => {
             setDyingVisuals((list) => list.filter((d) => d.key !== k));
           }, 980);
-          window.setTimeout(() => {
-            setKillBanners((list) => list.filter((b) => b.key !== k));
-          }, 3200);
         } else if (old.hp > 0 && u.hp > 0 && (old.x !== u.x || old.y !== u.y)) {
           const id = u.id;
           const dx = old.x - u.x;
@@ -1320,15 +1321,6 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
           </div>
         </div>
       )}
-      {killBanners.length > 0 && (
-        <div className="kill-banner-stack" aria-live="polite">
-          {killBanners.map((b) => (
-            <p key={b.key} className="kill-banner-line">
-              {b.text}
-            </p>
-          ))}
-        </div>
-      )}
       <div
         className={["battle-scene", fitViewport ? "battle-scene--fit" : ""].filter(Boolean).join(" ")}
       >
@@ -1696,6 +1688,27 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
             );
           }
         )}
+        {dyingVisuals.map((d) => (
+          <div
+            key={`death-text-${d.key}`}
+            className="battle-slot battle-slot--units death-text-pop-slot"
+            style={{
+              gridColumn: deathTextGridColumn(d.x, gridW),
+              gridRow: d.y + 1,
+              zIndex: 96_000 + d.y * gridW + d.x,
+            }}
+            aria-hidden
+          >
+            <p
+              className={[
+                "death-text-pop",
+                d.side === "enemy" ? "death-text-pop--enemy" : "death-text-pop--player",
+              ].join(" ")}
+            >
+              {`${d.name}被斩于阵前`}
+            </p>
+          </div>
+        ))}
         </div>
       </div>
       <div className="battle-menu-hint-slot" aria-live="polite">

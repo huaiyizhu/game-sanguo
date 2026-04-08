@@ -15,6 +15,7 @@ import {
   createBattleForScenario,
   createInitialBattle,
   createNextBattleAfterVictory,
+  endPlayerTurnImmediately,
   ensureBattleFields,
   getNextScenarioId,
   escapeOrRevertUnit,
@@ -24,12 +25,14 @@ import {
   menuOpenTacticMenu,
   MOVE_STEP_MS_ENEMY,
   MOVE_STEP_MS_PLAYER,
+  POST_ACTION_TURN_BANNER_DELAY_MS,
   pickTargetFocusEnemy,
   pickTargetNavigate,
   processSingleEnemyStep,
   selectPlayerUnit,
   skipOrEndIfStuck,
   tacticMenuChoose,
+  TURN_PHASE_BANNER_MS,
   waitAfterMove,
 } from "../game/battle";
 import { listGeneralsSorted } from "../game/generals";
@@ -63,6 +66,10 @@ import GameBattle, { type GameBattleHandle, type MenuAction } from "./GameBattle
 
 /** 敌军每名单位行动之间的间隔（毫秒）；队列中第一名立即行动 */
 const ENEMY_ACTION_GAP_MS = 2000;
+/** 与 GameBattle 的回合门控一致：敌方字幕完全播完后才放行 AI */
+const ENEMY_TURN_BANNER_FINISH_BUFFER_MS = 120;
+const ENEMY_TURN_BLOCK_MS =
+  POST_ACTION_TURN_BANNER_DELAY_MS + TURN_PHASE_BANNER_MS + ENEMY_TURN_BANNER_FINISH_BUFFER_MS;
 
 /** 秘籍：打开关卡列表（在捕获阶段优先于战场按键屏蔽） */
 const CHEAT_STAGE_PICKER_COMBO = (e: KeyboardEvent) =>
@@ -179,6 +186,8 @@ function rosterStatusTag(u: Unit, side: Side): string {
 export default function GamePage() {
   const { user, token } = useAuth();
   const [battle, setBattle] = useState<BattleState>(() => createInitialBattle());
+  const battleRef = useRef(battle);
+  battleRef.current = battle;
   const [slotName, setSlotName] = useState("存档1");
   const [message, setMessage] = useState<string | null>(null);
   const [localList, setLocalList] = useState<LocalSaveEntry[]>(() => readLocalSaves());
@@ -198,6 +207,9 @@ export default function GamePage() {
   const [rosterExpanded, setRosterExpanded] = useState(true);
   const [unitInspectExpanded, setUnitInspectExpanded] = useState(true);
   const [turnIntroLocked, setTurnIntroLocked] = useState(true);
+  /** 回合放行票据：仅当某一方字幕流程完整结束后才会被置为该方 */
+  const [turnActionReadyTurn, setTurnActionReadyTurn] = useState<"player" | "enemy" | null>(null);
+  const [enemyTurnGateSeq, setEnemyTurnGateSeq] = useState(0);
   const [stagePickerOpen, setStagePickerOpen] = useState(false);
   const [generalCodexOpen, setGeneralCodexOpen] = useState(false);
   const [generalCodexQuery, setGeneralCodexQuery] = useState("");
@@ -210,6 +222,12 @@ export default function GamePage() {
   turnIntroLockedRef.current = turnIntroLocked;
   const onTurnActionReady = useCallback((ready: boolean) => {
     setTurnIntroLocked(!ready);
+    if (!ready) {
+      setTurnActionReadyTurn(null);
+      return;
+    }
+    const t = battleRef.current.turn;
+    setTurnActionReadyTurn(t === "player" || t === "enemy" ? t : null);
   }, []);
 
   const onDamagePulseConsumed = useCallback(() => {
@@ -301,10 +319,9 @@ export default function GamePage() {
     [bumpVisualEpoch]
   );
 
-  const battleRef = useRef(battle);
-  battleRef.current = battle;
-
   const gameBattleRef = useRef<GameBattleHandle>(null);
+  const prevTurnRef = useRef<"player" | "enemy" | undefined>(undefined);
+  const enemyTurnUnlockAtRef = useRef(0);
 
   const outcomeScheduledRef = useRef(false);
   const tabWasHiddenRef = useRef(false);
@@ -362,9 +379,29 @@ export default function GamePage() {
   ]);
 
   useEffect(() => {
+    if (battle.outcome !== "playing") {
+      prevTurnRef.current = battle.turn;
+      enemyTurnUnlockAtRef.current = 0;
+      return;
+    }
+    const prev = prevTurnRef.current;
+    const curr = battle.turn;
+    if (prev !== curr && curr === "enemy") {
+      enemyTurnUnlockAtRef.current = performance.now() + ENEMY_TURN_BLOCK_MS;
+    }
+    prevTurnRef.current = curr;
+  }, [battle.outcome, battle.turn]);
+
+  useEffect(() => {
     if (battle.outcome !== "playing") return;
     if (turnIntroLocked) return;
+    if (turnActionReadyTurn !== "enemy") return;
     if (battle.turn !== "enemy" || battle.phase !== "enemy") return;
+    const remain = enemyTurnUnlockAtRef.current - performance.now();
+    if (remain > 0) {
+      const tid = window.setTimeout(() => setEnemyTurnGateSeq((n) => n + 1), remain + 8);
+      return () => window.clearTimeout(tid);
+    }
     const q = battle.enemyTurnQueue;
     if (!q?.length) return;
     const c = battle.enemyTurnCursor;
@@ -393,6 +430,8 @@ export default function GamePage() {
     battle.pendingMove?.unitId,
     (battle.pendingMove?.path ?? []).join("|"),
     turnIntroLocked,
+    turnActionReadyTurn,
+    enemyTurnGateSeq,
   ]);
 
   /** 敌军行动中不保留检视/浮窗，避免 pendingMove 结束后属性浮窗再次弹出 */
@@ -495,6 +534,14 @@ export default function GamePage() {
       if (s.phase === "menu") return waitAfterMove(s);
       return s;
     });
+  }, []);
+
+  const onEndPlayerTurnQuick = useCallback(() => {
+    if (battleRef.current.outcome !== "playing") return;
+    if (battleRef.current.turn !== "player") return;
+    if (battleRef.current.pendingMove) return;
+    if (turnIntroLockedRef.current) return;
+    setBattle((s) => endPlayerTurnImmediately(s));
   }, []);
 
   const onNewGame = useCallback(() => {
@@ -923,7 +970,23 @@ export default function GamePage() {
           <aside className="battle-roster battle-roster--in-sidebar" aria-label="战场单位列表">
             <div className="battle-roster__cols">
               <div className="battle-roster__col">
-                <h4>我军 ({rosterPlayers.length})</h4>
+                <div className="battle-roster__col-head">
+                  <h4>我军 ({rosterPlayers.length})</h4>
+                  <button
+                    type="button"
+                    className="btn tiny battle-roster__end-turn-btn"
+                    onClick={onEndPlayerTurnQuick}
+                    disabled={
+                      battle.outcome !== "playing" ||
+                      battle.turn !== "player" ||
+                      turnIntroLocked ||
+                      Boolean(battle.pendingMove)
+                    }
+                    title="直接结束我方回合"
+                  >
+                    结束回合
+                  </button>
+                </div>
                 <ul className="battle-roster__list">
                   {rosterPlayers.map((u) => (
                     <li key={u.id}>
