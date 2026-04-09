@@ -1,7 +1,9 @@
 import type { Side, TroopKind } from "../game/types";
 import { TROOP_KIND_BADGE, TROOP_KIND_LABEL } from "../game/types";
+import { useEffect, useState } from "react";
 
-type Props = { kind: TroopKind; side: Side; showTroopBadge?: boolean };
+export type TroopFacing = "left" | "right" | "up" | "down";
+type Props = { kind: TroopKind; side: Side; showTroopBadge?: boolean; facing?: TroopFacing };
 
 const base = import.meta.env.BASE_URL;
 
@@ -11,21 +13,36 @@ const RASTER_SRC: Record<TroopKind, string> = {
   archer: `${base}sprites/units/archer.png`,
 };
 
+function directionalSrc(kind: TroopKind, facing: TroopFacing): string {
+  return `${base}sprites/units/${kind}_${facing}.png`;
+}
+
 /**
  * 战场兵种：骑兵 / 步兵 / 弓兵均为同尺寸透明底 PNG（512×512，
  * 由 remove-sprite-bg（npm run sprites:units-final）抠底去水印后 normalize-unit-sprites 统一画布）。
  */
-export default function TroopEmblem({ kind, side, showTroopBadge = true }: Props) {
+export default function TroopEmblem({
+  kind,
+  side,
+  showTroopBadge = true,
+  facing = "right",
+}: Props) {
   const label = TROOP_KIND_LABEL[kind];
   const ch = TROOP_KIND_BADGE[kind];
+  const [src, setSrc] = useState(() => directionalSrc(kind, facing));
+
+  useEffect(() => {
+    setSrc(directionalSrc(kind, facing));
+  }, [kind, facing]);
 
   return (
     <span className={`unit-troop-figure troop-figure-${kind} unit-troop-figure--raster`} title={label}>
       <span className="unit-troop-figure-model unit-troop-figure-model--raster" aria-hidden>
         <img
-          src={RASTER_SRC[kind]}
+          src={src}
           alt=""
-          className={`unit-troop-sprite unit-troop-sprite--${kind} ${side === "enemy" ? "unit-troop-sprite--enemy" : ""}`}
+          className={`unit-troop-sprite unit-troop-sprite--${kind} unit-troop-sprite--dir-${facing} ${side === "enemy" ? "unit-troop-sprite--enemy" : ""}`}
+          onError={() => setSrc(RASTER_SRC[kind])}
           draggable={false}
         />
       </span>

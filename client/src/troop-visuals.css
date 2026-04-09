@@ -51,6 +51,23 @@
   -webkit-user-drag: none;
 }
 
+.unit-troop-sprite--dir-right {
+  transform: none;
+}
+
+.unit-troop-sprite--dir-left {
+  transform: scaleX(-1);
+}
+
+/* 现有正侧向贴图下的“伪朝向”：先保证移动时有明确方向感；后续补四向图可直接覆盖 */
+.unit-troop-sprite--dir-up {
+  transform: translateY(-1px) scale(0.98) rotate(-4deg);
+}
+
+.unit-troop-sprite--dir-down {
+  transform: translateY(1px) scale(0.99) rotate(4deg);
+}
+
 .unit-troop-sprite--enemy {
   filter: hue-rotate(-38deg) saturate(1.15) brightness(0.92);
 }

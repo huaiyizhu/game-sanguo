@@ -11,6 +11,7 @@ import {
 import type { AnimationEvent, CSSProperties, KeyboardEvent, MouseEvent } from "react";
 import GeneralAvatar from "../components/GeneralAvatar";
 import TroopEmblem from "../components/TroopEmblem";
+import type { TroopFacing } from "../components/TroopEmblem";
 import {
   canAffordTactic,
   canMeleeAttack,
@@ -191,6 +192,7 @@ type UnitSnap = { x: number; y: number; hp: number };
 
 type DyingVisual = {
   key: number;
+  unitId: string;
   x: number;
   y: number;
   name: string;
@@ -198,6 +200,12 @@ type DyingVisual = {
   level: number;
   troopKind: TroopKind;
 };
+
+function facingFromDelta(dx: number, dy: number): TroopFacing {
+  if (Math.abs(dx) >= Math.abs(dy) && dx !== 0) return dx > 0 ? "left" : "right";
+  if (dy !== 0) return dy > 0 ? "up" : "down";
+  return "right";
+}
 
 /** 阵亡条带横向跨多格，以死亡格为中心对齐（约 5 格宽） */
 const DEATH_TEXT_COL_SPAN = 5;
@@ -458,6 +466,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     end?: ReturnType<typeof window.setTimeout>;
   }>({});
   const [moveSlide, setMoveSlide] = useState<Record<string, { dx: number; dy: number }>>({});
+  const [troopFacingById, setTroopFacingById] = useState<Record<string, TroopFacing>>({});
   const [actionMenuRevealReady, setActionMenuRevealReady] = useState(false);
   const [dyingVisuals, setDyingVisuals] = useState<DyingVisual[]>([]);
   const prevHpRef = useRef<Record<string, number> | null>(null);
@@ -485,6 +494,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     window.clearTimeout(turnGateTimerRef.current);
     setTurnBanner(null);
     setMoveSlide({});
+    setTroopFacingById({});
     setActionMenuRevealReady(false);
     setDyingVisuals([]);
     setDmgFx(null);
@@ -842,6 +852,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
             ...list,
             {
               key: k,
+              unitId: u.id,
               x: old.x,
               y: old.y,
               name: u.name,
@@ -857,6 +868,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
           const id = u.id;
           const dx = old.x - u.x;
           const dy = old.y - u.y;
+          setTroopFacingById((prev) => ({ ...prev, [id]: facingFromDelta(dx, dy) }));
           setMoveSlide((prev) => ({ ...prev, [id]: { dx, dy } }));
           /* prefers-reduced-motion 下无 animation，animationend 不会触发 */
           window.setTimeout(() => {
@@ -1395,7 +1407,12 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                         `troop-${deathHere.troopKind}`,
                       ].join(" ")}
                     >
-                      <TroopEmblem kind={deathHere.troopKind} side={deathHere.side} showTroopBadge={false} />
+                      <TroopEmblem
+                        kind={deathHere.troopKind}
+                        side={deathHere.side}
+                        facing={troopFacingById[deathHere.unitId] ?? (deathHere.side === "enemy" ? "left" : "right")}
+                        showTroopBadge={false}
+                      />
                     </div>
                     <div className="unit-standee__hud unit-standee__hud--ghost unit-standee__hud--hp-only" aria-hidden>
                       <div className="unit-standee__hud-hp-row">
@@ -1536,7 +1553,12 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                       }
                     }}
                   >
-                    <TroopEmblem kind={u.troopKind} side={u.side} showTroopBadge={false} />
+                    <TroopEmblem
+                      kind={u.troopKind}
+                      side={u.side}
+                      facing={troopFacingById[u.id] ?? (u.side === "enemy" ? "left" : "right")}
+                      showTroopBadge={false}
+                    />
                   </div>
                   {dmgFx?.unitId === u.id && (
                     <span
