@@ -488,6 +488,10 @@ export default function GamePage() {
 
   const onMenuAction = useCallback((action: MenuAction) => {
     if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
+    if (action === "wait") {
+      /* 待机后不再回弹属性浮窗：清掉当前检视目标 */
+      setInspectUnitId(null);
+    }
     setBattle((s) => {
       if (action === "attack") return menuMeleeAttack(s);
       if (action === "tactic") return menuOpenTacticMenu(s);

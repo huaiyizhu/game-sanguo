@@ -201,6 +201,8 @@ type DyingVisual = {
 
 /** 阵亡条带横向跨多格，以死亡格为中心对齐（约 5 格宽） */
 const DEATH_TEXT_COL_SPAN = 5;
+/** 阵亡文案/残影展示时长：拉长以确保玩家能看清「被斩于阵前」 */
+const DEATH_TEXT_POP_MS = 1600;
 function deathTextGridColumn(deathX: number, gridW: number): string {
   const span = Math.min(DEATH_TEXT_COL_SPAN, gridW);
   const startX = Math.max(0, Math.min(deathX - Math.floor((span - 1) / 2), gridW - span));
@@ -850,7 +852,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
           ]);
           window.setTimeout(() => {
             setDyingVisuals((list) => list.filter((d) => d.key !== k));
-          }, 980);
+          }, DEATH_TEXT_POP_MS);
         } else if (old.hp > 0 && u.hp > 0 && (old.x !== u.x || old.y !== u.y)) {
           const id = u.id;
           const dx = old.x - u.x;
@@ -1224,6 +1226,8 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       )}
       {outcome === "playing" &&
         turn === "player" &&
+        phase !== "menu" &&
+        phase !== "tactic-menu" &&
         !pendingMove &&
         attrFloatVisible &&
         floatUnit && (
