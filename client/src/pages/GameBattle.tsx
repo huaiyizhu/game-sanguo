@@ -28,7 +28,10 @@ import type { BattlePhase, BattleState, Side, TacticKind, Terrain, TroopKind } f
 import {
   ARMY_TYPE_LABEL,
   ARCHER_ATTACK_RANGE,
+  attackPowerOnTerrain,
+  defensePowerOnTerrain,
   expToNextLevel,
+  isArmyPreferredTerrain,
   TACTIC_DEF,
   TERRAIN_LABEL,
   TROOP_KIND_LABEL,
@@ -1321,7 +1324,32 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
               <span className="unit-attr-float__tag">{ARMY_TYPE_LABEL[floatUnit.armyType]}</span>
               <span className="unit-attr-float__tag">移动力 {floatUnit.move}</span>
               <span className="unit-attr-float__tag">武力 {floatUnit.might}</span>
-              <span className="unit-attr-float__tag">防御 {floatUnit.defense}</span>
+              <span className="unit-attr-float__tag">
+                攻击{" "}
+                {attackPowerOnTerrain(
+                  floatUnit.might,
+                  floatUnit.level,
+                  floatUnit.troopKind,
+                  floatUnit.armyType,
+                  terrainAt(floatUnit.x, floatUnit.y)
+                )}
+                {isArmyPreferredTerrain(floatUnit.armyType, terrainAt(floatUnit.x, floatUnit.y))
+                  ? "↑"
+                  : ""}
+              </span>
+              <span className="unit-attr-float__tag">
+                防御{" "}
+                {defensePowerOnTerrain(
+                  floatUnit.might,
+                  floatUnit.level,
+                  floatUnit.troopKind,
+                  floatUnit.armyType,
+                  terrainAt(floatUnit.x, floatUnit.y)
+                )}
+                {isArmyPreferredTerrain(floatUnit.armyType, terrainAt(floatUnit.x, floatUnit.y))
+                  ? "↑"
+                  : ""}
+              </span>
               <span className="unit-attr-float__tag">智力 {floatUnit.intel}</span>
               {floatUnit.side === "player" && (
                 <span className="unit-attr-float__tag">
@@ -1351,24 +1379,26 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                 />
               </div>
             </div>
-            {floatUnit.side === "player" && (
-              <div className="unit-attr-float__exp">
-                <span className="unit-attr-float__exp-label">
-                  经验 {floatUnit.exp} / {expToNextLevel(floatUnit.level)}
-                </span>
-                <div className="unit-attr-float__exp-bar" aria-hidden>
-                  <div
-                    className="unit-attr-float__exp-fill"
-                    style={{
-                      width: `${ratioPercent(
-                        floatUnit.exp,
-                        expToNextLevel(floatUnit.level)
-                      )}%`,
-                    }}
-                  />
+            {floatUnit.side === "player" && (() => {
+              const expCap = expToNextLevel(floatUnit.level);
+              const finiteCap = Number.isFinite(expCap) && expCap > 0;
+              const expPct = finiteCap ? ratioPercent(floatUnit.exp, expCap) : 100;
+              return (
+                <div className="unit-attr-float__exp">
+                  <span className="unit-attr-float__exp-label">
+                    {finiteCap ? `${floatUnit.exp} / ${expCap}` : `${floatUnit.exp}（已满级）`}
+                  </span>
+                  <div className="unit-attr-float__exp-bar" aria-hidden>
+                    <div
+                      className="unit-attr-float__exp-fill"
+                      style={{
+                        width: `${expPct}%`,
+                      }}
+                    />
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
             <div className="unit-attr-float__terrain">
               脚下 {TERRAIN_LABEL[terrainAt(floatUnit.x, floatUnit.y)]}
             </div>

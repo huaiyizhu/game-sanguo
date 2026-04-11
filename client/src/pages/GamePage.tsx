@@ -40,9 +40,16 @@ import { listGeneralsSorted } from "../game/generals";
 import { listScenarioEntries } from "../game/scenarios";
 import type { BattleState, Side, Terrain, Unit } from "../game/types";
 import {
+  ARCHER_ATTACK_RANGE,
   ARMY_TYPE_LABEL,
+  attackPowerForUnit,
+  attackPowerOnTerrain,
+  defensePowerOnTerrain,
   expToNextLevel,
   isArmyPreferredTerrain,
+  maxHpForLevel,
+  MAX_UNIT_LEVEL,
+  normalizeTerrainCell,
   tacticMaxForUnit,
   TERRAIN_LABEL,
   TROOP_KIND_LABEL,
@@ -314,10 +321,16 @@ export default function GamePage() {
           setMessage("秘籍：该单位无法升级（未找到或已阵亡）。");
           return;
         }
+        if (u.level >= MAX_UNIT_LEVEL) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          setMessage(`秘籍：${u.name} 已达最高等级（${MAX_UNIT_LEVEL} 级）。`);
+          return;
+        }
         e.preventDefault();
         e.stopImmediatePropagation();
         setBattle((s) => cheatInstantLevelUp(s, id));
-        setMessage(`秘籍：${u.name} 已升一级（Lv.${u.level + 1}）。`);
+        setMessage(`秘籍：${u.name} 已升一级（Lv.${Math.min(MAX_UNIT_LEVEL, u.level + 1)}）。`);
         return;
       }
 
@@ -686,6 +699,12 @@ export default function GamePage() {
     return isArmyPreferredTerrain(inspectedUnit.armyType, t);
   }, [battle.terrain, inspectedUnit]);
 
+  const inspectedTerrainCell = useMemo(() => {
+    if (!inspectedUnit) return null;
+    const raw = battle.terrain[inspectedUnit.y]?.[inspectedUnit.x];
+    return raw != null ? normalizeTerrainCell(raw) : null;
+  }, [battle.terrain, inspectedUnit]);
+
   const generalCodexFiltered = useMemo(() => {
     const raw = generalCodexQuery.trim();
     if (!raw) return GENERALS_CODEX_LIST;
@@ -825,7 +844,9 @@ export default function GamePage() {
               </ul>
               <div className="general-codex-detail">
                 {!generalCodexSelected && (
-                  <p className="muted small">点击左侧将领查看演义列传与图鉴基准属性（非本关场内实时数值）。</p>
+                    <p className="muted small">
+                      点击左侧将领查看演义列传与图鉴基准属性（非本关场内实时数值）。战场上攻防会按脚下地形与兵种地利增减。
+                    </p>
                 )}
                 {generalCodexSelected && (
                   <>
@@ -843,13 +864,21 @@ export default function GamePage() {
                       <dd>{ARMY_TYPE_LABEL[generalCodexSelected.armyType]}</dd>
                       <dt>将领种类</dt>
                       <dd>{TROOP_KIND_LABEL[generalCodexSelected.troopKind]}</dd>
-                      <dt>兵力（基准）</dt>
-                      <dd>{generalCodexSelected.maxHp}</dd>
+                      <dt>兵力（按图鉴等级）</dt>
+                      <dd>{maxHpForLevel(generalCodexSelected.refLevel)}</dd>
                       <dt>武力</dt>
                       <dd>{generalCodexSelected.might}</dd>
                       <dt>智力</dt>
                       <dd>{generalCodexSelected.intel}</dd>
-                      <dt>防御</dt>
+                      <dt>攻击（无地形）</dt>
+                      <dd>
+                        {attackPowerForUnit(
+                          generalCodexSelected.might,
+                          generalCodexSelected.refLevel,
+                          generalCodexSelected.troopKind
+                        )}
+                      </dd>
+                      <dt>防御（无地形）</dt>
                       <dd>{generalCodexSelected.defense}</dd>
                       <dt>计策上限（按图鉴等级推算）</dt>
                       <dd>{tacticMaxForUnit(generalCodexSelected.intel, generalCodexSelected.refLevel)}</dd>
@@ -1143,17 +1172,20 @@ export default function GamePage() {
                         <dd className="unit-inspect-dd--with-meter">
                           {(() => {
                             const expCap = expToNextLevel(inspectedUnit.level);
-                            const expPct = ratioPercent(inspectedUnit.exp, expCap);
+                            const finiteCap = Number.isFinite(expCap) && expCap > 0;
+                            const expPct = finiteCap ? ratioPercent(inspectedUnit.exp, expCap) : 100;
                             return (
                               <>
                                 <span className="unit-inspect-meter-label">
-                                  {inspectedUnit.exp} / {expCap}
+                                  {finiteCap
+                                    ? `${inspectedUnit.exp} / ${expCap}`
+                                    : `${inspectedUnit.exp}（已满级）`}
                                 </span>
                                 <div
                                   className="unit-inspect-meter"
                                   role="progressbar"
                                   aria-valuemin={0}
-                                  aria-valuemax={100}
+                                  aria-valuemax={finiteCap ? expCap : 100}
                                   aria-valuenow={Math.round(expPct)}
                                   aria-label="经验进度"
                                 >
@@ -1173,7 +1205,7 @@ export default function GamePage() {
                     <dt>将领种类</dt>
                     <dd>
                       {TROOP_KIND_LABEL[inspectedUnit.troopKind]}
-                      {inspectedUnit.troopKind === "archer" && "（普攻射程 2 格）"}
+                      {inspectedUnit.troopKind === "archer" && `（普攻射程 ${ARCHER_ATTACK_RANGE} 格）`}
                     </dd>
                     <dt>移动力</dt>
                     <dd>{inspectedUnit.move}</dd>
@@ -1209,8 +1241,43 @@ export default function GamePage() {
                   <div className="unit-inspect-row unit-inspect-row--attrs">
                     <dt>武力</dt>
                     <dd>{inspectedUnit.might}</dd>
+                    <dt>攻击</dt>
+                    <dd>
+                      {attackPowerOnTerrain(
+                        inspectedUnit.might,
+                        inspectedUnit.level,
+                        inspectedUnit.troopKind,
+                        inspectedUnit.armyType,
+                        inspectedTerrainCell ?? "plain"
+                      )}
+                      {inspectedOnPreferredTerrain ? " · 含兵种地利" : ""}
+                      {inspectedOnPreferredTerrain && (
+                        <span className="muted small">
+                          {" "}
+                          （基准{" "}
+                          {attackPowerForUnit(
+                            inspectedUnit.might,
+                            inspectedUnit.level,
+                            inspectedUnit.troopKind
+                          )}
+                          ）
+                        </span>
+                      )}
+                    </dd>
                     <dt>防御</dt>
-                    <dd>{inspectedUnit.defense}</dd>
+                    <dd>
+                      {defensePowerOnTerrain(
+                        inspectedUnit.might,
+                        inspectedUnit.level,
+                        inspectedUnit.troopKind,
+                        inspectedUnit.armyType,
+                        inspectedTerrainCell ?? "plain"
+                      )}
+                      {inspectedOnPreferredTerrain ? " · 含兵种地利" : ""}
+                      {inspectedOnPreferredTerrain && (
+                        <span className="muted small"> （基准 {inspectedUnit.defense}）</span>
+                      )}
+                    </dd>
                     <dt>智力</dt>
                     <dd>{inspectedUnit.intel}</dd>
                     {inspectedUnit.side === "player" && (

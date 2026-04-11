@@ -12,19 +12,25 @@ import type {
 } from "./types";
 import {
   ARCHER_ATTACK_RANGE,
+  attackPowerOnTerrain,
+  clampMight,
+  clampUnitLevel,
+  defensePowerForUnit,
+  defensePowerOnTerrain,
+  expToNextLevel,
+  isArmyPreferredTerrain,
+  isTroopKind,
+  maxHpForLevel,
+  MAX_UNIT_LEVEL,
+  movePointsForTroop,
+  normalizeTerrainCell,
+  PREFERRED_TERRAIN_ATK_MUL,
   TACTIC_DEF,
+  tacticMaxForUnit,
   TROOP_ATK_ADVANTAGE_MUL,
   TROOP_ATTACK_COUNTERS,
   TROOP_DEF_ADVANTAGE_BONUS,
   TROOP_DEFENSE_COUNTERS,
-  expToNextLevel,
-  isArmyPreferredTerrain,
-  normalizeTerrainCell,
-  isTroopKind,
-  movePointsForTroop,
-  PREFERRED_TERRAIN_ATK_MUL,
-  PREFERRED_TERRAIN_DEF_BONUS,
-  tacticMaxForUnit,
 } from "./types";
 import {
   SCENARIO_ORDER,
@@ -99,11 +105,9 @@ function occupantMap(units: Unit[]): Map<string, Unit> {
   return m;
 }
 
-function effectiveMightOnTerrain(state: BattleState, u: Unit): number {
-  let v = u.might;
+export function effectiveAttackPowerOnTerrain(state: BattleState, u: Unit): number {
   const t = terrainAt(state, u.x, u.y);
-  if (isArmyPreferredTerrain(u.armyType, t)) v = Math.floor(v * PREFERRED_TERRAIN_ATK_MUL);
-  return v;
+  return attackPowerOnTerrain(u.might, u.level, u.troopKind, u.armyType, t);
 }
 
 function effectiveIntelOnTerrain(state: BattleState, u: Unit): number {
@@ -113,15 +117,13 @@ function effectiveIntelOnTerrain(state: BattleState, u: Unit): number {
   return v;
 }
 
-function effectiveDefenseOnTerrain(state: BattleState, u: Unit): number {
-  let v = u.defense;
+export function effectiveDefenseOnTerrain(state: BattleState, u: Unit): number {
   const t = terrainAt(state, u.x, u.y);
-  if (isArmyPreferredTerrain(u.armyType, t)) v += PREFERRED_TERRAIN_DEF_BONUS;
-  return v;
+  return defensePowerOnTerrain(u.might, u.level, u.troopKind, u.armyType, t);
 }
 
 function meleeDamageDealt(state: BattleState, attacker: Unit, target: Unit): number {
-  let atk = effectiveMightOnTerrain(state, attacker);
+  let atk = effectiveAttackPowerOnTerrain(state, attacker);
   let def = effectiveDefenseOnTerrain(state, target);
   if (TROOP_ATTACK_COUNTERS[attacker.troopKind] === target.troopKind) {
     atk = Math.floor(atk * TROOP_ATK_ADVANTAGE_MUL);
@@ -179,15 +181,16 @@ function xpForDamage(
   return Math.max(1, Math.floor(base * mult));
 }
 
-const HP_PER_LEVEL = 12;
 const TACTIC_BONUS_ON_LEVELUP = 5;
 
 /** 升一级时的属性增量（经验不变） */
 function applyOneLevelToUnit(u: Unit): Unit {
+  if (u.level >= MAX_UNIT_LEVEL) return u;
   const level = u.level + 1;
-  const maxHp = u.maxHp + HP_PER_LEVEL;
-  const hp = Math.min(maxHp, u.hp + HP_PER_LEVEL);
-  const defense = u.defense + 1;
+  const maxHp = maxHpForLevel(level);
+  const hpGain = maxHp - u.maxHp;
+  const hp = Math.min(maxHp, u.hp + Math.max(0, hpGain));
+  const defense = defensePowerForUnit(u.might, level, u.troopKind);
   const tacticMax = tacticMaxForUnit(u.intel, level);
   const tacticPoints = Math.min(tacticMax, u.tacticPoints + TACTIC_BONUS_ON_LEVELUP);
   return { ...u, level, maxHp, hp, defense, tacticMax, tacticPoints };
@@ -197,6 +200,12 @@ function applyOneLevelToUnit(u: Unit): Unit {
 export function cheatInstantLevelUp(state: BattleState, unitId: string): BattleState {
   const u = state.units.find((x) => x.id === unitId);
   if (!u || u.hp <= 0) return state;
+  if (u.level >= MAX_UNIT_LEVEL) {
+    return {
+      ...state,
+      log: [...state.log, `${u.name}已达最高等级（${MAX_UNIT_LEVEL} 级），无法再升（秘籍）。`],
+    };
+  }
   const leveled = applyOneLevelToUnit(u);
   return {
     ...state,
@@ -211,12 +220,15 @@ function applyExpAndLevelUps(u: Unit, gain: number, logOut: string[]): Unit {
   let next = { ...u, exp: u.exp + gain };
   logOut.push(`${u.name} 获得 ${gain} 点经验。`);
   for (;;) {
+    if (next.level >= MAX_UNIT_LEVEL) break;
     const need = expToNextLevel(next.level);
     if (next.exp < need) break;
     next.exp -= need;
+    const prevMax = next.maxHp;
     next = applyOneLevelToUnit(next);
+    const dHp = next.maxHp - prevMax;
     logOut.push(
-      `${next.name}级别上升为${next.level}（兵力上限+${HP_PER_LEVEL}、防御+1、计策上限提升）`
+      `${next.name}级别上升为${next.level}（兵力上限+${dHp}、攻防随等级与兵种重算、计策上限提升）`
     );
   }
   return next;
@@ -278,16 +290,18 @@ function mergeCarriedPlayers(template: BattleState, carried: Unit[]): BattleStat
     if (u.side !== "player") return u;
     const c = carriedById.get(u.id);
     if (!c) return u;
-    const tm = tacticMaxForUnit(c.intel, c.level);
+    const level = clampUnitLevel(c.level);
+    const maxHp = maxHpForLevel(level);
+    const tm = tacticMaxForUnit(c.intel, level);
     return {
       ...u,
-      hp: c.maxHp,
-      maxHp: c.maxHp,
-      level: c.level,
+      hp: maxHp,
+      maxHp,
+      level,
       exp: c.exp,
-      might: c.might,
+      might: clampMight(c.might),
       intel: c.intel,
-      defense: c.defense,
+      defense: defensePowerForUnit(c.might, level, c.troopKind),
       armyType: c.armyType,
       troopKind: c.troopKind,
       move: movePointsForTroop(c.troopKind),
@@ -659,7 +673,7 @@ function manhattan(a: Unit, b: Unit) {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
-/** 普攻射程：弓兵曼哈顿距离 ≤2，步骑仅相邻 */
+/** 普攻射程：弓兵曼哈顿距离 ≤3，步骑仅相邻 */
 export function inPhysicalAttackRange(attacker: Unit, target: Unit): boolean {
   const d = manhattan(attacker, target);
   if (d < 1) return false;
@@ -1299,20 +1313,22 @@ function migrateV1Unit(raw: Record<string, unknown>): Unit {
   const armyType = (raw.armyType as ArmyType) || "ping";
   const level = 1;
   const exp = 0;
-  const defense = Math.max(5, Math.floor(might * 0.4));
-  const tm = tacticMaxForUnit(intel, level);
   const troopKind = isTroopKind(raw.troopKind) ? raw.troopKind : "infantry";
+  const m = clampMight(might);
+  const defense = defensePowerForUnit(m, level, troopKind);
+  const tm = tacticMaxForUnit(intel, level);
+  const maxHp = maxHpForLevel(level);
   return {
     id: String(raw.id),
     name: String(raw.name),
     side: raw.side as Side,
     x: Number(raw.x),
     y: Number(raw.y),
-    hp: Number(raw.hp),
-    maxHp: Number(raw.maxHp),
+    hp: Math.min(maxHp, Math.max(0, Number(raw.hp) || maxHp)),
+    maxHp,
     level,
     exp,
-    might,
+    might: m,
     intel,
     defense,
     armyType: ["ping", "shan", "shui"].includes(armyType) ? armyType : "ping",
@@ -1342,15 +1358,17 @@ function ensureUnitShape(u: Unit | Record<string, unknown>): Unit {
   }
   let base = { ...(u as Unit) };
   if (typeof base.level !== "number") base.level = 1;
+  base.level = clampUnitLevel(base.level);
   if (typeof base.exp !== "number") base.exp = 0;
-  if (typeof base.defense !== "number") {
-    base.defense = Math.max(5, Math.floor(base.might * 0.4));
-  }
+  if (!isTroopKind(base.troopKind)) base.troopKind = "infantry";
+  base.might = clampMight(base.might);
+  base.maxHp = maxHpForLevel(base.level);
+  base.hp = Math.min(base.maxHp, Math.max(0, Math.floor(base.hp ?? base.maxHp)));
+  base.defense = defensePowerForUnit(base.might, base.level, base.troopKind);
   const tm = tacticMaxForUnit(base.intel, base.level);
   if (typeof base.tacticMax !== "number") base.tacticMax = tm;
   base.tacticMax = Math.max(base.tacticMax, tm);
   base.tacticPoints = Math.min(base.tacticMax, base.tacticPoints ?? base.tacticMax);
-  if (!isTroopKind(base.troopKind)) base.troopKind = "infantry";
   base.move = movePointsForTroop(base.troopKind);
   const pc = (base as Unit).portraitCatalogId;
   if (pc !== undefined && typeof pc !== "string") {
@@ -1439,9 +1457,25 @@ export function ensureBattleFields(b: BattleState): BattleState {
   s = {
     ...s,
     units: s.units.map((u) => {
-      const max = tacticMaxForUnit(u.intel, u.level);
-      if (u.tacticMax !== max || u.tacticPoints > max) {
-        return { ...u, tacticMax: max, tacticPoints: Math.min(u.tacticPoints, max) };
+      const m = clampMight(u.might);
+      const lv = clampUnitLevel(u.level);
+      const maxHp = maxHpForLevel(lv);
+      const hp = Math.min(maxHp, Math.max(0, u.hp));
+      const def = defensePowerForUnit(m, lv, u.troopKind);
+      const max = tacticMaxForUnit(u.intel, lv);
+      const move = movePointsForTroop(u.troopKind);
+      const tacticPoints = Math.min(max, u.tacticPoints);
+      if (
+        u.might !== m ||
+        u.level !== lv ||
+        u.maxHp !== maxHp ||
+        u.hp !== hp ||
+        u.defense !== def ||
+        u.tacticMax !== max ||
+        u.tacticPoints !== tacticPoints ||
+        u.move !== move
+      ) {
+        return { ...u, might: m, level: lv, maxHp, hp, defense: def, tacticMax: max, tacticPoints, move };
       }
       return u;
     }),

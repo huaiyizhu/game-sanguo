@@ -52,16 +52,20 @@ export interface Unit {
   x: number;
   y: number;
   hp: number;
+  /** 兵力上限：由等级决定，1 级 1000，每级 +200，最高 99 级 */
   maxHp: number;
-  /** 等级 */
+  /** 等级（1–99） */
   level: number;
-  /** 当前经验值（累积至升级） */
+  /** 当前经验值；每满 100 升一级，溢出带入下一级；99 级后不再升级 */
   exp: number;
-  /** 武力（近战伤害） */
+  /** 武力（10–100，影响攻防推算；吕布 100、刘禅 10 为锚点） */
   might: number;
   /** 智力（影响计策伤害与计策上限） */
   intel: number;
-  /** 防御（减免受到的物理/计策伤害） */
+  /**
+   * 防御力（不含地形）：由武力、等级、兵种推算后写入。
+   * 攻击力不单独存盘，与界面「含地形」攻防见 `attackPowerOnTerrain` / `defensePowerOnTerrain`。
+   */
   defense: number;
   /** 兵种 */
   armyType: ArmyType;
@@ -192,19 +196,79 @@ export const TACTIC_DEF: Record<
   },
 };
 
+/** 武力合法区间 */
+export const MIGHT_MIN = 10;
+export const MIGHT_MAX = 100;
+
+/** 武将等级上限 */
+export const MAX_UNIT_LEVEL = 99;
+
+/** 每升一级所需经验（当前等级 Lv.L 攒满后升至 Lv.L+1） */
+export const EXP_PER_LEVEL = 100;
+
+export function clampMight(might: number): number {
+  return Math.min(MIGHT_MAX, Math.max(MIGHT_MIN, Math.floor(might)));
+}
+
+export function clampUnitLevel(level: number): number {
+  return Math.min(MAX_UNIT_LEVEL, Math.max(1, Math.floor(level)));
+}
+
+/**
+ * 兵力上限：1 级 1000，每升一级 +200（与等级挂钩，与旧版「图鉴 maxHp」脱钩）。
+ */
+export function maxHpForLevel(level: number): number {
+  const L = clampUnitLevel(level);
+  return 1000 + (L - 1) * 200;
+}
+
 /** 计策上限中由智力贡献的部分 */
 export function tacticMaxFromIntel(intel: number): number {
   return 10 + Math.floor(intel / 2);
 }
 
-/** 计策上限 = 智力基数 + 每级 +2 */
+/**
+ * 策略（计策）上限：智力打底 + 等级线性项 + 等级平方项（高等级增长更明显），封顶防爆炸。
+ */
 export function tacticMaxForUnit(intel: number, level: number): number {
-  return tacticMaxFromIntel(intel) + level * 2;
+  const L = clampUnitLevel(level);
+  const base = tacticMaxFromIntel(intel);
+  const linear = L * 3.2;
+  const curve = L * L * 0.28;
+  return Math.min(200, Math.floor(base + linear + curve));
 }
 
-/** 升到下一级所需经验（当前等级为 L 时） */
+/**
+ * 攻击力（不含地形）：武力越高、等级越高越强；同等条件下骑 > 步 > 弓。
+ * 低武力高等级可高于高武力低等级（等级平方项主导中后期）。
+ */
+export function attackPowerForUnit(might: number, level: number, troopKind: TroopKind): number {
+  const m = clampMight(might);
+  const L = clampUnitLevel(level);
+  const troopMul =
+    troopKind === "cavalry" ? 1.15 : troopKind === "infantry" ? 1 : 0.84;
+  const core = m * 0.32 + L * L * 0.18 + L * 1.15;
+  return Math.max(1, Math.floor(core * troopMul));
+}
+
+/**
+ * 防御力（不含地形）：同武力等级下步 > 骑 > 弓。
+ */
+export function defensePowerForUnit(might: number, level: number, troopKind: TroopKind): number {
+  const m = clampMight(might);
+  const L = clampUnitLevel(level);
+  const troopMul =
+    troopKind === "infantry" ? 1.12 : troopKind === "cavalry" ? 1 : 0.86;
+  const core = m * 0.22 + L * L * 0.16 + L * 0.9;
+  return Math.max(1, Math.floor(core * troopMul));
+}
+
+/**
+ * 升到下一级所需经验（当前等级为 L 时）。
+ * 已满级时返回 `Infinity`（不再升级，经验可继续累积）。
+ */
 export function expToNextLevel(level: number): number {
-  return 36 + level * 24 + level * level * 2;
+  return clampUnitLevel(level) >= MAX_UNIT_LEVEL ? Infinity : EXP_PER_LEVEL;
 }
 
 /** 兵种是否在优势地形（攻防加成） */
@@ -219,6 +283,32 @@ export function isArmyPreferredTerrain(army: ArmyType, t: Terrain): boolean {
 export const PREFERRED_TERRAIN_ATK_MUL = 1.15;
 /** 优势地形：额外防御（减免） */
 export const PREFERRED_TERRAIN_DEF_BONUS = 6;
+
+/** 当前格地形上的攻击力（含兵种地利倍率，不含兵种相克） */
+export function attackPowerOnTerrain(
+  might: number,
+  level: number,
+  troopKind: TroopKind,
+  armyType: ArmyType,
+  terrain: Terrain
+): number {
+  let v = attackPowerForUnit(might, level, troopKind);
+  if (isArmyPreferredTerrain(armyType, terrain)) v = Math.floor(v * PREFERRED_TERRAIN_ATK_MUL);
+  return v;
+}
+
+/** 当前格地形上的防御力（含兵种地利加成，不含兵种相克） */
+export function defensePowerOnTerrain(
+  might: number,
+  level: number,
+  troopKind: TroopKind,
+  armyType: ArmyType,
+  terrain: Terrain
+): number {
+  let v = defensePowerForUnit(might, level, troopKind);
+  if (isArmyPreferredTerrain(armyType, terrain)) v += PREFERRED_TERRAIN_DEF_BONUS;
+  return v;
+}
 
 export const ARMY_TYPE_LABEL: Record<ArmyType, string> = {
   ping: "平军",
@@ -241,9 +331,9 @@ export const TROOP_KIND_BADGE: Record<TroopKind, string> = {
 
 /** 各将领种类每回合移动力（可走格消耗仍受地形影响） */
 export function movePointsForTroop(t: TroopKind): number {
-  if (t === "cavalry") return 6;
-  if (t === "archer") return 3;
-  return 4;
+  if (t === "cavalry") return 8;
+  if (t === "archer") return 5;
+  return 6;
 }
 
 /**
@@ -274,7 +364,7 @@ export function isTroopKind(x: unknown): x is TroopKind {
 }
 
 /** 弓兵普攻最远距离（曼哈顿）；步骑仅相邻 1 */
-export const ARCHER_ATTACK_RANGE = 2;
+export const ARCHER_ATTACK_RANGE = 3;
 
 export const TERRAIN_LABEL: Record<Terrain, string> = {
   plain: "陆地",
