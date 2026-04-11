@@ -4,6 +4,42 @@
 
 ---
 
+## 2026-04-11
+
+### 数值与成长
+
+- **武力**：合法区间 **10–100**（锚点：**吕布 100**、**刘禅 10**）；图鉴 `FAMOUS` 等按人设重分配；**关羽 / 张飞** 武力调高（张飞仅次于吕布的档位）。
+- **攻击力 / 防御力**：由武力、等级、兵种公式推算（骑/步/弓在攻、防上的相对强弱与先前需求一致）；**防御**写入单位字段；**攻击**不单独存盘，由公式 + 地形在界面与结算中计算。
+- **兵力**：**1 级 1000**，每升一级 **+200**；`maxHpForLevel` 统一关卡杂兵（`grunt` 原 hp 参数废弃）、图鉴生成单位与我军继承；存档校正会按等级对齐兵力。
+- **经验**：每级满 **100** 经验升级，溢出带入下一级；**最高等级 99**；满级后 `expToNextLevel` 为无穷大（UI 显示已满级条）。
+- **计策上限**：智力打底 + 等级线性项 + **等级平方项**（高等级增长更明显），封顶防爆炸。
+- **移动力**：骑 **8** / 步 **6** / 弓 **5**；弓兵普攻射程 **3** 格（步骑仍为相邻类逻辑）。
+
+### 战场检视与图鉴
+
+- 侧栏检视、战场属性浮窗增加 **攻击力**；**攻击 / 防御**按当前脚下地形做兵种地利修正（与 `attackPowerOnTerrain` / `defensePowerOnTerrain` 一致）；有利地形时在检视中标注「含兵种地利」及基准值。
+- 将领图鉴补充 **攻击（无地形）**、兵力按图鉴等级用 `maxHpForLevel`；说明战场仍会按地形修正攻防。
+
+### 阵亡与扣血演出顺序
+
+- **阵亡残影 /「被斩于阵前」条带**：在 **扣血飘字整段播完** 后再挂上（与 `DAMAGE_FLOAT_DELAY_MS` + `DAMAGE_FLOAT_ANIM_MS` 对齐，并略晚于飘字结束定时器，避免同毫秒竞态）。
+- **击杀后立绘不先消失**：用 **`lingerDeadIds`** 在阵亡层出现前仍让该单位占格渲染单位层立绘；地形层重复飘字在 linger 期间关闭；阵亡占位单位禁用点击。
+- **地形格补飘字**：若单位已阵亡且不在单位层渲染，仍在地形格上显示 `-伤害`（避免击杀当帧从 `byPos` 消失导致看不到飘字）。
+
+### 过关与胜利揭示
+
+- 达成胜利条件时先设 **`pendingVictory: true`**，**保持 `outcome: "playing"`** 且 **保留 `damagePulse`**，暂不写入胜利战报句。
+- **`GamePage`** 在 `victoryRevealHoldMs`（与最后一击飘字 + 阵亡条带动画总时长一致）后调用 **`commitPendingVictory`**，再进入 `outcome: "won"` 与原有「过关闪屏 / 进下一关」流程。
+- **`pendingVictory` 期间**：拦截格子/单位/菜单/敌军 AI 与移动步进，**`maybeEndPlayerTurn`** 等不推进到敌军回合；`advancePendingMove` / 敌军步进在 `pendingVictory` 时收束队列。
+
+### 涉及文件（便于检索）
+
+- 逻辑与类型：`client/src/game/types.ts`、`client/src/game/battle.ts`、`client/src/game/generals.ts`、`client/src/game/scenarios.ts`
+- 客户端 UI：`client/src/pages/GamePage.tsx`、`client/src/pages/GameBattle.tsx`
+- 样式：`client/src/index.css`、`client/src/unit-standee.css`
+
+---
+
 ## 2026-04-09
 
 ### 回合字幕视觉强化（我方/敌方回合）
