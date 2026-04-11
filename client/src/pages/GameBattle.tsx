@@ -275,8 +275,10 @@ function battleSlotStackZ(
 }
 
 export type GameBattleHandle = {
-  /** 滚动战场使该单位所在格进入视野，并短暂高亮；单位须存活 */
-  focusUnitOnMap: (unitId: string) => boolean;
+  /**
+   * 滚动战场使该单位所在格进入视野；可选在缩略格上短暂高亮（侧栏点将时为 true）。
+   */
+  focusUnitOnMap: (unitId: string, opts?: { rosterPulse?: boolean }) => boolean;
   /**
    * 我军即将沿路走格前调用：若属性浮窗正展示该将，则先渐隐再 resolve，
    * 以便父组件在写入 pendingMove 前等待，避免浮窗与滑步重叠。
@@ -375,18 +377,21 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   }, []);
 
   useImperativeHandle(ref, () => ({
-    focusUnitOnMap(unitId: string) {
+    focusUnitOnMap(unitId: string, opts?: { rosterPulse?: boolean }) {
       const u = battleSnapRef.current.units.find((z) => z.id === unitId);
       if (!u) return false;
-      if (rosterPulseTimerRef.current) {
-        window.clearTimeout(rosterPulseTimerRef.current);
-        rosterPulseTimerRef.current = null;
+      const pulse = opts?.rosterPulse !== false;
+      if (pulse) {
+        if (rosterPulseTimerRef.current) {
+          window.clearTimeout(rosterPulseTimerRef.current);
+          rosterPulseTimerRef.current = null;
+        }
+        setRosterPulse({ x: u.x, y: u.y });
+        rosterPulseTimerRef.current = window.setTimeout(() => {
+          setRosterPulse(null);
+          rosterPulseTimerRef.current = null;
+        }, 2000);
       }
-      setRosterPulse({ x: u.x, y: u.y });
-      rosterPulseTimerRef.current = window.setTimeout(() => {
-        setRosterPulse(null);
-        rosterPulseTimerRef.current = null;
-      }, 2000);
       requestAnimationFrame(() => {
         const wrap = battleWrapRef.current;
         const cell = wrap?.querySelector(`[data-battle-cell="${u.x},${u.y}"]`);

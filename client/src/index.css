@@ -144,7 +144,7 @@ a:hover {
   padding: 2rem 1.25rem;
 }
 
-/* 战斗页：整页拉满视口，主战场占满剩余空间 */
+/* 战斗页：整页高度锁在视口内，避免整页被棋盘撑出纵向滚动；棋盘在 .battle-wrap 内自滚动 */
 .page.game-layout.game-layout--battle {
   max-width: none;
   width: 100%;
@@ -154,6 +154,11 @@ a:hover {
     max(0.45rem, env(safe-area-inset-left, 0px));
   min-height: 100vh;
   min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
+  overflow: hidden;
   box-sizing: border-box;
 }
 
@@ -287,7 +292,7 @@ a:hover {
   margin: 0;
   padding: 0;
   gap: 0.55rem;
-  min-height: min(100dvh, 100vh);
+  min-height: 0;
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
   grid-template-rows: 1fr;
 }
@@ -300,9 +305,9 @@ a:hover {
   /* 战斗页桌面规则是双列；若不覆盖，窄屏仍会挤成「窄战场 + 宽侧栏」，地图只剩 ~220px */
   .game-layout.game-layout--battle {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto;
+    grid-template-rows: minmax(0, 1fr) auto;
     align-items: stretch;
-    min-height: min(100dvh, 100vh);
+    min-height: 0;
   }
 
   .game-main {
@@ -314,7 +319,7 @@ a:hover {
 @media (max-width: 900px) and (orientation: portrait) {
   .game-layout.game-layout--battle {
     grid-template-rows: minmax(0, 1fr) auto;
-    min-height: min(100dvh, 100vh);
+    min-height: 0;
   }
 
   .game-layout.game-layout--battle .game-left-stack {
@@ -334,9 +339,7 @@ a:hover {
   .game-layout.game-layout--battle {
     grid-template-columns: minmax(140px, min(200px, 32vw)) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr);
-    min-height: min(100dvh, 100vh);
-    max-height: 100dvh;
-    max-height: 100vh;
+    min-height: 0;
   }
 
   .game-layout.game-layout--battle .game-main.game-main--battle {
@@ -787,6 +790,7 @@ a:hover {
   flex: 1;
   min-height: 0;
   min-width: 0;
+  gap: 0;
 }
 
 .game-layout.game-layout--battle .game-main.game-main--battle {
@@ -797,11 +801,27 @@ a:hover {
 .battle-play-area {
   position: relative;
   flex: 1;
-  min-height: 220px;
+  min-height: 0;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
+  overflow: hidden;
+}
+
+/* 信息与存档在上方文档流（内含武将信息 | 存档 | 战报）；地图占剩余高度 */
+.battle-play-area > .unit-inspect-float.battle-main-stack-disclosure > .unit-inspect-float__summary {
+  align-self: stretch;
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  text-align: center;
+  border-radius: 10px 10px 0 0;
+}
+
+.battle-play-area > .unit-inspect-float.battle-main-stack-disclosure:not([open]) > .unit-inspect-float__summary {
+  border-radius: 10px;
+  border-bottom-color: var(--border);
 }
 
 .battle-map-viewport {
@@ -821,7 +841,7 @@ a:hover {
   min-width: 0;
 }
 
-/* 文档流排在地图上方；抬高叠放次序，防止棋盘格内溢出像素盖住侧栏式信息区 */
+/* 战斗页主区叠放与排版（非绝对定位时随 .battle-play-area 纵向排列） */
 .unit-inspect-float {
   position: relative;
   flex-shrink: 0;
@@ -874,14 +894,21 @@ a:hover {
   background: var(--bg-panel);
 }
 
-/* 双 Tab 时由子面板各自滚动，避免与外层双滚动条 */
+/* 子 Tab 面板各自滚动，避免与外层双滚动条 */
 .unit-inspect-float__inner.battle-right-panel__body {
+  /* 标签栏约高 2.75rem；三者共用，使存档/战报可视高度不超过武将信息 */
+  --battle-right-tabpanel-max-h: min(calc(48dvh - 2.75rem), calc(24rem - 2.75rem));
   padding: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 0;
   min-height: 0;
+  max-height: min(48dvh, 24rem);
+}
+
+.unit-inspect-float__inner.battle-right-panel__body > .battle-right-tabpanel {
+  max-height: var(--battle-right-tabpanel-max-h);
 }
 
 .unit-inspect-float__inner.unit-inspect {
@@ -894,6 +921,12 @@ a:hover {
   gap: 0;
   border-bottom: 1px solid var(--border);
   background: rgba(18, 24, 34, 0.98);
+}
+
+.battle-right-tabs--three .battle-right-tab {
+  font-size: 0.7rem;
+  padding: 0.36rem 0.28rem;
+  letter-spacing: 0.02em;
 }
 
 .battle-right-tab {
@@ -924,7 +957,8 @@ a:hover {
 }
 
 .battle-right-tabpanel {
-  flex: 1;
+  /* 不用 flex:1 撑满，高度随武将信息内容；存档/战报再用 JS 对齐其像素上限 */
+  flex: 0 1 auto;
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
@@ -932,8 +966,30 @@ a:hover {
   box-sizing: border-box;
 }
 
+/* 防止本类上的 display:flex 压过原生 [hidden]，非当前 tab 绝不露出战报等面板 */
+.battle-right-tabpanel[hidden] {
+  display: none !important;
+}
+
 .battle-right-tabpanel.unit-inspect {
   padding: 0.35rem 0.5rem 0.45rem;
+}
+
+.battle-log-tab-intro {
+  margin: 0 0 0.35rem;
+  font-size: 0.72rem;
+}
+
+.battle-log-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.battle-log-list li {
+  margin-bottom: 0.28rem;
 }
 
 .battle-saves-compact {
@@ -1330,7 +1386,8 @@ a:hover {
 
 .battle-wrap.battle-wrap--fit {
   overflow: auto;
-  max-height: none;
+  max-height: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -1846,8 +1903,8 @@ a:hover {
 }
 
 .battle-scene.battle-scene--fit {
-  flex: 1;
-  min-height: min-content;
+  flex: 0 1 auto;
+  min-height: 0;
   width: 100%;
   margin: 0;
   display: flex;
@@ -2416,32 +2473,6 @@ a:hover {
   margin: 0;
   font-size: 0.78rem;
   color: var(--text-muted);
-}
-
-.battle-log {
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 0.75rem 1rem;
-  max-height: 200px;
-  overflow: auto;
-}
-
-.battle-log h3 {
-  margin: 0 0 0.5rem;
-  font-size: 0.95rem;
-  color: var(--text-muted);
-}
-
-.battle-log ol {
-  margin: 0;
-  padding-left: 1.1rem;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-}
-
-.battle-log li {
-  margin-bottom: 0.25rem;
 }
 
 /* —— 回合转场：仅中央字幕渐显/渐隐，不改变战场画面 —— */

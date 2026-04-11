@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import {
@@ -226,8 +226,11 @@ export default function GamePage() {
   });
   const [rosterExpanded, setRosterExpanded] = useState(true);
   const [unitInspectExpanded, setUnitInspectExpanded] = useState(true);
-  /** 主战场右上侧栏：武将信息 | 存档 */
-  const [rightInspectorTab, setRightInspectorTab] = useState<"unit" | "saves">("unit");
+  /** 信息与存档面板内：武将信息 | 存档 | 战报 */
+  const [rightInspectorTab, setRightInspectorTab] = useState<"unit" | "saves" | "log">("unit");
+  /** 与「武将信息」tab 当前可视高度一致，用于限制存档/战报 tab 不要更高 */
+  const [battleRightTabCapPx, setBattleRightTabCapPx] = useState<number | null>(null);
+  const unitTabPanelRef = useRef<HTMLDivElement>(null);
   const [turnIntroLocked, setTurnIntroLocked] = useState(true);
   /** 回合放行票据：仅当某一方字幕流程完整结束后才会被置为该方 */
   const [turnActionReadyTurn, setTurnActionReadyTurn] = useState<"player" | "enemy" | null>(null);
@@ -529,6 +532,56 @@ export default function GamePage() {
     enemyTurnGateSeq,
   ]);
 
+  /** 敌军回合：随当前行动单位 / 沿路移动，把地图滚到其所在格（不触发侧栏点格脉冲） */
+  const enemyCameraSig = useMemo(() => {
+    if (battle.outcome !== "playing" || battle.pendingVictory) return "";
+    if (battle.turn !== "enemy" || battle.phase !== "enemy") return "";
+    if (battle.pendingMove?.kind === "enemy") {
+      const p = battle.pendingMove;
+      const u = battle.units.find((x) => x.id === p.unitId);
+      return `m:${p.unitId}:${p.path.map((s) => `${s.x},${s.y}`).join("|")}:${u?.x ?? -1},${u?.y ?? -1}`;
+    }
+    const q = battle.enemyTurnQueue;
+    const c = battle.enemyTurnCursor;
+    if (!q?.length || c >= q.length) return "idle";
+    const id = q[c];
+    const u = battle.units.find((x) => x.id === id);
+    return `q:${c}:${id}:${u?.x ?? -1},${u?.y ?? -1}:${u?.hp ?? -1}`;
+  }, [
+    battle.outcome,
+    battle.pendingVictory,
+    battle.turn,
+    battle.phase,
+    battle.pendingMove,
+    battle.enemyTurnCursor,
+    battle.enemyTurnQueue,
+    battle.units,
+  ]);
+
+  useEffect(() => {
+    if (!enemyCameraSig || enemyCameraSig === "idle") return;
+    if (turnActionReadyTurn !== "enemy") return;
+    const b = battleRef.current;
+    if (b.outcome !== "playing" || b.pendingVictory) return;
+    if (b.turn !== "enemy" || b.phase !== "enemy") return;
+
+    let unitId: string | null = null;
+    if (b.pendingMove?.kind === "enemy") unitId = b.pendingMove.unitId;
+    else {
+      const q = b.enemyTurnQueue;
+      const c = b.enemyTurnCursor;
+      if (q && c < q.length) unitId = q[c] ?? null;
+    }
+    if (!unitId) return;
+    const u = b.units.find((x) => x.id === unitId && x.hp > 0);
+    if (!u) return;
+
+    const raf = requestAnimationFrame(() => {
+      gameBattleRef.current?.focusUnitOnMap(unitId, { rosterPulse: false });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [enemyCameraSig, turnActionReadyTurn]);
+
   /** 敌军行动中不保留检视/浮窗，避免 pendingMove 结束后属性浮窗再次弹出 */
   useEffect(() => {
     if (battle.outcome !== "playing") return;
@@ -815,6 +868,20 @@ export default function GamePage() {
       gameBattleRef.current?.focusUnitOnMap(u.id);
     });
   }, []);
+
+  useLayoutEffect(() => {
+    if (!unitInspectExpanded || rightInspectorTab !== "unit") return;
+    const el = unitTabPanelRef.current;
+    if (!el) return;
+    const sync = () => {
+      const h = el.clientHeight;
+      setBattleRightTabCapPx((prev) => (h > 0 ? h : prev));
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [rightInspectorTab, unitInspectExpanded]);
 
   return (
     <div className="page game-layout game-layout--battle">
@@ -1145,18 +1212,22 @@ export default function GamePage() {
         )}
         <div className="battle-play-area">
           <details
-            className="unit-inspect-float battle-right-panel"
+            className="sidebar-disclosure battle-main-stack-disclosure unit-inspect-float battle-right-panel"
             open={unitInspectExpanded}
             onToggle={(e) => setUnitInspectExpanded(e.currentTarget.open)}
           >
-            <summary className="unit-inspect-float__summary battle-right-panel__summary">
-              武将信息与存档
+            <summary className="unit-inspect-float__summary battle-right-panel__summary battle-main-stack-disclosure__summary">
+              信息与存档
             </summary>
             <div
               className="unit-inspect-float__inner battle-right-panel__body"
-              aria-label="武将信息与存档"
+              aria-label="信息与存档"
             >
-              <div className="battle-right-tabs" role="tablist" aria-label="侧栏标签">
+              <div
+                className="battle-right-tabs battle-right-tabs--three"
+                role="tablist"
+                aria-label="信息与存档"
+              >
                 <button
                   type="button"
                   role="tab"
@@ -1191,8 +1262,26 @@ export default function GamePage() {
                 >
                   存档
                 </button>
+                <button
+                  type="button"
+                  role="tab"
+                  id="battle-right-tabbtn-log"
+                  aria-controls="battle-right-panel-log"
+                  aria-selected={rightInspectorTab === "log"}
+                  tabIndex={rightInspectorTab === "log" ? 0 : -1}
+                  className={[
+                    "battle-right-tab",
+                    rightInspectorTab === "log" ? "is-active" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  onClick={() => setRightInspectorTab("log")}
+                >
+                  战报
+                </button>
               </div>
               <div
+                ref={unitTabPanelRef}
                 role="tabpanel"
                 id="battle-right-panel-unit"
                 aria-labelledby="battle-right-tabbtn-unit"
@@ -1387,6 +1476,7 @@ export default function GamePage() {
                 aria-labelledby="battle-right-tabbtn-saves"
                 hidden={rightInspectorTab !== "saves"}
                 className="battle-right-tabpanel battle-right-tabpanel--saves"
+                style={battleRightTabCapPx != null ? { maxHeight: battleRightTabCapPx } : undefined}
               >
                 <div className="battle-saves-compact">
                   <div className="battle-saves-row battle-saves-row--save">
@@ -1466,6 +1556,29 @@ export default function GamePage() {
                   </div>
                 </div>
               </div>
+              <div
+                role="tabpanel"
+                id="battle-right-panel-log"
+                aria-labelledby="battle-right-tabbtn-log"
+                hidden={rightInspectorTab !== "log"}
+                className="battle-right-tabpanel battle-right-tabpanel--log"
+                style={battleRightTabCapPx != null ? { maxHeight: battleRightTabCapPx } : undefined}
+              >
+                {rightInspectorTab === "log" ? (
+                  <>
+                    <p className="battle-log-tab-intro muted small">最新条目在上，在卷轴内上下滚动查看。</p>
+                    <ol reversed className="battle-log-list" aria-label="战报">
+                      {battle.log
+                        .slice()
+                        .reverse()
+                        .slice(0, 80)
+                        .map((line, i) => (
+                          <li key={`${battle.log.length}-${i}`}>{line}</li>
+                        ))}
+                    </ol>
+                  </>
+                ) : null}
+              </div>
             </div>
           </details>
           <div className="battle-map-viewport">
@@ -1491,18 +1604,6 @@ export default function GamePage() {
               onPickHoverEnemy={onPickHoverEnemy}
             />
           </div>
-        </div>
-        <div className="battle-log">
-          <h3>战报</h3>
-          <ol reversed>
-            {battle.log
-              .slice()
-              .reverse()
-              .slice(0, 12)
-              .map((line, i) => (
-                <li key={i}>{line}</li>
-              ))}
-          </ol>
         </div>
       </main>
     </div>
