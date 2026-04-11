@@ -55,7 +55,8 @@
   transform: none;
 }
 
-.unit-troop-sprite--dir-left {
+/* 左向四向图已是朝左；仅回退到单张默认立绘时用镜像表达朝左 */
+.unit-troop-sprite--raster-fallback.unit-troop-sprite--dir-left {
   transform: scaleX(-1);
 }
 

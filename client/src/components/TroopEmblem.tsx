@@ -30,8 +30,11 @@ export default function TroopEmblem({
   const label = TROOP_KIND_LABEL[kind];
   const ch = TROOP_KIND_BADGE[kind];
   const [src, setSrc] = useState(() => directionalSrc(kind, facing));
+  /** 单张默认立绘（如 archer.png）通常朝右；左向需镜像。四向图 *_left.png 已是朝左，不可再 scaleX(-1)。 */
+  const [usingRasterFallback, setUsingRasterFallback] = useState(false);
 
   useEffect(() => {
+    setUsingRasterFallback(false);
     setSrc(directionalSrc(kind, facing));
   }, [kind, facing]);
 
@@ -41,8 +44,11 @@ export default function TroopEmblem({
         <img
           src={src}
           alt=""
-          className={`unit-troop-sprite unit-troop-sprite--${kind} unit-troop-sprite--dir-${facing} ${side === "enemy" ? "unit-troop-sprite--enemy" : ""}`}
-          onError={() => setSrc(RASTER_SRC[kind])}
+          className={`unit-troop-sprite unit-troop-sprite--${kind} unit-troop-sprite--dir-${facing} ${usingRasterFallback ? "unit-troop-sprite--raster-fallback" : ""} ${side === "enemy" ? "unit-troop-sprite--enemy" : ""}`}
+          onError={() => {
+            setUsingRasterFallback(true);
+            setSrc(RASTER_SRC[kind]);
+          }}
           draggable={false}
         />
       </span>
