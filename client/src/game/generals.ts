@@ -163,6 +163,48 @@ export function listPortraitImageBasenames(): readonly string[] {
   return GENERAL_CATALOG.map((g) => g.id);
 }
 
+/**
+ * 我军增援用：按图鉴与固定等级生成，等级与刘关张养成曲线由关卡传入（避免 tier 公式远高于序章主队）。
+ */
+export function playerJoinerFromCatalog(
+  catalogId: string,
+  battleUnitId: string,
+  x: number,
+  y: number,
+  level: number
+): Unit | null {
+  const g = byId.get(catalogId);
+  if (!g) return null;
+  const lvC = clampUnitLevel(level);
+  const maxHp = maxHpForLevel(lvC);
+  const might = clampMight(g.might + Math.floor(lvC / 8));
+  const intel = Math.min(100, g.intel + Math.floor(lvC / 10));
+  const defense = defensePowerForUnit(might, lvC, g.troopKind);
+  const tm = tacticMaxForUnit(intel, lvC);
+  return {
+    id: battleUnitId,
+    name: g.name,
+    side: "player",
+    x,
+    y,
+    hp: maxHp,
+    maxHp,
+    level: lvC,
+    exp: 0,
+    might,
+    intel,
+    defense,
+    armyType: g.armyType,
+    troopKind: g.troopKind,
+    tacticMax: tm,
+    tacticPoints: tm,
+    move: movePointsForTroop(g.troopKind),
+    moved: false,
+    acted: false,
+    portraitCatalogId: catalogId,
+  };
+}
+
 /** 战场用：按图鉴生成单位；tier 为关卡序号 0..n，略抬等级与兵力 */
 export function unitFromCatalog(
   side: Side,

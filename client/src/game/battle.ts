@@ -307,6 +307,9 @@ function mergeCarriedPlayers(template: BattleState, carried: Unit[]): BattleStat
     if (u.side !== "player") return u;
     const c = carriedById.get(u.id);
     if (!c) return u;
+    if (c.portraitCatalogId && u.portraitCatalogId && c.portraitCatalogId !== u.portraitCatalogId) {
+      return u;
+    }
     const level = clampUnitLevel(c.level);
     const maxHp = maxHpForLevel(level);
     const tm = tacticMaxForUnit(c.intel, level);

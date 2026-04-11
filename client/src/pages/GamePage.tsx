@@ -92,6 +92,10 @@ const CHEAT_GENERAL_CODEX_COMBO = (e: KeyboardEvent) =>
 const CHEAT_LEVEL_UP_COMBO = (e: KeyboardEvent) =>
   e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && e.code === "KeyU";
 
+/** 秘籍：与胜利后相同规则进入下一关（继承存活我军）；最后一关后回到序章 */
+const CHEAT_NEXT_STAGE_COMBO = (e: KeyboardEvent) =>
+  e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && e.code === "KeyD";
+
 const SCENARIO_PICKER_ENTRIES = listScenarioEntries();
 const GENERALS_CODEX_LIST = listGeneralsSorted();
 
@@ -336,6 +340,32 @@ export default function GamePage() {
         return;
       }
 
+      if (CHEAT_NEXT_STAGE_COMBO(e)) {
+        const b = battleRef.current;
+        if (b.outcome === "lost") {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          setMessage("秘籍：战败中不可用 Ctrl+D 跳转下一关。");
+          return;
+        }
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        const hadNext = getNextScenarioId(b.scenarioId) !== null;
+        const next = createNextBattleAfterVictory(b);
+        setBattle(next);
+        setInspectUnitId(null);
+        setStagePickerOpen(false);
+        setGeneralCodexOpen(false);
+        setGeneralCodexPickId(null);
+        bumpVisualEpoch();
+        setMessage(
+          hadNext
+            ? `秘籍：已进入下一关「${next.scenarioTitle}」`
+            : "秘籍：已过最后一关，从序章重新开始。"
+        );
+        return;
+      }
+
       if (e.key === "Escape") {
         if (generalCodexOpen) {
           e.preventDefault();
@@ -353,7 +383,7 @@ export default function GamePage() {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [stagePickerOpen, generalCodexOpen]);
+  }, [stagePickerOpen, generalCodexOpen, bumpVisualEpoch]);
 
   const jumpToScenario = useCallback(
     (scenarioId: string, title: string) => {
@@ -804,7 +834,9 @@ export default function GamePage() {
             </h2>
             <p className="stage-picker-hint muted small">
               再按 <kbd className="kbd-chip">Ctrl</kbd>+<kbd className="kbd-chip">Shift</kbd>+
-              <kbd className="kbd-chip">K</kbd> 或 <kbd className="kbd-chip">Esc</kbd> 关闭
+              <kbd className="kbd-chip">K</kbd> 或 <kbd className="kbd-chip">Esc</kbd> 关闭。
+              战斗中 <kbd className="kbd-chip">Ctrl</kbd>+<kbd className="kbd-chip">D</kbd>{" "}
+              直接进入下一关（与胜利相同：继承存活我军；最后一关后回序章）。
             </p>
             <ul className="stage-picker-list">
               {SCENARIO_PICKER_ENTRIES.map((row, i) => (

@@ -48,6 +48,10 @@ const ENEMY_TURN_BANNER_FINISH_BUFFER_MS = 120;
 
 /** 格子边长上限（px）；低于旧版 96 便于一屏多看地图，立绘随 --cell 仍可读 */
 const BATTLE_CELL_MAX_PX = 76;
+
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v));
+}
 /** 极宽地图时每格不低于此值，避免点选过难 */
 const BATTLE_CELL_MIN_PX = 32;
 /** fitViewport 下每格固定为该值（与上限一致） */
@@ -442,19 +446,38 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   }, [fitViewport]);
 
   const reportScrollViewport = useCallback(() => {
-    const el = battleWrapRef.current;
+    const wrap = battleWrapRef.current;
     const cb = onScrollViewportChangeRef.current;
-    if (!el || !cb || !fitViewport) return;
-    const sw = el.scrollWidth;
-    const sh = el.scrollHeight;
-    if (sw < 2 || sh < 2) return;
-    const cw = el.clientWidth;
-    const ch = el.clientHeight;
-    const left = Math.max(0, Math.min(1, el.scrollLeft / sw));
-    const top = Math.max(0, Math.min(1, el.scrollTop / sh));
-    const width = Math.max(0, Math.min(1, cw / sw));
-    const height = Math.max(0, Math.min(1, ch / sh));
-    cb({ left, top, width, height });
+    if (!wrap || !cb || !fitViewport) return;
+    const grid = wrap.querySelector(".battle-grid") as HTMLElement | null;
+    if (!grid) return;
+    const gRect = grid.getBoundingClientRect();
+    if (gRect.width < 2 || gRect.height < 2) return;
+
+    /** 滚动容器内实际可见的「视口」矩形（与略图格子坐标一致，须扣 padding/border，且相对棋盘而非 scrollWidth） */
+    const wRect = wrap.getBoundingClientRect();
+    const viewL = wRect.left + wrap.clientLeft;
+    const viewT = wRect.top + wrap.clientTop;
+    const viewR = viewL + wrap.clientWidth;
+    const viewB = viewT + wrap.clientHeight;
+
+    const ix0 = Math.max(viewL, gRect.left);
+    const iy0 = Math.max(viewT, gRect.top);
+    const ix1 = Math.min(viewR, gRect.right);
+    const iy1 = Math.min(viewB, gRect.bottom);
+    const iw = Math.max(0, ix1 - ix0);
+    const ih = Math.max(0, iy1 - iy0);
+
+    const left = (ix0 - gRect.left) / gRect.width;
+    const top = (iy0 - gRect.top) / gRect.height;
+    const width = iw / gRect.width;
+    const height = ih / gRect.height;
+    cb({
+      left: clamp01(left),
+      top: clamp01(top),
+      width: clamp01(width),
+      height: clamp01(height),
+    });
   }, [fitViewport]);
 
   useEffect(() => {
