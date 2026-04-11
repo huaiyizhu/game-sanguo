@@ -188,7 +188,7 @@ function nextTacticFocus(from: number, delta: 1 | -1, enabled: boolean[]): numbe
   return from;
 }
 
-type UnitSnap = { x: number; y: number; hp: number };
+type UnitSnap = { x: number; y: number; hp: number; level: number };
 
 type DyingVisual = {
   key: number;
@@ -199,6 +199,16 @@ type DyingVisual = {
   side: Side;
   level: number;
   troopKind: TroopKind;
+};
+
+type LevelUpVisual = {
+  key: number;
+  unitId: string;
+  x: number;
+  y: number;
+  name: string;
+  side: Side;
+  newLevel: number;
 };
 
 /**
@@ -475,6 +485,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   const [troopFacingById, setTroopFacingById] = useState<Record<string, TroopFacing>>({});
   const [actionMenuRevealReady, setActionMenuRevealReady] = useState(false);
   const [dyingVisuals, setDyingVisuals] = useState<DyingVisual[]>([]);
+  const [levelUpVisuals, setLevelUpVisuals] = useState<LevelUpVisual[]>([]);
   const prevHpRef = useRef<Record<string, number> | null>(null);
   const prevSnapRef = useRef<Record<string, UnitSnap> | null>(null);
   const prevEpochRef = useRef(visualEpoch);
@@ -503,6 +514,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     setTroopFacingById({});
     setActionMenuRevealReady(false);
     setDyingVisuals([]);
+    setLevelUpVisuals([]);
     setDmgFx(null);
     setHpBarLag({});
     setHitFxKind({});
@@ -841,7 +853,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       const snap: Record<string, UnitSnap> = {};
       const hpMap: Record<string, number> = {};
       for (const u of units) {
-        snap[u.id] = { x: u.x, y: u.y, hp: u.hp };
+        snap[u.id] = { x: u.x, y: u.y, hp: u.hp, level: u.level };
         hpMap[u.id] = u.hp;
       }
       prevSnapRef.current = snap;
@@ -870,6 +882,23 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
           window.setTimeout(() => {
             setDyingVisuals((list) => list.filter((d) => d.key !== k));
           }, DEATH_TEXT_POP_MS);
+        } else if (old.hp > 0 && u.hp > 0 && u.level > old.level) {
+          const k = Date.now() + Math.random();
+          setLevelUpVisuals((list) => [
+            ...list,
+            {
+              key: k,
+              unitId: u.id,
+              x: u.x,
+              y: u.y,
+              name: u.name,
+              side: u.side,
+              newLevel: u.level,
+            },
+          ]);
+          window.setTimeout(() => {
+            setLevelUpVisuals((list) => list.filter((d) => d.key !== k));
+          }, DEATH_TEXT_POP_MS);
         } else if (old.hp > 0 && u.hp > 0 && (old.x !== u.x || old.y !== u.y)) {
           const id = u.id;
           const dx = old.x - u.x;
@@ -890,7 +919,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
         }
       }
 
-      prevSnapRef.current[u.id] = { x: u.x, y: u.y, hp: u.hp };
+      prevSnapRef.current[u.id] = { x: u.x, y: u.y, hp: u.hp, level: u.level };
       prevHpRef.current[u.id] = u.hp;
     }
   }, [units]);
@@ -1741,6 +1770,27 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
               ].join(" ")}
             >
               {`${d.name}被斩于阵前`}
+            </p>
+          </div>
+        ))}
+        {levelUpVisuals.map((lv) => (
+          <div
+            key={`level-text-${lv.key}`}
+            className="battle-slot battle-slot--units death-text-pop-slot"
+            style={{
+              gridColumn: deathTextGridColumn(lv.x, gridW),
+              gridRow: lv.y + 1,
+              zIndex: 96_200 + lv.y * gridW + lv.x,
+            }}
+            aria-hidden
+          >
+            <p
+              className={[
+                "death-text-pop",
+                lv.side === "enemy" ? "death-text-pop--enemy" : "death-text-pop--player",
+              ].join(" ")}
+            >
+              {`${lv.name}级别上升为${lv.newLevel}`}
             </p>
           </div>
         ))}

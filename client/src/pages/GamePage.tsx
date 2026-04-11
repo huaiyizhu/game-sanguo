@@ -11,6 +11,7 @@ import {
   advancePendingMove,
   cancelPickTarget,
   cancelTacticMenu,
+  cheatInstantLevelUp,
   confirmPickTarget,
   createBattleForScenario,
   createInitialBattle,
@@ -77,6 +78,10 @@ const CHEAT_STAGE_PICKER_COMBO = (e: KeyboardEvent) =>
 
 const CHEAT_GENERAL_CODEX_COMBO = (e: KeyboardEvent) =>
   e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.code === "KeyJ";
+
+/** 秘籍：当前选中或侧栏检视中的存活单位立即升一级 */
+const CHEAT_LEVEL_UP_COMBO = (e: KeyboardEvent) =>
+  e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && e.code === "KeyU";
 
 const SCENARIO_PICKER_ENTRIES = listScenarioEntries();
 const GENERALS_CODEX_LIST = listGeneralsSorted();
@@ -195,6 +200,8 @@ export default function GamePage() {
   const [remoteLoading, setRemoteLoading] = useState(false);
   const [visualEpoch, setVisualEpoch] = useState(0);
   const [inspectUnitId, setInspectUnitId] = useState<string | null>(null);
+  const inspectUnitIdRef = useRef<string | null>(null);
+  inspectUnitIdRef.current = inspectUnitId;
   /** 每次点将/检视递增，使 GameBattle 在再次点同一单位时仍能重播属性浮窗 */
   const [inspectTapSeq, setInspectTapSeq] = useState(0);
   const [metaSidebarCollapsed, setMetaSidebarCollapsed] = useState(() => {
@@ -285,6 +292,30 @@ export default function GamePage() {
         e.preventDefault();
         e.stopImmediatePropagation();
         setGeneralCodexOpen((open) => !open);
+        return;
+      }
+
+      if (CHEAT_LEVEL_UP_COMBO(e)) {
+        const b = battleRef.current;
+        if (b.outcome !== "playing") return;
+        const id = b.selectedId ?? inspectUnitIdRef.current;
+        if (!id) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          setMessage("秘籍：请先在战场上选中单位，或在侧栏点选一名武将。");
+          return;
+        }
+        const u = b.units.find((x) => x.id === id && x.hp > 0);
+        if (!u) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          setMessage("秘籍：该单位无法升级（未找到或已阵亡）。");
+          return;
+        }
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setBattle((s) => cheatInstantLevelUp(s, id));
+        setMessage(`秘籍：${u.name} 已升一级（Lv.${u.level + 1}）。`);
         return;
       }
 

@@ -182,6 +182,29 @@ function xpForDamage(
 const HP_PER_LEVEL = 12;
 const TACTIC_BONUS_ON_LEVELUP = 5;
 
+/** 升一级时的属性增量（经验不变） */
+function applyOneLevelToUnit(u: Unit): Unit {
+  const level = u.level + 1;
+  const maxHp = u.maxHp + HP_PER_LEVEL;
+  const hp = Math.min(maxHp, u.hp + HP_PER_LEVEL);
+  const defense = u.defense + 1;
+  const tacticMax = tacticMaxForUnit(u.intel, level);
+  const tacticPoints = Math.min(tacticMax, u.tacticPoints + TACTIC_BONUS_ON_LEVELUP);
+  return { ...u, level, maxHp, hp, defense, tacticMax, tacticPoints };
+}
+
+/** 秘籍：指定存活单位立即升一级（不改经验），战报追加一行 */
+export function cheatInstantLevelUp(state: BattleState, unitId: string): BattleState {
+  const u = state.units.find((x) => x.id === unitId);
+  if (!u || u.hp <= 0) return state;
+  const leveled = applyOneLevelToUnit(u);
+  return {
+    ...state,
+    units: state.units.map((x) => (x.id === unitId ? leveled : x)),
+    log: [...state.log, `${leveled.name}级别上升为${leveled.level}（秘籍）`],
+  };
+}
+
 /** 我军获得经验并可能升级（仅修改武将自身字段） */
 function applyExpAndLevelUps(u: Unit, gain: number, logOut: string[]): Unit {
   if (u.side !== "player" || gain <= 0) return u;
@@ -191,14 +214,9 @@ function applyExpAndLevelUps(u: Unit, gain: number, logOut: string[]): Unit {
     const need = expToNextLevel(next.level);
     if (next.exp < need) break;
     next.exp -= need;
-    next.level += 1;
-    next.maxHp += HP_PER_LEVEL;
-    next.hp = Math.min(next.maxHp, next.hp + HP_PER_LEVEL);
-    next.defense += 1;
-    next.tacticMax = tacticMaxForUnit(next.intel, next.level);
-    next.tacticPoints = Math.min(next.tacticMax, next.tacticPoints + TACTIC_BONUS_ON_LEVELUP);
+    next = applyOneLevelToUnit(next);
     logOut.push(
-      `${next.name} 升至 Lv.${next.level}！兵力上限+${HP_PER_LEVEL}、防御+1、计策上限提升。`
+      `${next.name}级别上升为${next.level}（兵力上限+${HP_PER_LEVEL}、防御+1、计策上限提升）`
     );
   }
   return next;
