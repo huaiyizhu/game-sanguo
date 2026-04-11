@@ -230,6 +230,11 @@ function facingFromGridStep(from: { x: number; y: number }, to: { x: number; y: 
 const DEATH_TEXT_COL_SPAN = 5;
 /** 阵亡文案/残影展示时长：拉长以确保玩家能看清「被斩于阵前」 */
 const DEATH_TEXT_POP_MS = 1600;
+/** 与扣血飘字总时长一致：须与 `DAMAGE_FLOAT_DELAY_MS` + `DAMAGE_FLOAT_ANIM_MS` 及 index.css `.dmg-float` 同步 */
+const DMG_FLOAT_SEQUENCE_MS = DAMAGE_FLOAT_DELAY_MS + DAMAGE_FLOAT_ANIM_MS;
+const DMG_FLOAT_SEQUENCE_REDUCED_MS = 80 + 480;
+/** 略长于飘字总时长，避免与 `dmgFloatTimersRef.end` 同毫秒注册时先播阵亡 */
+const DEATH_UI_AFTER_DMG_MS = 48;
 function deathTextGridColumn(deathX: number, gridW: number): string {
   const span = Math.min(DEATH_TEXT_COL_SPAN, gridW);
   const startX = Math.max(0, Math.min(deathX - Math.floor((span - 1) / 2), gridW - span));
@@ -484,10 +489,16 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     delay?: ReturnType<typeof window.setTimeout>;
     end?: ReturnType<typeof window.setTimeout>;
   }>({});
+  /** 阵亡残影/条带：须在伤害飘字播完后再出现，按 unitId 去重 */
+  const pendingDeathRevealTimersRef = useRef<Map<string, ReturnType<typeof window.setTimeout>>>(
+    new Map()
+  );
   const [moveSlide, setMoveSlide] = useState<Record<string, { dx: number; dy: number }>>({});
   const [troopFacingById, setTroopFacingById] = useState<Record<string, TroopFacing>>({});
   const [actionMenuRevealReady, setActionMenuRevealReady] = useState(false);
   const [dyingVisuals, setDyingVisuals] = useState<DyingVisual[]>([]);
+  /** 已阵亡但尚未切入阵亡残影动画的单位：继续占格显示立绘，避免「先消失再出现」 */
+  const [lingerDeadIds, setLingerDeadIds] = useState(() => new Set<string>());
   const [levelUpVisuals, setLevelUpVisuals] = useState<LevelUpVisual[]>([]);
   const prevHpRef = useRef<Record<string, number> | null>(null);
   const prevSnapRef = useRef<Record<string, UnitSnap> | null>(null);
@@ -517,6 +528,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     setTroopFacingById({});
     setActionMenuRevealReady(false);
     setDyingVisuals([]);
+    setLingerDeadIds(new Set());
     setLevelUpVisuals([]);
     setDmgFx(null);
     setHpBarLag({});
@@ -526,6 +538,10 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     if (ft.end) window.clearTimeout(ft.end);
     ft.delay = undefined;
     ft.end = undefined;
+    for (const t of pendingDeathRevealTimersRef.current.values()) {
+      window.clearTimeout(t);
+    }
+    pendingDeathRevealTimersRef.current.clear();
   }, [visualEpoch]);
 
   const battleMenuActive =
@@ -868,23 +884,43 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       const old = prevSnapRef.current[u.id];
       if (old) {
         if (old.hp > 0 && u.hp <= 0) {
+          const uid = u.id;
+          const prevT = pendingDeathRevealTimersRef.current.get(uid);
+          if (prevT) window.clearTimeout(prevT);
+          setLingerDeadIds((prev) => {
+            const n = new Set(prev);
+            n.add(uid);
+            return n;
+          });
+          const reduced =
+            typeof window !== "undefined" &&
+            window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          const delayMs =
+            (reduced ? DMG_FLOAT_SEQUENCE_REDUCED_MS : DMG_FLOAT_SEQUENCE_MS) + DEATH_UI_AFTER_DMG_MS;
           const k = Date.now() + Math.random();
-          setDyingVisuals((list) => [
-            ...list,
-            {
-              key: k,
-              unitId: u.id,
-              x: old.x,
-              y: old.y,
-              name: u.name,
-              side: u.side,
-              level: u.level,
-              troopKind: u.troopKind,
-            },
-          ]);
-          window.setTimeout(() => {
-            setDyingVisuals((list) => list.filter((d) => d.key !== k));
-          }, DEATH_TEXT_POP_MS);
+          const entry: DyingVisual = {
+            key: k,
+            unitId: uid,
+            x: old.x,
+            y: old.y,
+            name: u.name,
+            side: u.side,
+            level: u.level,
+            troopKind: u.troopKind,
+          };
+          const tid = window.setTimeout(() => {
+            pendingDeathRevealTimersRef.current.delete(uid);
+            setLingerDeadIds((prev) => {
+              const n = new Set(prev);
+              n.delete(uid);
+              return n;
+            });
+            setDyingVisuals((list) => [...list, entry]);
+            window.setTimeout(() => {
+              setDyingVisuals((list) => list.filter((d) => d.key !== k));
+            }, DEATH_TEXT_POP_MS);
+          }, delayMs);
+          pendingDeathRevealTimersRef.current.set(uid, tid);
         } else if (old.hp > 0 && u.hp > 0 && u.level > old.level) {
           const k = Date.now() + Math.random();
           setLevelUpVisuals((list) => [
@@ -977,6 +1013,11 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       if (ft.end) window.clearTimeout(ft.end);
       ft.delay = undefined;
       ft.end = undefined;
+      for (const t of pendingDeathRevealTimersRef.current.values()) {
+        window.clearTimeout(t);
+      }
+      pendingDeathRevealTimersRef.current.clear();
+      setLingerDeadIds(new Set());
     };
   }, []);
 
@@ -1133,7 +1174,11 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   }
   const byPos = new Map<string, (typeof units)[0]>();
   for (const u of units) {
-    if (u.hp > 0) byPos.set(`${u.x},${u.y}`, u);
+    if (u.hp > 0) {
+      byPos.set(`${u.x},${u.y}`, u);
+    } else if (lingerDeadIds.has(u.id)) {
+      byPos.set(`${u.x},${u.y}`, u);
+    }
   }
 
   const tryActivateMenu = (index: number) => {
@@ -1458,6 +1503,29 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                 title={`${TERRAIN_LABEL[terrainAt(x, y)]} (${x + 1},${y + 1})`}
                 role="presentation"
               />
+              {dmgFx &&
+                (() => {
+                  const victim = units.find(
+                    (uu) => uu.id === dmgFx.unitId && uu.x === x && uu.y === y && uu.hp <= 0
+                  );
+                  if (!victim || lingerDeadIds.has(victim.id)) return null;
+                  const hk = hitFxKind[victim.id];
+                  return (
+                    <div key={`terrain-dmg-${dmgFx.key}`} className="battle-cell-dmg-float-slot" aria-hidden>
+                      <span
+                        className={[
+                          "dmg-float",
+                          "unit-standee__dmg-float",
+                          hk === "tactic" ? "dmg-float--tactic" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                      >
+                        -{dmgFx.amount}
+                      </span>
+                    </div>
+                  );
+                })()}
               {deathHere && (
                 <div key={deathHere.key} className="death-overlay-slot" aria-hidden>
                   <div
@@ -1539,7 +1607,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                     rosterPulse: Boolean(rosterPulseHere && u),
                     moveSlide: Boolean(slide),
                     moveHint: Boolean(isMove),
-                    hasLiveUnit: Boolean(u.hp > 0),
+                    hasLiveUnit: Boolean(u.hp > 0 || lingerDeadIds.has(u.id)),
                   }),
                 }}
               >
@@ -1547,6 +1615,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                   className={[
                     "unit-standee",
                     u.side,
+                    u.hp <= 0 ? "unit-standee--linger-dead" : "",
                     slide ? "unit-move-slide" : "",
                   ]
                     .filter(Boolean)
@@ -1572,8 +1641,8 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                   }}
                 >
                   <div
-                    role="button"
-                    tabIndex={0}
+                    role={u.hp <= 0 ? "presentation" : "button"}
+                    tabIndex={u.hp <= 0 ? -1 : 0}
                     className={[
                       "unit-standee__body",
                       u.side,
@@ -1603,17 +1672,24 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                     ]
                       .filter(Boolean)
                       .join(" ")}
-                    aria-label={`${u.name}，${TROOP_KIND_LABEL[u.troopKind]}，等级 ${u.level}，生命 ${u.hp}/${u.maxHp}`}
+                    aria-label={
+                      u.hp <= 0
+                        ? `${u.name}，${TROOP_KIND_LABEL[u.troopKind]}，已阵亡`
+                        : `${u.name}，${TROOP_KIND_LABEL[u.troopKind]}，等级 ${u.level}，生命 ${u.hp}/${u.maxHp}`
+                    }
                     onMouseEnter={() => {
+                      if (u.hp <= 0) return;
                       if (phase === "pick-target" && u.side === "enemy" && isPickCandidate(u.id)) {
                         onPickHoverEnemy(u.id);
                       }
                     }}
                     onClick={(e: MouseEvent) => {
                       e.stopPropagation();
+                      if (u.hp <= 0) return;
                       onUnitClick(u.id, u.side);
                     }}
                     onKeyDown={(e: KeyboardEvent) => {
+                      if (u.hp <= 0) return;
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
                         e.stopPropagation();

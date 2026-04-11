@@ -137,6 +137,10 @@ export interface BattleState {
   units: Unit[];
   log: string[];
   outcome: "playing" | "won" | "lost";
+  /**
+   * 胜利条件已满足，但暂不写入 outcome: "won"：等 UI 播完最后一击飘字与阵亡动画后再提交（见 `commitPendingVictory`）。
+   */
+  pendingVictory?: boolean;
   pickTarget: PickTargetState | null;
   playerTurnStart: PlayerTurnStartMap;
   enemyTurnQueue: string[] | null;

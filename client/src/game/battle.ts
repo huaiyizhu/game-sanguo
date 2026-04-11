@@ -61,6 +61,23 @@ export const DAMAGE_FLOAT_DELAY_MS = 400;
 /** 扣血飘字 CSS 动画时长（须与 index.css `.dmg-float` 一致） */
 export const DAMAGE_FLOAT_ANIM_MS = 1200;
 
+/** 须与 GameBattle `DEATH_UI_AFTER_DMG_MS` 一致 */
+const DEATH_UI_AFTER_DMG_MS = 48;
+/** 须与 GameBattle `DEATH_TEXT_POP_MS` 一致（阵亡条带/淡出） */
+const DEATH_TEXT_POP_MS = 1600;
+const DMG_FLOAT_SEQUENCE_REDUCED_MS = 80 + 480;
+
+/**
+ * 达成胜利后、揭示「过关」前须等待的毫秒数（与最后一击飘字 + 阵亡演出对齐）。
+ * @param reducedMotion 与 GameBattle 扣血飘字 prefers-reduced-motion 分支一致
+ */
+export function victoryRevealHoldMs(reducedMotion: boolean): number {
+  if (reducedMotion) {
+    return DMG_FLOAT_SEQUENCE_REDUCED_MS + DEATH_UI_AFTER_DMG_MS + DEATH_TEXT_POP_MS + 100;
+  }
+  return DAMAGE_FLOAT_DELAY_MS + DAMAGE_FLOAT_ANIM_MS + DEATH_UI_AFTER_DMG_MS + DEATH_TEXT_POP_MS + 120;
+}
+
 /** 回合转场字幕时长（毫秒），须与 CSS 中字幕动画时长一致 */
 export const TURN_PHASE_BANNER_MS = 1000;
 
@@ -350,12 +367,25 @@ function victoryLogLine(state: BattleState): string {
   return "敌军全灭，战斗胜利！";
 }
 
+/** 将 `pendingVictory` 转为正式胜利（写入 outcome、战报、并清掉飘字脉冲） */
+export function commitPendingVictory(state: BattleState): BattleState {
+  if (!state.pendingVictory) return state;
+  return {
+    ...state,
+    pendingVictory: false,
+    outcome: "won",
+    damagePulse: null,
+    log: [...state.log, victoryLogLine(state)],
+  };
+}
+
 function checkOutcome(state: BattleState): BattleState {
   const enemies = alive(state.units, "enemy");
   if (enemyWinSatisfied(state, enemies)) {
+    if (state.pendingVictory) return state;
     return {
       ...state,
-      outcome: "won",
+      pendingVictory: true,
       turn: "player",
       phase: "select",
       selectedId: null,
@@ -364,8 +394,7 @@ function checkOutcome(state: BattleState): BattleState {
       enemyTurnQueue: null,
       enemyTurnCursor: 0,
       pendingMove: null,
-      damagePulse: null,
-      log: [...state.log, victoryLogLine(state)],
+      log: state.log,
     };
   }
   if (alive(state.units, "player").length === 0) {
@@ -656,7 +685,7 @@ export function advancePendingMove(state: BattleState): BattleState {
   const q = s.enemyTurnQueue;
   const c = s.enemyTurnCursor;
   const nextC = c + 1;
-  if (s.outcome !== "playing") {
+  if (s.outcome !== "playing" || s.pendingVictory) {
     return { ...s, enemyTurnQueue: null, enemyTurnCursor: 0, pendingMove: null };
   }
   if (nextC >= (q?.length ?? 0)) {
@@ -882,6 +911,7 @@ function applyPlayerMeleeDamage(
   };
   if (dmg > 0) next = attachDamagePulse(next, enemyId, dmg, hpBeforeMelee, "melee");
   next = checkOutcome(next);
+  if (next.pendingVictory) return next;
   if (next.outcome !== "playing") return next;
   return maybeEndPlayerTurn(next);
 }
@@ -934,6 +964,7 @@ function applyPlayerTacticDamage(
   };
   if (dmg > 0) next = attachDamagePulse(next, enemyId, dmg, hpBeforeTactic, "tactic");
   next = checkOutcome(next);
+  if (next.pendingVictory) return next;
   if (next.outcome !== "playing") return next;
   return maybeEndPlayerTurn(next);
 }
@@ -1068,7 +1099,7 @@ function allPlayerDone(units: Unit[]) {
 }
 
 function maybeEndPlayerTurn(state: BattleState): BattleState {
-  if (state.outcome !== "playing") return state;
+  if (state.outcome !== "playing" || state.pendingVictory) return state;
   if (!allPlayerDone(state.units)) return state;
   return startEnemyTurn({
     ...state,
@@ -1236,7 +1267,7 @@ export function processSingleEnemyStep(state: BattleState): BattleState {
   }
   s = { ...s, enemyTurnCursor: nextC };
 
-  if (s.outcome !== "playing") {
+  if (s.outcome !== "playing" || s.pendingVictory) {
     return {
       ...s,
       enemyTurnQueue: null,
@@ -1392,6 +1423,9 @@ export function ensureBattleFields(b: BattleState): BattleState {
       terrain,
       units: (s.units as unknown as Record<string, unknown>[]).map(migrateV1Unit),
     } as BattleState;
+  }
+  if (s.pendingVictory && s.outcome !== "playing") {
+    s = { ...s, pendingVictory: false };
   }
   s = {
     ...s,

@@ -37,6 +37,24 @@
   display: block;
 }
 
+/* 击杀后单位层不再渲染，飘字改叠在地形格上；须盖住地形、低于阵亡残影 */
+.battle-cell-dmg-float-slot {
+  position: absolute;
+  inset: 0;
+  z-index: 44;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 18%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* 阵亡飘字延迟期间：占位立绘不可点，避免误触 */
+.unit-standee.unit-standee--linger-dead {
+  pointer-events: none;
+}
+
 .unit-standee {
   position: absolute;
   inset: 0;
