@@ -382,6 +382,31 @@ a:hover {
   flex-shrink: 0;
 }
 
+.game-left-toprow {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.game-left-toprow .battle-back-home--toprow {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0.42rem 0.45rem;
+  font-size: 0.78rem;
+}
+
+.game-left-newgame {
+  flex-shrink: 0;
+  align-self: center;
+  white-space: nowrap;
+}
+
 /* 侧栏：战场缩略图 + 当前网页可见范围（黄框） */
 .battle-overview {
   flex-shrink: 0;
@@ -849,11 +874,152 @@ a:hover {
   background: var(--bg-panel);
 }
 
+/* 双 Tab 时由子面板各自滚动，避免与外层双滚动条 */
+.unit-inspect-float__inner.battle-right-panel__body {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+}
+
 .unit-inspect-float__inner.unit-inspect {
   padding: 0.35rem 0.5rem 0.45rem;
 }
 
-.unit-inspect-float__inner .terrain-legend.terrain-legend--inline {
+.battle-right-tabs {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  background: rgba(18, 24, 34, 0.98);
+}
+
+.battle-right-tab {
+  flex: 1;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.42rem 0.5rem;
+  margin: 0;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.battle-right-tab:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.battle-right-tab.is-active {
+  color: var(--gold-dim);
+  border-bottom-color: rgba(250, 204, 21, 0.85);
+  background: rgba(26, 35, 50, 0.55);
+}
+
+.battle-right-tabpanel {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0.35rem 0.5rem 0.45rem;
+  box-sizing: border-box;
+}
+
+.battle-right-tabpanel.unit-inspect {
+  padding: 0.35rem 0.5rem 0.45rem;
+}
+
+.battle-saves-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-height: 0;
+}
+
+.battle-saves-row--save {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.slot-input--saves-inline {
+  flex: 1;
+  min-width: 5rem;
+  margin: 0;
+  padding: 0.32rem 0.4rem;
+  font-size: 0.74rem;
+}
+
+.battle-saves-inline-hint {
+  margin: 0;
+  line-height: 1.25;
+  font-size: 0.65rem;
+}
+
+.battle-saves-dual {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem 0.4rem;
+  margin-top: 0.2rem;
+  min-height: 0;
+}
+
+.battle-saves-dual__head {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--gold-dim);
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  margin-bottom: 0.12rem;
+}
+
+.battle-saves-dual__col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.save-list--dense {
+  font-size: 0.7rem;
+  margin: 0;
+  padding: 0;
+  max-height: min(28vh, 9.5rem);
+  overflow-y: auto;
+}
+
+.save-list--dense li {
+  padding: 0.18rem 0;
+  gap: 0.25rem;
+  border-bottom-color: rgba(42, 53, 69, 0.75);
+}
+
+.save-list--dense .linkish {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.battle-roster__col-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.unit-inspect-float__inner .terrain-legend.terrain-legend--inline,
+.battle-right-tabpanel.unit-inspect .terrain-legend.terrain-legend--inline {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -862,12 +1028,14 @@ a:hover {
   padding-top: 0.3rem;
 }
 
-.unit-inspect-float__inner .terrain-legend--inline .terrain-legend-title {
+.unit-inspect-float__inner .terrain-legend--inline .terrain-legend-title,
+.battle-right-tabpanel.unit-inspect .terrain-legend--inline .terrain-legend-title {
   margin: 0;
   flex: 0 0 auto;
 }
 
-.unit-inspect-float__inner .terrain-legend--inline .terrain-legend-row {
+.unit-inspect-float__inner .terrain-legend--inline .terrain-legend-row,
+.battle-right-tabpanel.unit-inspect .terrain-legend--inline .terrain-legend-row {
   display: contents;
 }
 

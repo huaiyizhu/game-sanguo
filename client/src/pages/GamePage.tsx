@@ -213,6 +213,8 @@ export default function GamePage() {
   });
   const [rosterExpanded, setRosterExpanded] = useState(true);
   const [unitInspectExpanded, setUnitInspectExpanded] = useState(true);
+  /** 主战场右上侧栏：武将信息 | 存档 */
+  const [rightInspectorTab, setRightInspectorTab] = useState<"unit" | "saves">("unit");
   const [turnIntroLocked, setTurnIntroLocked] = useState(true);
   /** 回合放行票据：仅当某一方字幕流程完整结束后才会被置为该方 */
   const [turnActionReadyTurn, setTurnActionReadyTurn] = useState<"player" | "enemy" | null>(null);
@@ -507,6 +509,7 @@ export default function GamePage() {
     if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
     if (battleRef.current.outcome === "playing" && battleRef.current.turn !== "player") return;
     setInspectUnitId(unitId);
+    setRightInspectorTab("unit");
     setInspectTapSeq((n) => n + 1);
     setBattle((s) => {
       if (side === "player") return selectPlayerUnit(s, unitId);
@@ -728,6 +731,7 @@ export default function GamePage() {
   const onRosterPickUnit = useCallback((u: Unit) => {
     if (battleRef.current.outcome === "playing" && battleRef.current.turn !== "player") return;
     setInspectUnitId(u.id);
+    setRightInspectorTab("unit");
     setInspectTapSeq((n) => n + 1);
     requestAnimationFrame(() => {
       gameBattleRef.current?.focusUnitOnMap(u.id);
@@ -860,30 +864,26 @@ export default function GamePage() {
         </div>
       )}
       <div className="game-left-stack">
-        <Link to="/" className="battle-back-home battle-back-home--sidebar">
-          ← 返回首页
-        </Link>
-        <BattleOverviewMap
-          gridW={battle.gridW}
-          gridH={battle.gridH}
-          terrain={battle.terrain}
-          units={battle.units}
-          viewport={battleViewportNorm}
-          battleRound={battle.battleRound}
-          maxBattleRounds={battle.maxBattleRounds ?? 60}
-        />
+        <div className="game-left-toprow" role="toolbar" aria-label="导航与开局">
+          <Link to="/" className="battle-back-home battle-back-home--sidebar battle-back-home--toprow">
+            ← 返回首页
+          </Link>
+          <button type="button" className="btn tiny game-left-newgame" onClick={onNewGame}>
+            新游戏
+          </button>
+        </div>
         {metaSidebarCollapsed ? (
           <button
             type="button"
             className="sidebar-expand-bar"
             onClick={() => setMetaCollapsed(false)}
           >
-            展开战局与存档
+            展开战局
           </button>
         ) : (
-          <aside className="game-meta-sidebar" aria-label="战局与存档">
+          <aside className="game-meta-sidebar" aria-label="战局">
             <div className="meta-sidebar-header">
-              <span className="meta-sidebar-title">战局与存档</span>
+              <span className="meta-sidebar-title">战局</span>
               <button
                 type="button"
                 className="btn-collapse-sidebar"
@@ -908,94 +908,17 @@ export default function GamePage() {
               </p>
             ) : null}
             {message && <p className="toast-msg">{message}</p>}
-            <div className="sidebar-actions">
-              <button type="button" className="btn" onClick={onNewGame}>
-                新游戏
-              </button>
-              <button
-                type="button"
-                className="btn"
-                onClick={onWait}
-                disabled={
-                  battle.outcome !== "playing" ||
-                  battle.turn !== "player" ||
-                  !battle.selectedId ||
-                  battle.phase === "enemy" ||
-                  turnIntroLocked
-                }
-              >
-                待机
-              </button>
-            </div>
-
-            <details className="save-details" open>
-              <summary>存档</summary>
-              <div className="meta-slot-row">
-                <input
-                  className="slot-input"
-                  value={slotName}
-                  onChange={(e) => setSlotName(e.target.value)}
-                  placeholder="存档槽名称"
-                  maxLength={64}
-                />
-                <div className="meta-save-buttons">
-                  <button type="button" className="btn primary" onClick={saveLocal}>
-                    存本地
-                  </button>
-                  <button type="button" className="btn" onClick={saveRemote} disabled={!user}>
-                    存云端
-                  </button>
-                </div>
-                {!user && <p className="hint small">登录后可云端存档</p>}
-              </div>
-            </details>
-
-            <details className="save-details" open>
-              <summary>本地列表 ({localList.length})</summary>
-              <ul className="save-list save-list--compact">
-                {localList.length === 0 && <li className="muted">暂无</li>}
-                {localList.map((e) => (
-                  <li key={e.slotName}>
-                    <button type="button" className="linkish" onClick={() => loadLocal(e)}>
-                      {e.slotName}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn tiny danger"
-                      onClick={() => removeLocal(e.slotName)}
-                    >
-                      删
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </details>
-
-            <details className="save-details" open>
-              <summary>
-                云端列表 {remoteLoading && <span className="muted">…</span>}
-              </summary>
-              <ul className="save-list save-list--compact">
-                {!token && <li className="muted">未登录</li>}
-                {token && remoteList.length === 0 && !remoteLoading && <li className="muted">暂无</li>}
-                {remoteList.map((r) => (
-                  <li key={r.id}>
-                    <button type="button" className="linkish" onClick={() => void loadRemote(r)}>
-                      {r.slotName}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn tiny danger"
-                      onClick={() => void removeRemote(r.slotName)}
-                    >
-                      删
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </details>
           </aside>
         )}
+        <BattleOverviewMap
+          gridW={battle.gridW}
+          gridH={battle.gridH}
+          terrain={battle.terrain}
+          units={battle.units}
+          viewport={battleViewportNorm}
+          battleRound={battle.battleRound}
+          maxBattleRounds={battle.maxBattleRounds ?? 60}
+        />
         <details
           className="sidebar-disclosure battle-roster-disclosure"
           open={rosterExpanded}
@@ -1007,20 +930,37 @@ export default function GamePage() {
               <div className="battle-roster__col">
                 <div className="battle-roster__col-head">
                   <h4>我军 ({rosterPlayers.length})</h4>
-                  <button
-                    type="button"
-                    className="btn tiny battle-roster__end-turn-btn"
-                    onClick={onEndPlayerTurnQuick}
-                    disabled={
-                      battle.outcome !== "playing" ||
-                      battle.turn !== "player" ||
-                      turnIntroLocked ||
-                      Boolean(battle.pendingMove)
-                    }
-                    title="直接结束我方回合"
-                  >
-                    结束回合
-                  </button>
+                  <div className="battle-roster__col-actions">
+                    <button
+                      type="button"
+                      className="btn tiny"
+                      onClick={onWait}
+                      disabled={
+                        battle.outcome !== "playing" ||
+                        battle.turn !== "player" ||
+                        !battle.selectedId ||
+                        battle.phase === "enemy" ||
+                        turnIntroLocked
+                      }
+                      title="当前选中单位待机"
+                    >
+                      待机
+                    </button>
+                    <button
+                      type="button"
+                      className="btn tiny battle-roster__end-turn-btn"
+                      onClick={onEndPlayerTurnQuick}
+                      disabled={
+                        battle.outcome !== "playing" ||
+                        battle.turn !== "player" ||
+                        turnIntroLocked ||
+                        Boolean(battle.pendingMove)
+                      }
+                      title="直接结束我方回合"
+                    >
+                      结束回合
+                    </button>
+                  </div>
                 </div>
                 <ul className="battle-roster__list">
                   {rosterPlayers.map((u) => (
@@ -1115,12 +1055,60 @@ export default function GamePage() {
         )}
         <div className="battle-play-area">
           <details
-            className="unit-inspect-float"
+            className="unit-inspect-float battle-right-panel"
             open={unitInspectExpanded}
             onToggle={(e) => setUnitInspectExpanded(e.currentTarget.open)}
           >
-            <summary className="unit-inspect-float__summary">武将信息</summary>
-            <div className="unit-inspect unit-inspect-float__inner" aria-label="武将信息详情">
+            <summary className="unit-inspect-float__summary battle-right-panel__summary">
+              武将信息与存档
+            </summary>
+            <div
+              className="unit-inspect-float__inner battle-right-panel__body"
+              aria-label="武将信息与存档"
+            >
+              <div className="battle-right-tabs" role="tablist" aria-label="侧栏标签">
+                <button
+                  type="button"
+                  role="tab"
+                  id="battle-right-tabbtn-unit"
+                  aria-controls="battle-right-panel-unit"
+                  aria-selected={rightInspectorTab === "unit"}
+                  tabIndex={rightInspectorTab === "unit" ? 0 : -1}
+                  className={[
+                    "battle-right-tab",
+                    rightInspectorTab === "unit" ? "is-active" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  onClick={() => setRightInspectorTab("unit")}
+                >
+                  武将信息
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  id="battle-right-tabbtn-saves"
+                  aria-controls="battle-right-panel-saves"
+                  aria-selected={rightInspectorTab === "saves"}
+                  tabIndex={rightInspectorTab === "saves" ? 0 : -1}
+                  className={[
+                    "battle-right-tab",
+                    rightInspectorTab === "saves" ? "is-active" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  onClick={() => setRightInspectorTab("saves")}
+                >
+                  存档
+                </button>
+              </div>
+              <div
+                role="tabpanel"
+                id="battle-right-panel-unit"
+                aria-labelledby="battle-right-tabbtn-unit"
+                hidden={rightInspectorTab !== "unit"}
+                className="battle-right-tabpanel unit-inspect"
+              >
               {!inspectedUnit && !inspectedRosterTarget && (
                 <p className="muted small">点击场上武将或左侧列表查看详情。</p>
               )}
@@ -1262,6 +1250,92 @@ export default function GamePage() {
                       <span>{TERRAIN_LABEL[id]}</span>
                     </span>
                   ))}
+                </div>
+              </div>
+              </div>
+              <div
+                role="tabpanel"
+                id="battle-right-panel-saves"
+                aria-labelledby="battle-right-tabbtn-saves"
+                hidden={rightInspectorTab !== "saves"}
+                className="battle-right-tabpanel battle-right-tabpanel--saves"
+              >
+                <div className="battle-saves-compact">
+                  <div className="battle-saves-row battle-saves-row--save">
+                    <input
+                      className="slot-input slot-input--saves-inline"
+                      value={slotName}
+                      onChange={(e) => setSlotName(e.target.value)}
+                      placeholder="槽名"
+                      maxLength={64}
+                      aria-label="存档槽名称"
+                    />
+                    <button type="button" className="btn primary tiny" onClick={saveLocal}>
+                      本地
+                    </button>
+                    <button type="button" className="btn tiny" onClick={saveRemote} disabled={!user}>
+                      云端
+                    </button>
+                  </div>
+                  {!user ? (
+                    <p className="battle-saves-inline-hint muted small">登录后可云端存</p>
+                  ) : null}
+                  <div className="battle-saves-dual">
+                    <div className="battle-saves-dual__col">
+                      <div className="battle-saves-dual__head">
+                        本地 <span className="muted">({localList.length})</span>
+                      </div>
+                      <ul className="save-list save-list--dense">
+                        {localList.length === 0 && <li className="muted">无</li>}
+                        {localList.map((e) => (
+                          <li key={e.slotName}>
+                            <button type="button" className="linkish" onClick={() => loadLocal(e)}>
+                              {e.slotName}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn tiny danger"
+                              onClick={() => removeLocal(e.slotName)}
+                              aria-label={`删除本地 ${e.slotName}`}
+                            >
+                              ×
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="battle-saves-dual__col">
+                      <div className="battle-saves-dual__head">
+                        云端{" "}
+                        <span className="muted">
+                          {remoteLoading
+                            ? "（…）"
+                            : !token
+                              ? "（未登录）"
+                              : `（${remoteList.length}）`}
+                        </span>
+                      </div>
+                      <ul className="save-list save-list--dense">
+                        {!token && <li className="muted">未登录</li>}
+                        {token && remoteList.length === 0 && !remoteLoading && <li className="muted">无</li>}
+                        {remoteList.map((r) => (
+                          <li key={r.id}>
+                            <button type="button" className="linkish" onClick={() => void loadRemote(r)}>
+                              {r.slotName}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn tiny danger"
+                              onClick={() => void removeRemote(r.slotName)}
+                              aria-label={`删除云端 ${r.slotName}`}
+                            >
+                              ×
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
