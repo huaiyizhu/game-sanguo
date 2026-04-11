@@ -52,10 +52,140 @@ const BATTLE_CELL_MAX_PX = 76;
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));
 }
+
+/** 合并多个子元素的屏幕包围盒（血条 HUD 在格子上方，地形格 rect 不含 HUD） */
+function unionScreenRect(els: readonly Element[]): DOMRect | null {
+  let t = Infinity;
+  let l = Infinity;
+  let r = -Infinity;
+  let b = -Infinity;
+  for (const el of els) {
+    const R = el.getBoundingClientRect();
+    if (R.width <= 0 && R.height <= 0) continue;
+    t = Math.min(t, R.top);
+    l = Math.min(l, R.left);
+    r = Math.max(r, R.right);
+    b = Math.max(b, R.bottom);
+  }
+  if (!Number.isFinite(t)) return null;
+  return new DOMRect(l, t, r - l, b - t);
+}
+
+/** 棋盘相邻两行格顶之间距离（含 grid gap），用于顶行 HUD 仍「差一行」时的补偿 */
+function getBattleGridRowStepPx(wrap: HTMLElement): number {
+  const a = wrap.querySelector('[data-battle-cell="0,0"]');
+  const b = wrap.querySelector('[data-battle-cell="0,1"]');
+  if (a && b) {
+    const ra = a.getBoundingClientRect();
+    const rb = b.getBoundingClientRect();
+    const step = Math.abs(rb.top - ra.top);
+    if (step > 1) return step;
+  }
+  const c = wrap.querySelector('[data-battle-cell="0,0"]')?.getBoundingClientRect();
+  if (c && c.height > 1) return c.height + 3;
+  return BATTLE_GRID_ROW_STRIDE_PX;
+}
+
+function parseBattleCellCoords(anchor: Element): { x: number; y: number } | null {
+  const u = anchor.getAttribute("data-battle-unit-cell");
+  if (u) {
+    const [x, y] = u.split(",").map((n) => Number.parseInt(n, 10));
+    if (Number.isFinite(x) && Number.isFinite(y)) return { x, y };
+  }
+  const t = anchor.getAttribute("data-battle-cell");
+  if (t) {
+    const [x, y] = t.split(",").map((n) => Number.parseInt(n, 10));
+    if (Number.isFinite(x) && Number.isFinite(y)) return { x, y };
+  }
+  return null;
+}
+
+/** .battle-wrap 内真正可滚动的内容视口（须扣 border+padding；用外框 rect 会把顶 padding 当成「已可见」而少滚约一行） */
+function getWrapScrollportViewportRect(wrap: HTMLElement): DOMRect {
+  const br = wrap.getBoundingClientRect();
+  const st = getComputedStyle(wrap);
+  const bt = parseFloat(st.borderTopWidth) || 0;
+  const bl = parseFloat(st.borderLeftWidth) || 0;
+  const bb = parseFloat(st.borderBottomWidth) || 0;
+  const brw = parseFloat(st.borderRightWidth) || 0;
+  const pt = parseFloat(st.paddingTop) || 0;
+  const pl = parseFloat(st.paddingLeft) || 0;
+  const pb = parseFloat(st.paddingBottom) || 0;
+  const pr = parseFloat(st.paddingRight) || 0;
+  const left = br.left + bl + pl;
+  const top = br.top + bt + pt;
+  const right = br.right - brw - pr;
+  const bottom = br.bottom - bb - pb;
+  return new DOMRect(left, top, Math.max(0, right - left), Math.max(0, bottom - top));
+}
+
+/**
+ * 在 .battle-wrap 内滚动，使目标格（及单位层立绘/HUD）完整落在可视区内。
+ * 视口用 border+padding 内沿；有立绘时在包围盒上方再扩一整行（HUD/_sprite 常超出 bbox）。
+ */
+function scrollBattleWrapToRevealCell(
+  wrap: HTMLElement,
+  anchor: Element,
+  opts?: { margin?: number }
+): void {
+  const margin = opts?.margin ?? 10;
+  /** 用 instant，避免 smooth 未结束时用旧 rect 再算仍偏一行 */
+  const behavior: ScrollBehavior = "auto";
+
+  const parts: Element[] = [anchor];
+  const standee = anchor.querySelector(".unit-standee");
+  if (standee) parts.push(standee);
+  const body = anchor.querySelector(".unit-standee__body");
+  if (body) parts.push(body);
+  const hud = anchor.querySelector(".unit-standee__hud");
+  if (hud) parts.push(hud);
+
+  const pos = parseBattleCellCoords(anchor);
+  if (pos && pos.y >= 1) {
+    const above = wrap.querySelector(`[data-battle-cell="${pos.x},${pos.y - 1}"]`);
+    if (above) parts.push(above);
+  }
+
+  let cr = unionScreenRect(parts);
+  if (!cr) return;
+
+  const rowStep = getBattleGridRowStepPx(wrap);
+  if (standee) {
+    cr = new DOMRect(cr.left, cr.top - rowStep, cr.width, cr.height + rowStep);
+  }
+
+  const vp = getWrapScrollportViewportRect(wrap);
+
+  let dY = 0;
+  if (cr.top < vp.top + margin) {
+    dY = cr.top - vp.top - margin;
+  } else if (cr.bottom > vp.bottom - margin) {
+    dY = cr.bottom - vp.bottom + margin;
+  }
+
+  let dX = 0;
+  if (cr.left < vp.left + margin) {
+    dX = cr.left - vp.left - margin;
+  } else if (cr.right > vp.right - margin) {
+    dX = cr.right - vp.right + margin;
+  }
+
+  if (dY !== 0 || dX !== 0) {
+    const maxL = Math.max(0, wrap.scrollWidth - wrap.clientWidth);
+    const maxT = Math.max(0, wrap.scrollHeight - wrap.clientHeight);
+    const nextL = Math.min(maxL, Math.max(0, wrap.scrollLeft + dX));
+    const nextT = Math.min(maxT, Math.max(0, wrap.scrollTop + dY));
+    wrap.scrollTo({ top: nextT, left: nextL, behavior });
+  }
+}
 /** 极宽地图时每格不低于此值，避免点选过难 */
 const BATTLE_CELL_MIN_PX = 32;
 /** fitViewport 下每格固定为该值（与上限一致） */
 const BATTLE_CELL_PX_VIEWPORT = BATTLE_CELL_MAX_PX;
+/** 一格 + 行间 gap（与 index.css .battle-grid gap: 3px 一致） */
+const BATTLE_GRID_ROW_STRIDE_PX = BATTLE_CELL_PX_VIEWPORT + 3;
+/** fit 顶占位：1 整行仍差半行时，用 1.5 倍行距顶缓冲 */
+const BATTLE_GRID_SCROLL_HEADROOM_PX = Math.round(BATTLE_GRID_ROW_STRIDE_PX * 1.5);
 
 /** 选中单位后属性浮窗：停留时长 + 淡出时长 */
 const UNIT_ATTR_FLOAT_HOLD_MS = 3400;
@@ -393,9 +523,15 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
         }, 2000);
       }
       requestAnimationFrame(() => {
-        const wrap = battleWrapRef.current;
-        const cell = wrap?.querySelector(`[data-battle-cell="${u.x},${u.y}"]`);
-        cell?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+        requestAnimationFrame(() => {
+          const wrap = battleWrapRef.current;
+          if (!wrap) return;
+          const unitSlot = wrap.querySelector(`[data-battle-unit-cell="${u.x},${u.y}"]`);
+          const terrainSlot = wrap.querySelector(`[data-battle-cell="${u.x},${u.y}"]`);
+          const anchor = unitSlot ?? terrainSlot;
+          if (!anchor) return;
+          scrollBattleWrapToRevealCell(wrap, anchor);
+        });
       });
       return true;
     },
@@ -1482,6 +1618,22 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
         className={["battle-scene", fitViewport ? "battle-scene--fit" : ""].filter(Boolean).join(" ")}
       >
         <div className="battle-scene__ground" aria-hidden />
+        {/*
+          fit 模式下 .battle-grid 的 margin-top 被置 0，顶行单位血条（伸出格子上方）会少可滚空间；
+          用占位撑出约 1.5 行格距的顶缓冲（非 fit 时仍靠原 margin-top）。
+        */}
+        {fitViewport ? (
+          <div
+            className="battle-grid-scroll-headroom"
+            aria-hidden
+            style={{
+              flexShrink: 0,
+              width: "100%",
+              height: BATTLE_GRID_SCROLL_HEADROOM_PX,
+              pointerEvents: "none",
+            }}
+          />
+        ) : null}
         <div
           className={["battle-grid", showMoveRange ? "battle-grid--move-preview" : ""]
             .filter(Boolean)
@@ -1615,6 +1767,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
             return (
               <div
                 key={`unit-${u.id}`}
+                data-battle-unit-cell={`${x},${y}`}
                 className={[
                   "battle-slot",
                   "battle-slot--units",
