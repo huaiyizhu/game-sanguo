@@ -201,9 +201,15 @@ type DyingVisual = {
   troopKind: TroopKind;
 };
 
-function facingFromDelta(dx: number, dy: number): TroopFacing {
-  if (Math.abs(dx) >= Math.abs(dy) && dx !== 0) return dx > 0 ? "left" : "right";
-  if (dy !== 0) return dy > 0 ? "up" : "down";
+/**
+ * 根据单步网格位移选四向立绘（网格 x 右为正、y 下为正；屏幕上行对应 y 减小）。
+ * 使用「到达格 − 出发格」避免与滑动动画里 (old−new) 符号混用。
+ */
+function facingFromGridStep(from: { x: number; y: number }, to: { x: number; y: number }): TroopFacing {
+  const tx = to.x - from.x;
+  const ty = to.y - from.y;
+  if (Math.abs(tx) >= Math.abs(ty) && tx !== 0) return tx > 0 ? "right" : "left";
+  if (ty !== 0) return ty < 0 ? "up" : "down";
   return "right";
 }
 
@@ -868,7 +874,10 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
           const id = u.id;
           const dx = old.x - u.x;
           const dy = old.y - u.y;
-          setTroopFacingById((prev) => ({ ...prev, [id]: facingFromDelta(dx, dy) }));
+          setTroopFacingById((prev) => ({
+            ...prev,
+            [id]: facingFromGridStep({ x: old.x, y: old.y }, { x: u.x, y: u.y }),
+          }));
           setMoveSlide((prev) => ({ ...prev, [id]: { dx, dy } }));
           /* prefers-reduced-motion 下无 animation，animationend 不会触发 */
           window.setTimeout(() => {
@@ -1410,7 +1419,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                       <TroopEmblem
                         kind={deathHere.troopKind}
                         side={deathHere.side}
-                        facing={troopFacingById[deathHere.unitId] ?? (deathHere.side === "enemy" ? "left" : "right")}
+                        facing={troopFacingById[deathHere.unitId] ?? (deathHere.side === "enemy" ? "down" : "up")}
                         showTroopBadge={false}
                       />
                     </div>
@@ -1556,7 +1565,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                     <TroopEmblem
                       kind={u.troopKind}
                       side={u.side}
-                      facing={troopFacingById[u.id] ?? (u.side === "enemy" ? "left" : "right")}
+                      facing={troopFacingById[u.id] ?? (u.side === "enemy" ? "down" : "up")}
                       showTroopBadge={false}
                     />
                   </div>

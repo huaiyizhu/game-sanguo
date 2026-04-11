@@ -25,7 +25,7 @@ export default function TroopEmblem({
   kind,
   side,
   showTroopBadge = true,
-  facing = "right",
+  facing = "up",
 }: Props) {
   const label = TROOP_KIND_LABEL[kind];
   const ch = TROOP_KIND_BADGE[kind];

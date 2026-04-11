@@ -60,12 +60,15 @@
   transform: scaleX(-1);
 }
 
-/* 现有正侧向贴图下的“伪朝向”：先保证移动时有明确方向感；后续补四向图可直接覆盖 */
-.unit-troop-sprite--dir-up {
+/*
+ * 仅单张侧视 PNG 回退时，用轻微倾斜表达上下走向。
+ * 四向贴图（infantry_up/down 等）不要再加 rotate，否则会歪离正确朝向。
+ */
+.unit-troop-sprite--raster-fallback.unit-troop-sprite--dir-up {
   transform: translateY(-1px) scale(0.98) rotate(-4deg);
 }
 
-.unit-troop-sprite--dir-down {
+.unit-troop-sprite--raster-fallback.unit-troop-sprite--dir-down {
   transform: translateY(1px) scale(0.99) rotate(4deg);
 }
 
