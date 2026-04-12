@@ -347,8 +347,8 @@ a:hover {
   }
 
   .game-layout.game-layout--battle {
-    /* minmax(0, …)：避免侧栏 min-content 把列撑得比上限还宽 */
-    grid-template-columns: minmax(0, min(88px, 15vw)) minmax(0, 1fr);
+    /* minmax(0, …)：侧栏上限用 vw+rem，横屏给地图留足宽度 */
+    grid-template-columns: minmax(0, min(24vw, 10.75rem)) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr);
     min-height: 0;
     gap: 0.28rem;
@@ -640,28 +640,139 @@ a:hover {
 
 @media (max-width: 900px) and (orientation: landscape) {
   .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui {
-    grid-template-columns: minmax(0, min(72px, 11.5vw)) minmax(0, 1fr) !important;
-    gap: 0.18rem;
+    /* 约为常见「宽侧栏」的 2/3 量级，避免占掉半屏 */
+    grid-template-columns: minmax(0, min(23.5vw, 10.5rem)) minmax(0, 1fr) !important;
+    gap: 0.14rem;
   }
 
   .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-left-stack {
     min-width: 0;
     overflow-x: hidden;
+    gap: 0.28rem;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-left-toprow .battle-back-home--toprow {
+    padding: 0.2rem 0.26rem;
+    font-size: 0.56rem;
+    min-height: 32px;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-left-newgame {
+    padding: 0.18rem 0.28rem;
+    font-size: 0.56rem;
+    min-height: 32px;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .sidebar-expand-bar {
+    min-height: 34px;
+    padding: 0.26rem 0.36rem;
+    font-size: 0.6rem;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-meta-sidebar {
+    padding: 0.32rem 0.36rem;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .meta-sidebar-title,
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .meta-sidebar-header .back-link {
+    font-size: 0.6rem;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .meta-compact-line {
+    font-size: 0.58rem;
+    margin-bottom: 0.24rem;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-meta-sidebar .scenario-story,
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-meta-sidebar .victory-hint,
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-meta-sidebar .toast-msg {
+    font-size: 0.54rem;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-overview {
+    padding: 0.2rem 0.26rem 0.18rem;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-overview__title {
+    font-size: 0.5rem;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-overview__rounds {
+    font-size: 0.48rem;
+    margin: 0 0 0.08rem;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-overview__hint {
+    font-size: 0.45rem;
   }
 
   .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-overview__frame {
-    max-height: min(56px, 11dvh);
+    max-height: min(52px, 10dvh);
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-roster-disclosure > summary {
+    padding: 0.24rem 0.32rem;
+    font-size: 0.56rem;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-roster--in-sidebar {
+    padding: 0.24rem 0.28rem 0.3rem;
+  }
+
+  /* 窄侧栏：我军/敌军上下分块，避免双列挤爆 */
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-roster__cols {
+    grid-template-columns: 1fr;
+    gap: 0.3rem;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-roster__col h4,
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-roster__col-head h4 {
+    font-size: 0.54rem;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-roster__col-actions .btn.tiny {
+    min-height: 30px;
+    padding: 0.16rem 0.28rem;
+    font-size: 0.52rem;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-roster__end-turn-btn {
+    padding: 0.16rem 0.42rem;
+    font-size: 0.58rem;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-roster__item {
+    min-height: 34px;
+    padding: 0.2rem 0.28rem;
+    gap: 0.28rem;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-roster__item-name {
+    font-size: 0.58rem;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-roster__item-sub {
+    font-size: 0.5rem;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-roster__item-tag {
+    font-size: 0.48rem;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-roster__item .general-avatar {
+    width: 24px !important;
+    height: 24px !important;
   }
 
   .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-left-stack .battle-roster__list {
-    max-height: min(28dvh, 8.2rem);
+    max-height: min(26dvh, 7.5rem);
   }
 }
 
 @media (max-width: 640px) and (orientation: landscape) {
   .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui {
-    grid-template-columns: minmax(0, min(62px, 10vw)) minmax(0, 1fr) !important;
-    gap: 0.14rem;
+    grid-template-columns: minmax(0, min(22vw, 9.5rem)) minmax(0, 1fr) !important;
+    gap: 0.12rem;
   }
 }
 
@@ -718,11 +829,11 @@ a:hover {
 .page.game-layout.game-layout--battle.game-layout--cheat-mobile-landscape {
   padding-top: max(0.2rem, env(safe-area-inset-top, 0px));
   padding-bottom: max(0.28rem, env(safe-area-inset-bottom, 0px));
-  grid-template-columns: minmax(0, min(72px, 11.5vw)) minmax(0, 1fr) !important;
+  grid-template-columns: minmax(0, min(23.5vw, 10.5rem)) minmax(0, 1fr) !important;
   grid-template-rows: minmax(0, 1fr) !important;
   align-items: stretch !important;
   min-height: 0 !important;
-  gap: 0.18rem !important;
+  gap: 0.14rem !important;
 }
 
 .page.game-layout.game-layout--battle.game-layout--cheat-mobile-landscape .game-main.game-main--battle {
