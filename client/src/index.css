@@ -347,21 +347,25 @@ a:hover {
   }
 
   .game-layout.game-layout--battle {
-    grid-template-columns: minmax(140px, min(200px, 32vw)) minmax(0, 1fr);
+    /* minmax(0, …)：避免侧栏 min-content 把列撑得比上限还宽 */
+    grid-template-columns: minmax(0, min(88px, 15vw)) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr);
     min-height: 0;
-    gap: 0.32rem;
+    gap: 0.28rem;
   }
 
   .game-layout.game-layout--battle .game-main.game-main--battle {
     order: 0;
     min-height: 0;
+    min-width: 0;
   }
 
   .game-layout.game-layout--battle .game-left-stack {
+    min-width: 0;
     min-height: 0;
     max-height: none;
     align-self: stretch;
+    overflow-x: hidden;
     overflow-y: auto;
   }
 
@@ -384,6 +388,12 @@ a:hover {
  */
 .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-left-stack {
   gap: 0.35rem;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-main.game-main--battle {
+  min-width: 0;
 }
 
 .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-left-toprow {
@@ -629,14 +639,18 @@ a:hover {
 }
 
 @media (max-width: 900px) and (orientation: landscape) {
-  /* 左侧栏总宽约原先的 2/3，把横向留给主战场 */
   .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui {
-    grid-template-columns: minmax(58px, min(86px, 13.4vw)) minmax(0, 1fr);
-    gap: 0.22rem;
+    grid-template-columns: minmax(0, min(72px, 11.5vw)) minmax(0, 1fr) !important;
+    gap: 0.18rem;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-left-stack {
+    min-width: 0;
+    overflow-x: hidden;
   }
 
   .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-overview__frame {
-    max-height: min(64px, 12dvh);
+    max-height: min(56px, 11dvh);
   }
 
   .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-left-stack .battle-roster__list {
@@ -646,8 +660,8 @@ a:hover {
 
 @media (max-width: 640px) and (orientation: landscape) {
   .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui {
-    grid-template-columns: minmax(52px, min(72px, 11.4vw)) minmax(0, 1fr);
-    gap: 0.18rem;
+    grid-template-columns: minmax(0, min(62px, 10vw)) minmax(0, 1fr) !important;
+    gap: 0.14rem;
   }
 }
 
@@ -685,11 +699,14 @@ a:hover {
 .page.game-layout.game-layout--battle.game-layout--cheat-mobile .game-main.game-main--battle {
   order: -1;
   min-height: 0;
+  min-width: 0;
 }
 
 .page.game-layout.game-layout--battle.game-layout--cheat-mobile .game-left-stack {
   position: static !important;
   max-height: min(42dvh, 300px) !important;
+  min-width: 0 !important;
+  overflow-x: hidden !important;
   overflow-y: auto !important;
   align-self: stretch !important;
   gap: 0.5rem !important;
@@ -701,22 +718,25 @@ a:hover {
 .page.game-layout.game-layout--battle.game-layout--cheat-mobile-landscape {
   padding-top: max(0.2rem, env(safe-area-inset-top, 0px));
   padding-bottom: max(0.28rem, env(safe-area-inset-bottom, 0px));
-  grid-template-columns: minmax(58px, min(86px, 13.4vw)) minmax(0, 1fr) !important;
+  grid-template-columns: minmax(0, min(72px, 11.5vw)) minmax(0, 1fr) !important;
   grid-template-rows: minmax(0, 1fr) !important;
   align-items: stretch !important;
   min-height: 0 !important;
-  gap: 0.22rem !important;
+  gap: 0.18rem !important;
 }
 
 .page.game-layout.game-layout--battle.game-layout--cheat-mobile-landscape .game-main.game-main--battle {
   order: 0 !important;
   min-height: 0;
+  min-width: 0;
 }
 
 .page.game-layout.game-layout--battle.game-layout--cheat-mobile-landscape .game-left-stack {
   position: static !important;
   max-height: none !important;
+  min-width: 0 !important;
   min-height: 0 !important;
+  overflow-x: hidden !important;
   overflow-y: auto !important;
   align-self: stretch !important;
   top: auto !important;

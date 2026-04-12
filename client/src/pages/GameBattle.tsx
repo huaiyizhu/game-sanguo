@@ -48,6 +48,8 @@ const ENEMY_TURN_BANNER_FINISH_BUFFER_MS = 120;
 
 /** 格子边长上限（px）；低于旧版 96 便于一屏多看地图，立绘随 --cell 仍可读 */
 const BATTLE_CELL_MAX_PX = 76;
+/** 宽屏桌面：相对手机基准格长放大倍数（仅 `narrowUi === false` 时用于 fit / 非 fit 格尺寸） */
+const BATTLE_CELL_DESKTOP_SCALE = 2;
 /** 与 index.css `.battle-grid` gap 一致 */
 const BATTLE_GRID_GAP_PX = 3;
 
@@ -140,8 +142,10 @@ function computeFitCellPxForViewport(args: {
   gridW: number;
   gridH: number;
   headroomPx: number;
+  minCellPx: number;
+  maxCellPx: number;
 }): number {
-  const { innerW, innerH, gridW, gridH, headroomPx } = args;
+  const { innerW, innerH, gridW, gridH, headroomPx, minCellPx, maxCellPx } = args;
   const gw = Math.max(1, gridW);
   const gh = Math.max(1, gridH);
   const gap = BATTLE_GRID_GAP_PX;
@@ -151,10 +155,10 @@ function computeFitCellPxForViewport(args: {
   const cellH = (availHForGrid - (gh - 1) * gap) / gh;
   let cell = Math.min(cellW, cellH);
   if (!Number.isFinite(cell) || cell <= 0) {
-    cell = BATTLE_CELL_MAX_PX;
+    cell = maxCellPx;
   }
   cell = Math.floor(cell);
-  return Math.max(BATTLE_CELL_MIN_PX, Math.min(BATTLE_CELL_MAX_PX, cell));
+  return Math.max(minCellPx, Math.min(maxCellPx, cell));
 }
 
 /** 宽屏行动菜单锚点（与 index.css @media min-width 901 配套） */
@@ -598,25 +602,48 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     maxBattleRounds,
   } = battle;
 
+  const [mqNarrow, setMqNarrow] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 900px)").matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 900px)");
+    const sync = () => setMqNarrow(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  const narrowUi = forceNarrowLayout || mqNarrow;
+
+  /** 手机/窄屏与秘籍窄布局保持基准格长；宽屏桌面为基准的 BATTLE_CELL_DESKTOP_SCALE 倍 */
+  const cellClamp = useMemo(() => {
+    const scale = narrowUi ? 1 : BATTLE_CELL_DESKTOP_SCALE;
+    return {
+      min: Math.round(BATTLE_CELL_MIN_PX * scale),
+      max: Math.round(BATTLE_CELL_MAX_PX * scale),
+      fallback: Math.round(BATTLE_CELL_MAX_PX * scale),
+    };
+  }, [narrowUi]);
+
   const floatUnit = useMemo(() => {
     if (!inspectUnitId) return null;
     return units.find((u) => u.id === inspectUnitId && u.hp > 0) ?? null;
   }, [inspectUnitId, units]);
 
   const cellCss = useMemo(() => {
-    return `min(${BATTLE_CELL_MAX_PX}px, max(${BATTLE_CELL_MIN_PX}px, calc((min(96vw, 1240px) - 280px) / ${gridW})))`;
-  }, [gridW]);
+    return `min(${cellClamp.max}px, max(${cellClamp.min}px, calc((min(96vw, 1240px) - 280px) / ${gridW})))`;
+  }, [gridW, cellClamp]);
   const [fitCellPx, setFitCellPx] = useState(0);
   const cellCssEffective = useMemo(() => {
-    if (fitViewport) return fitCellPx > 0 ? `${fitCellPx}px` : `${BATTLE_CELL_PX_VIEWPORT}px`;
+    if (fitViewport) return fitCellPx > 0 ? `${fitCellPx}px` : `${cellClamp.fallback}px`;
     return cellCss;
-  }, [fitViewport, fitCellPx, cellCss]);
+  }, [fitViewport, fitCellPx, cellCss, cellClamp]);
   /** fit 顶缓冲随格长略缩，与 recomputeFitCellPx 内 head1 一致，避免横屏上占位过大 */
   const fitScrollHeadroomPx = useMemo(() => {
     if (!fitViewport) return BATTLE_GRID_SCROLL_HEADROOM_PX;
-    const c = fitCellPx > 0 ? fitCellPx : BATTLE_CELL_MIN_PX;
-    return Math.min(BATTLE_GRID_SCROLL_HEADROOM_PX, Math.round((c + BATTLE_GRID_GAP_PX) * 1.5));
-  }, [fitViewport, fitCellPx]);
+    const c = fitCellPx > 0 ? fitCellPx : cellClamp.min;
+    const cap = Math.round((cellClamp.max + BATTLE_GRID_GAP_PX) * 1.5);
+    return Math.min(cap, Math.round((c + BATTLE_GRID_GAP_PX) * 1.5));
+  }, [fitViewport, fitCellPx, cellClamp]);
   const battleWrapRef = useRef<HTMLDivElement>(null);
   const onScrollViewportChangeRef = useRef(onScrollViewportChange);
   onScrollViewportChangeRef.current = onScrollViewportChange;
@@ -643,18 +670,6 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   attrFloatVisibleRef.current = attrFloatVisible;
   const inspectUnitIdPropRef = useRef<string | null>(null);
   inspectUnitIdPropRef.current = inspectUnitId;
-
-  const [mqNarrow, setMqNarrow] = useState(
-    () => typeof window !== "undefined" && window.matchMedia("(max-width: 900px)").matches
-  );
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 900px)");
-    const sync = () => setMqNarrow(mq.matches);
-    sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, []);
-  const narrowUi = forceNarrowLayout || mqNarrow;
 
   /** 宽屏行动菜单锚点；用 ref 供属性浮窗 layout 同帧内读 skipSides */
   const [wideMenuAnchor, setWideMenuAnchor] = useState<WideMenuAnchor>("right");
@@ -738,27 +753,29 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     if (!wrap || wrap.clientWidth < 8 || wrap.clientHeight < 8) return;
     const { innerW, innerH } = readBattleWrapPaddingBox(wrap);
     const gap = BATTLE_GRID_GAP_PX;
-    const head0 = Math.round((BATTLE_CELL_MIN_PX + gap) * 1.5);
+    const headroomCapPx = Math.round((cellClamp.max + gap) * 1.5);
+    const head0 = Math.round((cellClamp.min + gap) * 1.5);
     let cell = computeFitCellPxForViewport({
       innerW,
       innerH,
       gridW,
       gridH,
       headroomPx: head0,
+      minCellPx: cellClamp.min,
+      maxCellPx: cellClamp.max,
     });
-    const head1 = Math.min(
-      BATTLE_GRID_SCROLL_HEADROOM_PX,
-      Math.round((cell + gap) * 1.5)
-    );
+    const head1 = Math.min(headroomCapPx, Math.round((cell + gap) * 1.5));
     cell = computeFitCellPxForViewport({
       innerW,
       innerH,
       gridW,
       gridH,
       headroomPx: head1,
+      minCellPx: cellClamp.min,
+      maxCellPx: cellClamp.max,
     });
     setFitCellPx((prev) => (prev === cell ? prev : cell));
-  }, [fitViewport, gridW, gridH]);
+  }, [fitViewport, gridW, gridH, cellClamp]);
 
   useEffect(() => {
     if (!fitViewport) {

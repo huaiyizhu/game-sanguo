@@ -106,6 +106,10 @@ const CHEAT_MOBILE_PORTRAIT_COMBO = (e: KeyboardEvent) =>
 
 type CheatBattleLayout = "none" | "landscape" | "portrait";
 
+/** 战斗页启用手机式侧栏/字号：≤900px，或典型手机横屏（矮视口，避免宽度>900 时未挂类） */
+const BATTLE_MOBILE_UI_MATCH_MEDIA =
+  "(max-width: 900px), ((orientation: landscape) and (max-height: 560px))";
+
 const SCENARIO_PICKER_ENTRIES = listScenarioEntries();
 const GENERALS_CODEX_LIST = listGeneralsSorted();
 
@@ -231,10 +235,11 @@ export default function GamePage() {
   const [cheatBattleLayout, setCheatBattleLayout] = useState<CheatBattleLayout>("none");
   /** 与桌面版分离的窄屏战斗样式（侧栏/行动菜单/信息区），见 index.css `.game-layout--battle-mobile-ui` */
   const [battleMobileUi, setBattleMobileUi] = useState(
-    () => typeof window !== "undefined" && window.matchMedia("(max-width: 900px)").matches
+    () =>
+      typeof window !== "undefined" && window.matchMedia(BATTLE_MOBILE_UI_MATCH_MEDIA).matches
   );
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 900px)");
+    const mq = window.matchMedia(BATTLE_MOBILE_UI_MATCH_MEDIA);
     const sync = () => setBattleMobileUi(mq.matches);
     sync();
     mq.addEventListener("change", sync);
