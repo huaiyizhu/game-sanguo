@@ -429,6 +429,68 @@ a:hover {
   }
 }
 
+/* 秘籍 Ctrl+M：任意视口强开「竖屏手机」式战斗栅格（与 max-width:900 + portrait 主效果一致） */
+.page.game-layout.game-layout--battle.game-layout--cheat-mobile {
+  grid-template-columns: 1fr !important;
+  grid-template-rows: minmax(0, 1fr) auto !important;
+  align-items: stretch !important;
+  min-height: 0 !important;
+  gap: 0.35rem !important;
+}
+
+.page.game-layout.game-layout--battle.game-layout--cheat-mobile .game-main.game-main--battle {
+  order: -1;
+  min-height: 0;
+}
+
+.page.game-layout.game-layout--battle.game-layout--cheat-mobile .game-left-stack {
+  position: static !important;
+  max-height: min(42dvh, 300px) !important;
+  overflow-y: auto !important;
+  align-self: stretch !important;
+  gap: 0.5rem !important;
+  -webkit-overflow-scrolling: touch;
+  top: auto !important;
+}
+
+.page.game-layout.game-layout--battle.game-layout--cheat-mobile .battle-overview__title {
+  margin-bottom: 0.15rem;
+  font-size: 0.72rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--cheat-mobile .battle-overview__rounds {
+  font-size: 0.7rem;
+  margin: 0 0 0.2rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--cheat-mobile .battle-overview__hint {
+  font-size: 0.62rem;
+  margin-top: 0.22rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--cheat-mobile .sidebar-expand-bar {
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.82rem;
+  border-radius: 10px;
+}
+
+.page.game-layout.game-layout--battle.game-layout--cheat-mobile .game-left-toprow .battle-back-home--toprow {
+  min-height: 44px;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--cheat-mobile .game-left-newgame {
+  min-height: 44px;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.78rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--cheat-mobile .unit-inspect-float__inner {
+  max-height: min(30dvh, 15rem);
+}
+
 .game-left-stack {
   display: flex;
   flex-direction: column;

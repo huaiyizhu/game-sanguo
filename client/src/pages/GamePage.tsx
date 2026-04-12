@@ -96,6 +96,10 @@ const CHEAT_LEVEL_UP_COMBO = (e: KeyboardEvent) =>
 const CHEAT_NEXT_STAGE_COMBO = (e: KeyboardEvent) =>
   e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && e.code === "KeyD";
 
+/** 秘籍：切换「手机式」战斗布局（桌面强开窄屏样式；再按切回） */
+const CHEAT_MOBILE_LAYOUT_COMBO = (e: KeyboardEvent) =>
+  e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && e.code === "KeyM";
+
 const SCENARIO_PICKER_ENTRIES = listScenarioEntries();
 const GENERALS_CODEX_LIST = listGeneralsSorted();
 
@@ -217,6 +221,8 @@ export default function GamePage() {
   inspectUnitIdRef.current = inspectUnitId;
   /** 每次点将/检视递增，使 GameBattle 在再次点同一单位时仍能重播属性浮窗 */
   const [inspectTapSeq, setInspectTapSeq] = useState(0);
+  /** 秘籍 Ctrl+M：桌面强开竖屏手机式栅格与侧栏，便于调试窄屏 UI */
+  const [cheatForceMobileLayout, setCheatForceMobileLayout] = useState(false);
   const [metaSidebarCollapsed, setMetaSidebarCollapsed] = useState(() => {
     try {
       const raw = localStorage.getItem("sanguo_meta_sidebar_collapsed");
@@ -398,6 +404,24 @@ export default function GamePage() {
             ? `秘籍：已进入下一关「${next.scenarioTitle}」`
             : "秘籍：已过最后一关，从序章重新开始。"
         );
+        return;
+      }
+
+      if (CHEAT_MOBILE_LAYOUT_COMBO(e)) {
+        if (e.repeat) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setCheatForceMobileLayout((prev) => {
+          const next = !prev;
+          queueMicrotask(() =>
+            setMessage(
+              next
+                ? "秘籍：已切换为手机式布局（Ctrl+M 恢复桌面）。"
+                : "秘籍：已恢复桌面布局。"
+            )
+          );
+          return next;
+        });
         return;
       }
 
@@ -916,7 +940,11 @@ export default function GamePage() {
   }, [rightInspectorTab, unitInspectExpanded]);
 
   return (
-    <div className="page game-layout game-layout--battle">
+    <div
+      className={`page game-layout game-layout--battle${
+        cheatForceMobileLayout ? " game-layout--cheat-mobile" : ""
+      }`}
+    >
       {stagePickerOpen && (
         <div
           className="stage-picker-overlay"
@@ -936,6 +964,8 @@ export default function GamePage() {
               <kbd className="kbd-chip">K</kbd> 或 <kbd className="kbd-chip">Esc</kbd> 关闭。
               战斗中 <kbd className="kbd-chip">Ctrl</kbd>+<kbd className="kbd-chip">D</kbd>{" "}
               直接进入下一关（与胜利相同：继承存活我军；最后一关后回序章）。
+              <kbd className="kbd-chip">Ctrl</kbd>+<kbd className="kbd-chip">M</kbd>{" "}
+              切换手机式 / 桌面战斗布局（秘籍）。
             </p>
             <ul className="stage-picker-list">
               {SCENARIO_PICKER_ENTRIES.map((row, i) => (
@@ -1621,6 +1651,7 @@ export default function GamePage() {
               inspectTapSeq={inspectTapSeq}
               visualEpoch={visualEpoch}
               turnIntroLocked={turnIntroLocked}
+              forceNarrowLayout={cheatForceMobileLayout}
               keyboardBlocked={stagePickerOpen || generalCodexOpen}
               fitViewport
               onScrollViewportChange={onBattleScrollViewportChange}

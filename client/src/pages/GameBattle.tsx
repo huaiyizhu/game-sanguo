@@ -297,6 +297,8 @@ type Props = {
   keyboardBlocked?: boolean;
   /** 为 true 时棋盘在容器内缩放铺满，不出现滚动条 */
   fitViewport?: boolean;
+  /** 秘籍：桌面强开窄屏 UI（与 max-width:900 时一致，用于 Ctrl+M 调试） */
+  forceNarrowLayout?: boolean;
   /** 主战场滚动容器视口相对整张地图的比例（用于侧栏缩略图） */
   onScrollViewportChange?: (norm: BattleViewportNorm) => void;
 };
@@ -433,6 +435,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   onPickHoverEnemy,
   keyboardBlocked = false,
   fitViewport = false,
+  forceNarrowLayout = false,
   onScrollViewportChange,
   inspectUnitId = null,
   inspectTapSeq = 0,
@@ -495,16 +498,17 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   const inspectUnitIdPropRef = useRef<string | null>(null);
   inspectUnitIdPropRef.current = inspectUnitId;
 
-  const [narrowUi, setNarrowUi] = useState(
+  const [mqNarrow, setMqNarrow] = useState(
     () => typeof window !== "undefined" && window.matchMedia("(max-width: 900px)").matches
   );
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 900px)");
-    const sync = () => setNarrowUi(mq.matches);
+    const sync = () => setMqNarrow(mq.matches);
     sync();
     mq.addEventListener("change", sync);
     return () => mq.removeEventListener("change", sync);
   }, []);
+  const narrowUi = forceNarrowLayout || mqNarrow;
 
   useImperativeHandle(ref, () => ({
     focusUnitOnMap(unitId: string, opts?: { rosterPulse?: boolean }) {
