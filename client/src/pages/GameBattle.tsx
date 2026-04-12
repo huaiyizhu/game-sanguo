@@ -119,6 +119,106 @@ function getWrapScrollportViewportRect(wrap: HTMLElement): DOMRect {
   return new DOMRect(left, top, Math.max(0, right - left), Math.max(0, bottom - top));
 }
 
+/** 宽屏行动菜单锚点（与 index.css @media min-width 901 配套） */
+type WideMenuAnchor = "right" | "left" | "top" | "bottom";
+
+/**
+ * 将 .battle-wrap 的滚动限制在「棋盘 .battle-grid 实际包围盒」与视口相交范围内，
+ * 避免 fit 模式下顶/侧出现大块「滚出地图」的留白（略图黄框仍以格子为准）。
+ */
+function getBattleGridScrollBounds(wrap: HTMLElement): {
+  tMin: number;
+  tMax: number;
+  lMin: number;
+  lMax: number;
+} {
+  const grid = wrap.querySelector(".battle-grid") as HTMLElement | null;
+  const hardMaxT = Math.max(0, wrap.scrollHeight - wrap.clientHeight);
+  const hardMaxL = Math.max(0, wrap.scrollWidth - wrap.clientWidth);
+  const fallback = { tMin: 0, tMax: hardMaxT, lMin: 0, lMax: hardMaxL };
+  if (!grid || grid.clientWidth < 4 || grid.clientHeight < 4) return fallback;
+
+  const vp = getWrapScrollportViewportRect(wrap);
+  const gr = grid.getBoundingClientRect();
+  const snapTop = wrap.scrollTop + (gr.top - vp.top);
+  const snapBot = wrap.scrollTop + (gr.bottom - vp.bottom);
+  const snapLeft = wrap.scrollLeft + (gr.left - vp.left);
+  const snapRight = wrap.scrollLeft + (gr.right - vp.right);
+
+  const axisRange = (snapA: number, snapB: number, hardMax: number) => {
+    if (snapA <= snapB + 0.5) {
+      let mn = Math.max(0, snapA);
+      let mx = Math.min(hardMax, snapB);
+      if (mn > mx) {
+        const c = Math.max(0, Math.min(hardMax, snapA));
+        mn = mx = c;
+      }
+      return { mn, mx };
+    }
+    const c = Math.max(0, Math.min(hardMax, snapA));
+    return { mn: c, mx: c };
+  };
+
+  const yt = axisRange(snapTop, snapBot, hardMaxT);
+  const xl = axisRange(snapLeft, snapRight, hardMaxL);
+  return { tMin: yt.mn, tMax: yt.mx, lMin: xl.mn, lMax: xl.mx };
+}
+
+function clampBattleWrapScrollToGrid(wrap: HTMLElement): void {
+  const { tMin, tMax, lMin, lMax } = getBattleGridScrollBounds(wrap);
+  let t = wrap.scrollTop;
+  let l = wrap.scrollLeft;
+  if (t < tMin - 0.5) t = tMin;
+  else if (t > tMax + 0.5) t = tMax;
+  if (l < lMin - 0.5) l = lMin;
+  else if (l > lMax + 0.5) l = lMax;
+  if (t !== wrap.scrollTop || l !== wrap.scrollLeft) {
+    wrap.scrollTop = t;
+    wrap.scrollLeft = l;
+  }
+}
+
+function computeWideMenuAnchor(
+  narrowUi: boolean,
+  x: number,
+  _y: number,
+  gridW: number,
+  _gridH: number,
+  phase: BattlePhase,
+  floatSide: "right" | "left" | "top" | "bottom" | null,
+  floatSameUnit: boolean,
+  cellRect: DOMRect | null,
+  vpRect: DOMRect | null
+): WideMenuAnchor {
+  if (narrowUi) return "right";
+  if (phase !== "menu" && phase !== "tactic-menu") return "right";
+
+  const MENU_W_EST = 168;
+  const MENU_H_EST = 156;
+  const EDGE = 6;
+
+  if (floatSameUnit && floatSide === "right") return "left";
+
+  const vpOk = Boolean(cellRect && vpRect && cellRect.width > 2);
+  const gridRightEdge = x >= gridW - 1;
+  const viewportBlocksRight =
+    vpOk && cellRect!.right + MENU_W_EST > vpRect!.right - EDGE;
+  const needNonRight = gridRightEdge || viewportBlocksRight;
+  if (!needNonRight) return "right";
+
+  const floatBlocksLeft = floatSameUnit && floatSide === "left";
+  const viewportBlocksLeft = vpOk && cellRect!.left - MENU_W_EST < vpRect!.left + EDGE;
+  if (!floatBlocksLeft && !viewportBlocksLeft) return "left";
+
+  const canTop = vpOk && cellRect!.top - MENU_H_EST > vpRect!.top + EDGE;
+  const canBot = vpOk && cellRect!.bottom + MENU_H_EST < vpRect!.bottom - EDGE;
+  /* 右不可用且左被挡时：优先上，其次下（与需求「上 / 左 / 下」顺序一致） */
+  if (canTop && canBot) return "top";
+  if (canTop) return "top";
+  if (canBot) return "bottom";
+  return "left";
+}
+
 /**
  * 在 .battle-wrap 内滚动，使目标格（及单位层立绘/HUD）完整落在可视区内。
  * 视口用 border+padding 内沿；有立绘时在包围盒上方再扩一整行（HUD/_sprite 常超出 bbox）。
@@ -170,13 +270,15 @@ function scrollBattleWrapToRevealCell(
     dX = cr.right - vp.right + margin;
   }
 
-  if (dY !== 0 || dX !== 0) {
-    const maxL = Math.max(0, wrap.scrollWidth - wrap.clientWidth);
-    const maxT = Math.max(0, wrap.scrollHeight - wrap.clientHeight);
-    const nextL = Math.min(maxL, Math.max(0, wrap.scrollLeft + dX));
-    const nextT = Math.min(maxT, Math.max(0, wrap.scrollTop + dY));
+  const bounds = getBattleGridScrollBounds(wrap);
+  const hardMaxL = Math.max(0, wrap.scrollWidth - wrap.clientWidth);
+  const hardMaxT = Math.max(0, wrap.scrollHeight - wrap.clientHeight);
+  const nextL = Math.min(bounds.lMax, Math.max(bounds.lMin, Math.min(hardMaxL, Math.max(0, wrap.scrollLeft + dX))));
+  const nextT = Math.min(bounds.tMax, Math.max(bounds.tMin, Math.min(hardMaxT, Math.max(0, wrap.scrollTop + dY))));
+  if (nextL !== wrap.scrollLeft || nextT !== wrap.scrollTop) {
     wrap.scrollTo({ top: nextT, left: nextL, behavior });
   }
+  clampBattleWrapScrollToGrid(wrap);
 }
 /** 极宽地图时每格不低于此值，避免点选过难 */
 const BATTLE_CELL_MIN_PX = 32;
@@ -510,6 +612,10 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   }, []);
   const narrowUi = forceNarrowLayout || mqNarrow;
 
+  /** 宽屏行动菜单锚点；用 ref 供属性浮窗 layout 同帧内读 skipSides */
+  const [wideMenuAnchor, setWideMenuAnchor] = useState<WideMenuAnchor>("right");
+  const wideMenuAnchorRef = useRef<WideMenuAnchor>("right");
+
   useImperativeHandle(ref, () => ({
     focusUnitOnMap(unitId: string, opts?: { rosterPulse?: boolean }) {
       const u = battleSnapRef.current.units.find((z) => z.id === unitId);
@@ -594,6 +700,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     const wrap = battleWrapRef.current;
     const cb = onScrollViewportChangeRef.current;
     if (!wrap || !cb || !fitViewport) return;
+    clampBattleWrapScrollToGrid(wrap);
     const grid = wrap.querySelector(".battle-grid") as HTMLElement | null;
     if (!grid) return;
     const gRect = grid.getBoundingClientRect();
@@ -640,6 +747,14 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       window.removeEventListener("resize", reportScrollViewport);
     };
   }, [fitViewport, onScrollViewportChange, reportScrollViewport, gridW, gridH]);
+
+  useLayoutEffect(() => {
+    if (!fitViewport) return;
+    const wrap = battleWrapRef.current;
+    if (!wrap) return;
+    const id = requestAnimationFrame(() => clampBattleWrapScrollToGrid(wrap));
+    return () => cancelAnimationFrame(id);
+  }, [fitViewport, gridW, gridH, cellCssEffective, visualEpoch]);
 
   const moveSet = new Set(moveTargets.map((t) => `${t.x},${t.y}`));
   const [menuFocus, setMenuFocus] = useState(0);
@@ -950,6 +1065,53 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   }, [attrFloatVisible, inspectUnitId, units]);
 
   useLayoutEffect(() => {
+    const su = units.find((u) => u.id === selectedId);
+    if (narrowUi || !su || (phase !== "menu" && phase !== "tactic-menu")) {
+      wideMenuAnchorRef.current = "right";
+      setWideMenuAnchor("right");
+      return;
+    }
+    const wrap = battleWrapRef.current;
+    const cell =
+      (wrap?.querySelector(`[data-battle-unit-cell="${su.x},${su.y}"]`) as HTMLElement | null) ??
+      (wrap?.querySelector(`[data-battle-cell="${su.x},${su.y}"]`) as HTMLElement | null);
+    const vp = wrap ? getWrapScrollportViewportRect(wrap) : null;
+    const cr = cell?.getBoundingClientRect() ?? null;
+    const floatSame = Boolean(
+      attrFloatPlacement && floatUnit && selectedId === floatUnit.id
+    );
+    const fs =
+      floatSame && attrFloatPlacement
+        ? (attrFloatPlacement.side as "right" | "left" | "top" | "bottom")
+        : null;
+    const next = computeWideMenuAnchor(
+      narrowUi,
+      su.x,
+      su.y,
+      gridW,
+      gridH,
+      phase,
+      fs,
+      floatSame,
+      cr && cr.width > 2 ? cr : null,
+      vp && vp.width > 2 ? vp : null
+    );
+    wideMenuAnchorRef.current = next;
+    setWideMenuAnchor(next);
+  }, [
+    narrowUi,
+    phase,
+    selectedId,
+    units,
+    gridW,
+    gridH,
+    attrFloatPlacement,
+    floatUnit,
+    cellCssEffective,
+    visualEpoch,
+  ]);
+
+  useLayoutEffect(() => {
     if (!attrFloatVisible || !floatUnit || pendingMove) {
       setAttrFloatPlacement(null);
       return;
@@ -971,8 +1133,15 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
         (phase === "menu" || phase === "tactic-menu");
       const skipSides = new Set<AttrFloatSide>();
       if (menuOpenForFloatUnit) {
-        if (narrowUi) skipSides.add("bottom");
-        else skipSides.add("right");
+        if (narrowUi) {
+          skipSides.add("bottom");
+        } else {
+          const a = wideMenuAnchorRef.current;
+          if (a === "right") skipSides.add("right");
+          else if (a === "left") skipSides.add("left");
+          else if (a === "top") skipSides.add("top");
+          else if (a === "bottom") skipSides.add("bottom");
+        }
       }
       if (!cr || cr.width < 2 || cr.height < 2) {
         setAttrFloatPlacement({
@@ -1012,6 +1181,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     phase,
     selectedId,
     narrowUi,
+    wideMenuAnchor,
     pendingMove,
   ]);
 
@@ -1382,16 +1552,15 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     Boolean(selectedId) &&
     moveTargets.length > 0;
 
-  /** 浮窗与行动/计策菜单同侧时的回退：镜像菜单位置（与 index.css 中 .action-menu 默认侧一致） */
-  const mirrorActionMenu =
+  /** 窄屏：菜单在格下方时，若属性浮窗也在下方则改到格上方（与 index.css 窄屏 action-menu--mirror 一致） */
+  const narrowMenuMirror =
+    narrowUi &&
     Boolean(
       attrFloatPlacement &&
         floatUnit &&
         selectedId === floatUnit.id &&
         (phase === "menu" || phase === "tactic-menu") &&
-        (narrowUi
-          ? attrFloatPlacement.side === "bottom"
-          : attrFloatPlacement.side === "right")
+        attrFloatPlacement.side === "bottom"
     );
 
   const battleCellCtxList = cells.map(({ x, y }) => {
@@ -1929,7 +2098,17 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                     <div
                       className={[
                         "action-menu",
-                        mirrorActionMenu ? "action-menu--mirror" : "",
+                        narrowUi
+                          ? narrowMenuMirror
+                            ? "action-menu--mirror"
+                            : ""
+                          : wideMenuAnchor === "left"
+                            ? "action-menu--mirror"
+                            : wideMenuAnchor === "top"
+                              ? "action-menu--wide-top"
+                              : wideMenuAnchor === "bottom"
+                                ? "action-menu--wide-bottom"
+                                : "",
                         actionMenuRevealReady ? "action-menu--revealed" : "action-menu--pre-reveal",
                       ]
                         .filter(Boolean)
@@ -1993,7 +2172,17 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                       className={[
                         "action-menu",
                         "tactic-submenu",
-                        mirrorActionMenu ? "action-menu--mirror" : "",
+                        narrowUi
+                          ? narrowMenuMirror
+                            ? "action-menu--mirror"
+                            : ""
+                          : wideMenuAnchor === "left"
+                            ? "action-menu--mirror"
+                            : wideMenuAnchor === "top"
+                              ? "action-menu--wide-top"
+                              : wideMenuAnchor === "bottom"
+                                ? "action-menu--wide-bottom"
+                                : "",
                         actionMenuRevealReady ? "action-menu--revealed" : "action-menu--pre-reveal",
                       ]
                         .filter(Boolean)

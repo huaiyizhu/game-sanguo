@@ -2049,6 +2049,11 @@ a:hover {
   margin-bottom: 0;
 }
 
+/* fit 顶占位：与 .battle-wrap 底色一致，避免被当成「地图外未填充」 */
+.battle-grid-scroll-headroom {
+  background: #0a0e14;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .battle-scene__ground {
     opacity: 0.65;
@@ -2507,6 +2512,74 @@ a:hover {
   right: calc(100% + 6px);
   transform: translateY(-50%);
   transform-origin: right center;
+}
+
+/* 宽屏：格贴地图右缘或视口右侧放不下菜单时，改到上/下（与 GameBattle computeWideMenuAnchor 配套） */
+@media (min-width: 901px) {
+  @keyframes action-menu-enter-wide-top {
+    from {
+      opacity: 0;
+      transform: translateX(-50%) translateY(10px) scale(0.88);
+      filter: blur(2px);
+    }
+    70% {
+      filter: blur(0);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0) scale(1);
+      filter: blur(0);
+    }
+  }
+
+  @keyframes action-menu-enter-wide-bottom {
+    from {
+      opacity: 0;
+      transform: translateX(-50%) translateY(-10px) scale(0.88);
+      filter: blur(2px);
+    }
+    70% {
+      filter: blur(0);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0) scale(1);
+      filter: blur(0);
+    }
+  }
+
+  .action-menu.action-menu--wide-top {
+    left: 50%;
+    right: auto;
+    top: auto;
+    bottom: calc(100% + 6px);
+    transform: translateX(-50%);
+    transform-origin: bottom center;
+  }
+
+  .action-menu.action-menu--wide-bottom {
+    left: 50%;
+    right: auto;
+    top: calc(100% + 6px);
+    bottom: auto;
+    transform: translateX(-50%);
+    transform-origin: top center;
+  }
+
+  .action-menu.action-menu--wide-top.action-menu--revealed {
+    animation: action-menu-enter-wide-top 0.42s cubic-bezier(0.2, 0.85, 0.25, 1) both;
+  }
+
+  .action-menu.action-menu--wide-bottom.action-menu--revealed {
+    animation: action-menu-enter-wide-bottom 0.42s cubic-bezier(0.2, 0.85, 0.25, 1) both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .action-menu.action-menu--wide-top.action-menu--revealed,
+    .action-menu.action-menu--wide-bottom.action-menu--revealed {
+      animation: none;
+    }
+  }
 }
 
 .action-menu.action-menu--pre-reveal {
