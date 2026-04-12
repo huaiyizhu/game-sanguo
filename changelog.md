@@ -32,11 +32,49 @@
 - **`GamePage`** 在 `victoryRevealHoldMs`（与最后一击飘字 + 阵亡条带动画总时长一致）后调用 **`commitPendingVictory`**，再进入 `outcome: "won"` 与原有「过关闪屏 / 进下一关」流程。
 - **`pendingVictory` 期间**：拦截格子/单位/菜单/敌军 AI 与移动步进，**`maybeEndPlayerTurn`** 等不推进到敌军回合；`advancePendingMove` / 敌军步进在 `pendingVictory` 时收束队列。
 
+### 战斗页：「信息与存档」三栏与战报
+
+- 右侧 **「信息与存档」** 顶部改为 **三标签**：**武将信息** / **存档** / **战报**；战报为倒序列表，最新在上、卷轴内浏览。
+- **武将信息** 展开区高度用 **ResizeObserver** 与 **`battleRightTabCapPx`** 联动，减轻 fit 模式下侧栏与主区互相挤压。
+
+### 敌军回合：镜头跟随当前行动单位
+
+- 在敌军回合可操作阶段，根据 **`enemyTurnQueue` / `enemyTurnCursor`** 与 **`pendingMove`** 合成签名，**`focusUnitOnMap`** 将 **当前行动敌军** 滚入主战场可视区（不触发侧栏点将脉冲），减少大地图外「看不见敌人在动」的情况。
+
+### 战场滚动、fit 视口与略图黄框
+
+- **`GameBattle`**：封装 **滚到指定格**（`scrollBattleWrapToRevealCell` 等），与 **`battle-grid-scroll-headroom`**、**`BATTLE_GRID_SCROLL_HEADROOM_PX`** 等配合，在 **fit 铺满** 模式下为顶行/HUD 预留抬头量。
+- 略图黄框使用 **`getWrapScrollportViewportRect`** 等与主战场 **scrollport 内沿** 一致的算法，避免 fit 下视口高度算成 0、黄框塌成一条线；主战场 **scroll** 与略图 **归一化视口** 保持同步。
+
+### 我军增援：`playerJoinerFromCatalog`
+
+- **`generals.ts`** 新增 **`playerJoinerFromCatalog`**：按图鉴 id、关卡传入 **固定等级** 生成 **我军增援单位**（兵力/攻防/计策点等与养成曲线对齐，避免纯 tier 公式碾压序章主队）。
+- **`scenarios.ts`** 等可在布阵时调用，用于剧情入队、关卡增援等。
+
+### 兵种立绘：步兵 / 弓兵四向
+
+- **`client/public/sprites/units/`**：步兵、弓兵补充 **上 / 下 / 左 / 右** 位图；战场位移用 **网格步进** 推导 **朝向**，立绘与 CSS 动画衔接（弓兵四向移动表现同步迭代）。
+
+### 秘籍：Ctrl+M 切换「手机式」战斗布局
+
+- 战斗页 **Ctrl+M**（不在输入框内、非长按重复）：在 **桌面栅格** 与 **强开竖屏手机式** 布局之间切换。
+- 根节点挂 **`game-layout--cheat-mobile`**（`index.css` 中单列、主区在上、侧栏限高可滚等），**`GameBattle`** 接收 **`forceNarrowLayout`** 使 **`narrowUi`** 与真实视口宽度解耦，便于宽屏下调试窄屏 UI 与属性浮窗逻辑；选关弹层文案中补充说明。
+
+### 窄屏竖屏：首屏默认折叠
+
+- **`max-width: 640px` 且 `orientation: portrait`** 且 **localStorage 无显式「信息与存档」折叠偏好** 时：**Meta 侧栏、我军名单、信息与存档** 等默认 **收合**，避免首屏被侧栏占满。
+- **`BattleOverviewMap`**、侧栏 **`max-height` / `min-height` / `dvh`** 等继续收紧，减轻小屏上略图或顶栏被压成一条线。
+
+### 素材
+
+- 游戏内展示用图（如首页 **hero**）做 **体积或导出优化**；仓库内对 **设计向原图** 做归档或整理（以提交为准）。
+
 ### 涉及文件（便于检索）
 
 - 逻辑与类型：`client/src/game/types.ts`、`client/src/game/battle.ts`、`client/src/game/generals.ts`、`client/src/game/scenarios.ts`
-- 客户端 UI：`client/src/pages/GamePage.tsx`、`client/src/pages/GameBattle.tsx`
+- 客户端 UI：`client/src/pages/GamePage.tsx`、`client/src/pages/GameBattle.tsx`、`client/src/components/BattleOverviewMap.tsx`
 - 样式：`client/src/index.css`、`client/src/unit-standee.css`
+- 精灵：`client/public/sprites/units/`（多向步兵、弓兵等）
 
 ---
 
