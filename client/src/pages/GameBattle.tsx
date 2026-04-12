@@ -595,12 +595,12 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     const gRect = grid.getBoundingClientRect();
     if (gRect.width < 2 || gRect.height < 2) return;
 
-    /** 滚动容器内实际可见的「视口」矩形（与略图格子坐标一致，须扣 padding/border，且相对棋盘而非 scrollWidth） */
-    const wRect = wrap.getBoundingClientRect();
-    const viewL = wRect.left + wrap.clientLeft;
-    const viewT = wRect.top + wrap.clientTop;
-    const viewR = viewL + wrap.clientWidth;
-    const viewB = viewT + wrap.clientHeight;
+    /** 与 scrollBattleWrapToRevealCell 一致：用 padding 内沿，否则 ih 易为 0、略图黄框塌成一条线 */
+    const vp = getWrapScrollportViewportRect(wrap);
+    const viewL = vp.left;
+    const viewT = vp.top;
+    const viewR = vp.left + vp.width;
+    const viewB = vp.top + vp.height;
 
     const ix0 = Math.max(viewL, gRect.left);
     const iy0 = Math.max(viewT, gRect.top);

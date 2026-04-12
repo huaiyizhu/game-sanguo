@@ -219,13 +219,45 @@ export default function GamePage() {
   const [inspectTapSeq, setInspectTapSeq] = useState(0);
   const [metaSidebarCollapsed, setMetaSidebarCollapsed] = useState(() => {
     try {
-      return localStorage.getItem("sanguo_meta_sidebar_collapsed") === "1";
+      const raw = localStorage.getItem("sanguo_meta_sidebar_collapsed");
+      if (raw === "0" || raw === "1") return raw === "1";
+      if (
+        typeof window !== "undefined" &&
+        window.matchMedia("(max-width: 640px) and (orientation: portrait)").matches
+      ) {
+        return true;
+      }
+      return false;
     } catch {
       return false;
     }
   });
-  const [rosterExpanded, setRosterExpanded] = useState(true);
-  const [unitInspectExpanded, setUnitInspectExpanded] = useState(true);
+  const [rosterExpanded, setRosterExpanded] = useState(() => {
+    try {
+      if (
+        typeof window !== "undefined" &&
+        window.matchMedia("(max-width: 640px) and (orientation: portrait)").matches
+      ) {
+        return false;
+      }
+    } catch {
+      /* ignore */
+    }
+    return true;
+  });
+  const [unitInspectExpanded, setUnitInspectExpanded] = useState(() => {
+    try {
+      if (
+        typeof window !== "undefined" &&
+        window.matchMedia("(max-width: 640px) and (orientation: portrait)").matches
+      ) {
+        return false;
+      }
+    } catch {
+      /* ignore */
+    }
+    return true;
+  });
   /** 信息与存档面板内：武将信息 | 存档 | 战报 */
   const [rightInspectorTab, setRightInspectorTab] = useState<"unit" | "saves" | "log">("unit");
   /** 与「武将信息」tab 当前可视高度一致，用于限制存档/战报 tab 不要更高 */

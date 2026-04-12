@@ -39,11 +39,24 @@ export default function BattleOverviewMap({
   }
 
   const vp = viewport;
+  /** 避免归一化宽高过小在手机上把黄框画成一条线 */
+  const MIN_VP_NORM = 0.035;
   const showVp =
     vp &&
     vp.width > 0 &&
     vp.height > 0 &&
     (vp.width < 0.998 || vp.height < 0.998 || vp.left > 0.002 || vp.top > 0.002);
+
+  const vpDraw =
+    vp && showVp
+      ? (() => {
+          const w = Math.min(1, Math.max(MIN_VP_NORM, vp.width));
+          const h = Math.min(1, Math.max(MIN_VP_NORM, vp.height));
+          const left = Math.max(0, Math.min(1 - w, vp.left + (vp.width - w) / 2));
+          const top = Math.max(0, Math.min(1 - h, vp.top + (vp.height - h) / 2));
+          return { left, top, width: w, height: h };
+        })()
+      : null;
 
   const r = battleRound >= 1 ? battleRound : 1;
   const cap = maxBattleRounds > 0 ? maxBattleRounds : 0;
@@ -94,14 +107,14 @@ export default function BattleOverviewMap({
             title={u.hp <= 0 ? `${u.name}（阵亡）` : u.name}
           />
         ))}
-        {showVp && vp && (
+        {showVp && vpDraw && (
           <div
             className="battle-overview__viewport"
             style={{
-              left: `${vp.left * 100}%`,
-              top: `${vp.top * 100}%`,
-              width: `${vp.width * 100}%`,
-              height: `${vp.height * 100}%`,
+              left: `${vpDraw.left * 100}%`,
+              top: `${vpDraw.top * 100}%`,
+              width: `${vpDraw.width * 100}%`,
+              height: `${vpDraw.height * 100}%`,
             }}
             aria-hidden
           />

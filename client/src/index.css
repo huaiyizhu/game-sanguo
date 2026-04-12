@@ -320,17 +320,83 @@ a:hover {
   .game-layout.game-layout--battle {
     grid-template-rows: minmax(0, 1fr) auto;
     min-height: 0;
+    gap: 0.35rem;
   }
 
   .game-layout.game-layout--battle .game-left-stack {
     position: static;
-    max-height: none;
-    overflow-y: visible;
+    max-height: min(42dvh, 300px);
+    overflow-y: auto;
     align-self: stretch;
+    gap: 0.5rem;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .battle-overview__title {
+    margin-bottom: 0.15rem;
+    font-size: 0.72rem;
+  }
+
+  .battle-overview__rounds {
+    font-size: 0.7rem;
+    margin: 0 0 0.2rem;
+  }
+
+  .battle-overview__hint {
+    font-size: 0.62rem;
+    margin-top: 0.22rem;
+  }
+
+  .sidebar-expand-bar {
+    min-height: 44px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.82rem;
+    border-radius: 10px;
+  }
+
+  .game-left-toprow .battle-back-home--toprow {
+    min-height: 44px;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .game-left-newgame {
+    min-height: 44px;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.78rem;
   }
 
   .unit-inspect-float__inner {
     max-height: min(30dvh, 15rem);
+  }
+}
+
+@media (max-width: 640px) and (orientation: portrait) {
+  .game-layout.game-layout--battle .game-left-stack {
+    max-height: min(36dvh, 280px);
+  }
+
+  .battle-roster-disclosure > summary {
+    min-height: 48px;
+    padding: 0.55rem 0.75rem;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+  }
+
+  .battle-roster__item {
+    min-height: 48px;
+    padding: 0.38rem 0.5rem;
+    box-sizing: border-box;
+  }
+
+  .battle-roster__col-actions .btn.tiny {
+    min-height: 40px;
+    padding: 0.28rem 0.5rem;
+  }
+
+  .unit-inspect-float__inner.battle-right-panel__body {
+    max-height: min(30dvh, 14rem);
   }
 }
 
