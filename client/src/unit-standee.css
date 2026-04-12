@@ -10,6 +10,14 @@
 /* 地形层先绘制、单位层后绘制，避免立绘溢出到邻格时被后绘制的格线盖住 */
 .battle-slot--terrain {
   z-index: 0;
+  /* 与含 transform 的单位层同处可预期合成平面，减轻移动端邻格贴图盖住滑步立绘 */
+  transform: translate3d(0, 0, 0);
+}
+
+/* 沿路滑步：整格略抬到独立层，避免 WebKit 把 transform 子层压到邻格带 filter 的地形贴图下 */
+.battle-slot--units.battle-slot--unit-sliding {
+  transform: translate3d(0, 0, 0.5px);
+  backface-visibility: hidden;
 }
 
 .battle-slot--units {

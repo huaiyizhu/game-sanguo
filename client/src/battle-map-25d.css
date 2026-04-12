@@ -38,3 +38,8 @@
 .battle-scene .battle-slot .unit-standee {
   z-index: 5;
 }
+
+/* 滑步动画带 transform + will-change：略抬 z，避免窄屏/WebKit 与邻格地形贴图层序错乱 */
+.battle-scene .battle-slot .unit-standee.unit-move-slide {
+  z-index: 48;
+}

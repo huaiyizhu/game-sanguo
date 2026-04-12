@@ -527,7 +527,8 @@ function deathTextGridColumn(deathX: number, gridW: number): string {
 
 /**
  * 整格 z-index：越大越在上层。有单位的格必须整体高于纯地形格（否则后序 DOM 邻格会盖住立绘溢出）；
- * 移动中再抬高，减少滑步时「被格子切一下」的顿挫感。
+ * 移动中再抬高，减少滑步时「被格子切一下」的顿挫感（须高于邻格纯地形层）。
+ * 数值略抬：避免 iOS/WebKit 在「地形 ::before + filter」与「滑步 transform」合成时把立绘压到贴图下。
  */
 function battleSlotStackZ(
   x: number,
@@ -548,7 +549,7 @@ function battleSlotStackZ(
   if (f.pickFocus) return 92_000 + tie;
   if (f.pickCand) return 88_000 + tie;
   if (f.rosterPulse) return 75_000 + tie;
-  if (f.moveSlide) return 65_000 + tie;
+  if (f.moveSlide) return 86_000 + tie;
   if (f.moveHint) return 12_000 + tie;
   if (f.hasLiveUnit) return 6_000 + tie;
   return tie;
@@ -2072,6 +2073,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                 className={[
                   "battle-slot",
                   "battle-slot--units",
+                  slide ? "battle-slot--unit-sliding" : "",
                   showMenu || showTacticMenu ? "battle-slot--menu-open" : "",
                   pickCand ? "battle-slot--pick-candidate" : "",
                   pickFocus ? "battle-slot--pick-focus" : "",
