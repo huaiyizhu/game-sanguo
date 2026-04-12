@@ -19,7 +19,7 @@ export type TroopWalkFacing = "left" | "right" | "up" | "down";
  */
 export const TROOP_WALK_FRAME_COUNT: Record<TroopKind, number> = {
   infantry: 1,
-  cavalry: 1,
+  cavalry: 3,
   archer: 1,
 };
 
