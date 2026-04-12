@@ -2307,10 +2307,12 @@ a:hover {
 .battle-grid {
   /* 默认格尺寸；内联 style 会覆盖 --cell。大地图由 .battle-wrap 滚动 */
   --cell: min(72px, 11vw);
+  /* 与 GameBattle BATTLE_GRID_GAP_PX、unit-move-slide 一致；子元素可继承 */
+  --battle-grid-gap: 0px;
   position: relative;
   z-index: 0;
   display: grid;
-  gap: 3px;
+  gap: var(--battle-grid-gap);
   width: fit-content;
   margin: 2.35rem auto 0;
   isolation: isolate;
@@ -2369,7 +2371,8 @@ a:hover {
   justify-content: center;
   position: relative;
   z-index: 0;
-  border-radius: 4px;
+  /* 直角平铺：避免圆角与描边在邻格接缝处露出底色（「四角黑洞」） */
+  border-radius: 0;
   overflow: visible;
 }
 
@@ -2492,7 +2495,7 @@ a:hover {
   filter: brightness(1.18) saturate(1.1);
 }
 
-/* 步长须与 .battle-grid 的 gap: 3px 一致，否则每格落点偏一像素会有顿挫感 */
+/* 步长须与 .battle-grid 的 gap（--battle-grid-gap）一致，否则每格落点偏一像素会有顿挫感 */
 /* 时长：GameBattle 注入 --unit-move-slide-ms，须与 battle.ts MOVE_SLIDE_DURATION_MS 一致 */
 .unit-standee.unit-move-slide {
   /* linear：逐格衔接时避免每格 ease-in-out 像小加速刹车叠成「蹦」 */
@@ -2504,8 +2507,8 @@ a:hover {
 @keyframes unit-move-slide-in {
   from {
     transform: translate3d(
-      calc(var(--sdx, 0) * (var(--cell) + 3px)),
-      calc(var(--sdy, 0) * (var(--cell) + 3px)),
+      calc(var(--sdx, 0) * (var(--cell) + var(--battle-grid-gap, 0px))),
+      calc(var(--sdy, 0) * (var(--cell) + var(--battle-grid-gap, 0px))),
       0
     );
   }

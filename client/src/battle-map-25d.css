@@ -33,31 +33,7 @@
   margin: 0 auto;
 }
 
-/* 格顶：左上高光 + 右下收光，模拟砖块顶面 */
-.battle-scene .cell.terrain-plain::before,
-.battle-scene .cell.terrain-forest::before,
-.battle-scene .cell.terrain-water::before,
-.battle-scene .cell.terrain-mountain::before,
-.battle-scene .cell.terrain-desert::before,
-.battle-scene .cell.terrain-wall::before,
-.battle-scene .cell.terrain-gate::before {
-  box-shadow: inset 3px 3px 10px rgba(255, 255, 255, 0.12);
-}
-
-/* 格缘厚度：前侧立面（梯形），落在格下方 */
-.battle-scene .cell::after {
-  content: "";
-  position: absolute;
-  left: 10%;
-  right: 10%;
-  top: calc(100% - 1px);
-  height: 9px;
-  z-index: 0;
-  pointer-events: none;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.42) 0%, rgba(0, 0, 0, 0.78) 100%);
-  clip-path: polygon(4% 0, 96% 0, 100% 100%, 0 100%);
-  border-radius: 0 0 3px 3px;
-}
+/* 主战场改为贴图无缝平铺：不再叠格顶高光与格缘「厚度」，避免接缝与四角露底 */
 
 .battle-scene .battle-slot .unit-standee {
   z-index: 5;

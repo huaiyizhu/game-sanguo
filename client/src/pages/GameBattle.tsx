@@ -50,8 +50,8 @@ const ENEMY_TURN_BANNER_FINISH_BUFFER_MS = 120;
 const BATTLE_CELL_MAX_PX = 76;
 /** 宽屏桌面：相对手机基准格长放大倍数（仅 `narrowUi === false` 时用于 fit / 非 fit 格尺寸） */
 const BATTLE_CELL_DESKTOP_SCALE = 2;
-/** 与 index.css `.battle-grid` gap 一致 */
-const BATTLE_GRID_GAP_PX = 3;
+/** 与 index.css `.battle-grid` --battle-grid-gap 一致 */
+const BATTLE_GRID_GAP_PX = 0;
 
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));
@@ -86,7 +86,7 @@ function getBattleGridRowStepPx(wrap: HTMLElement): number {
     if (step > 1) return step;
   }
   const c = wrap.querySelector('[data-battle-cell="0,0"]')?.getBoundingClientRect();
-  if (c && c.height > 1) return c.height + 3;
+  if (c && c.height > 1) return c.height + BATTLE_GRID_GAP_PX;
   return BATTLE_GRID_ROW_STRIDE_PX;
 }
 
@@ -326,8 +326,8 @@ function scrollBattleWrapToRevealCell(
 const BATTLE_CELL_MIN_PX = 30;
 /** fitViewport 下每格固定为该值（与上限一致） */
 const BATTLE_CELL_PX_VIEWPORT = BATTLE_CELL_MAX_PX;
-/** 一格 + 行间 gap（与 index.css .battle-grid gap: 3px 一致） */
-const BATTLE_GRID_ROW_STRIDE_PX = BATTLE_CELL_PX_VIEWPORT + 3;
+/** 一格 + 行间 gap（与 index.css .battle-grid --battle-grid-gap 一致） */
+const BATTLE_GRID_ROW_STRIDE_PX = BATTLE_CELL_PX_VIEWPORT + BATTLE_GRID_GAP_PX;
 /** fit 顶占位：1 整行仍差半行时，用 1.5 倍行距顶缓冲 */
 const BATTLE_GRID_SCROLL_HEADROOM_PX = Math.round(BATTLE_GRID_ROW_STRIDE_PX * 1.5);
 

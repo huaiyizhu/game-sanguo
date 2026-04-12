@@ -16,7 +16,7 @@
   pointer-events: none;
   /* 需可见 overflow，否则 .dmg-float 向上飘出时被裁切 */
   overflow: visible;
-  border-radius: 4px;
+  border-radius: 0;
 }
 
 .battle-slot--units.battle-slot--menu-open {
@@ -74,13 +74,13 @@
   line-height: 1.15;
 }
 
-/* 血条叠在「上一格」与当前格交界处：贴当前格上沿、伸入上方格（与 .battle-grid gap 对齐） */
+/* 血条叠在「上一格」与当前格交界处：贴当前格上沿、伸入上方格（与 .battle-grid --battle-grid-gap 对齐） */
 .unit-standee__hud {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 100%;
-  margin-bottom: 3px;
+  margin-bottom: var(--battle-grid-gap, 0px);
   z-index: 6;
   display: flex;
   flex-direction: column;
