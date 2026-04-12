@@ -245,6 +245,7 @@ export function tacticMaxForUnit(intel: number, level: number): number {
 /**
  * 攻击力（不含地形）：武力越高、等级越高越强；同等条件下骑 > 步 > 弓。
  * 低武力高等级可高于高武力低等级（等级平方项主导中后期）。
+ * 战场实际扣血为「兵力上限」的比例伤，本值与防御的比值决定每击大致掉血比例（见 `battle.ts`）。
  */
 export function attackPowerForUnit(might: number, level: number, troopKind: TroopKind): number {
   const m = clampMight(might);
@@ -257,6 +258,7 @@ export function attackPowerForUnit(might: number, level: number, troopKind: Troo
 
 /**
  * 防御力（不含地形）：同武力等级下步 > 骑 > 弓。
+ * 与攻方含地形攻击力的比值影响每击兵力损失比例；亦参与计策抗性。
  */
 export function defensePowerForUnit(might: number, level: number, troopKind: TroopKind): number {
   const m = clampMight(might);

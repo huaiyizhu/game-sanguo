@@ -1093,7 +1093,7 @@ export default function GamePage() {
               <div className="general-codex-detail">
                 {!generalCodexSelected && (
                     <p className="muted small">
-                      点击左侧将领查看演义列传与图鉴基准属性（非本关场内实时数值）。战场上攻防会按脚下地形与兵种地利增减。
+                      点击左侧将领查看演义列传与图鉴基准属性（非本关场内实时数值）。战场上攻防会按脚下地形与兵种地利增减；实际扣血按兵力上限的比例结算，等级差≥6 时优势方杀伤显著提高。
                     </p>
                 )}
                 {generalCodexSelected && (

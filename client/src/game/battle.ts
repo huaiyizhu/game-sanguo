@@ -141,7 +141,41 @@ export function effectiveDefenseOnTerrain(state: BattleState, u: Unit): number {
   return defensePowerOnTerrain(u.might, u.level, u.troopKind, u.armyType, t);
 }
 
-function meleeDamageDealt(state: BattleState, attacker: Unit, target: Unit): number {
+/**
+ * 等级压制：攻方比守方高 6 级及以上时伤害显著提高（碾压）；
+ * 同级附近用温和斜率，避免「互刮不动」。
+ */
+function combatLevelAdvantageFactor(attackerLevel: number, defenderLevel: number): number {
+  const d = clampUnitLevel(attackerLevel) - clampUnitLevel(defenderLevel);
+  if (d >= 6) {
+    return 1.48 + (d - 6) * 0.13;
+  }
+  if (d >= 1) {
+    return 1 + d * 0.05;
+  }
+  if (d <= -6) {
+    const k = -d;
+    return Math.max(0.36, 0.78 - (k - 6) * 0.065);
+  }
+  if (d <= -1) {
+    return 1 + d * 0.052;
+  }
+  return 1;
+}
+
+/** 攻方剩余兵力 → 略影响普攻出力；守方残兵略增「相对损失」以加快残局。 */
+function meleeMoraleTroopFactors(attacker: Unit, target: Unit): number {
+  const ar = attacker.hp / Math.max(1, attacker.maxHp);
+  const tr = target.hp / Math.max(1, target.maxHp);
+  const fatigue = 0.86 + 0.14 * ar;
+  const breach = 0.92 + 0.14 * (1 - tr);
+  return fatigue * breach;
+}
+
+/**
+ * 含地形、兵种相克的「武力侧」攻防比（用于映射为掉血比例）。
+ */
+function meleePowerRatio(state: BattleState, attacker: Unit, target: Unit): number {
   let atk = effectiveAttackPowerOnTerrain(state, attacker);
   let def = effectiveDefenseOnTerrain(state, target);
   if (TROOP_ATTACK_COUNTERS[attacker.troopKind] === target.troopKind) {
@@ -150,7 +184,44 @@ function meleeDamageDealt(state: BattleState, attacker: Unit, target: Unit): num
   if (TROOP_DEFENSE_COUNTERS[attacker.troopKind] === target.troopKind) {
     def += TROOP_DEF_ADVANTAGE_BONUS;
   }
-  return Math.max(1, atk - def);
+  return atk / Math.max(1, def);
+}
+
+/** 由攻防比得到本击目标「兵力上限」的损失比例（同级约 3～4 击倒地）。 */
+function meleeHpLossFraction(powerRatio: number): number {
+  const r = Math.max(0.5, Math.min(3.2, powerRatio));
+  const base = 0.24 + 0.17 * Math.log2(r);
+  return Math.max(0.14, Math.min(0.5, base));
+}
+
+function meleeDamageDealt(state: BattleState, attacker: Unit, target: Unit): number {
+  const pr = meleePowerRatio(state, attacker, target);
+  const frac = meleeHpLossFraction(pr);
+  const lv = combatLevelAdvantageFactor(attacker.level, target.level);
+  const troopF = meleeMoraleTroopFactors(attacker, target);
+  const raw = target.maxHp * frac * lv * troopF;
+  let dmg = Math.floor(raw);
+  dmg = Math.max(1, Math.min(dmg, target.hp));
+  return dmg;
+}
+
+/** 智力计策对「防御 + 智力」的抗性比。 */
+function tacticPowerRatio(
+  state: BattleState,
+  attacker: Unit,
+  target: Unit,
+  tacticKind: TacticKind
+): number {
+  const intl = effectiveIntelOnTerrain(state, attacker);
+  const def = effectiveDefenseOnTerrain(state, target);
+  const resist = Math.max(10, def * 0.42 + target.intel * 0.28);
+  return (intl * TACTIC_DEF[tacticKind].dmgMul) / resist;
+}
+
+function tacticHpLossFraction(powerRatio: number): number {
+  const r = Math.max(0.55, Math.min(3, powerRatio));
+  const base = 0.21 + 0.15 * Math.log2(r);
+  return Math.max(0.11, Math.min(0.46, base));
 }
 
 function tacticDamageDealt(
@@ -159,10 +230,17 @@ function tacticDamageDealt(
   target: Unit,
   tacticKind: TacticKind
 ): number {
-  const intl = effectiveIntelOnTerrain(state, attacker);
-  let raw = Math.max(1, Math.floor(intl * 0.55 * TACTIC_DEF[tacticKind].dmgMul));
-  const defPart = Math.floor(effectiveDefenseOnTerrain(state, target) * 0.45);
-  return Math.max(1, raw - defPart);
+  const pr = tacticPowerRatio(state, attacker, target, tacticKind);
+  const frac = tacticHpLossFraction(pr);
+  const lv = combatLevelAdvantageFactor(attacker.level, target.level);
+  const ar = attacker.hp / Math.max(1, attacker.maxHp);
+  const tr = target.hp / Math.max(1, target.maxHp);
+  const fatigue = 0.88 + 0.12 * ar;
+  const breach = 0.93 + 0.12 * (1 - tr);
+  const raw = target.maxHp * frac * lv * fatigue * breach;
+  let dmg = Math.floor(raw);
+  dmg = Math.max(1, Math.min(dmg, target.hp));
+  return dmg;
 }
 
 function terrainCombatHint(state: BattleState, atk: Unit, def: Unit): string {
@@ -190,12 +268,14 @@ function xpForDamage(
   damage: number,
   killed: boolean,
   attackerLevel: number,
-  targetLevel: number
+  targetLevel: number,
+  targetMaxHp: number
 ): number {
   const diff = targetLevel - attackerLevel;
   let mult = 1 + diff * 0.1;
   mult = Math.max(0.42, Math.min(2.1, mult));
-  let base = damage * 0.52;
+  const portion = targetMaxHp > 0 ? damage / targetMaxHp : 0;
+  let base = 12 + portion * 108 + damage * 0.034;
   if (killed) base += 24 + targetLevel * 5;
   return Math.max(1, Math.floor(base * mult));
 }
@@ -891,7 +971,7 @@ function applyPlayerMeleeDamage(
   const hpBeforeMelee = target.hp;
   const newHp = Math.max(0, target.hp - dmg);
   const killed = newHp <= 0;
-  const xp = xpForDamage(dmg, killed, attacker.level, target.level);
+  const xp = xpForDamage(dmg, killed, attacker.level, target.level, target.maxHp);
   const hint = combatHints(state, attacker, target);
   const verb = attacker.troopKind === "archer" ? "箭射" : "攻击";
   const lines: string[] = [];
@@ -939,7 +1019,7 @@ function applyPlayerTacticDamage(
   const hpBeforeTactic = target.hp;
   const newHp = Math.max(0, target.hp - dmg);
   const killed = newHp <= 0;
-  const xp = xpForDamage(dmg, killed, attacker.level, target.level);
+  const xp = xpForDamage(dmg, killed, attacker.level, target.level, target.maxHp);
   const hint = terrainCombatHint(state, attacker, target);
   const def = TACTIC_DEF[tacticKind];
   const lines: string[] = [];
