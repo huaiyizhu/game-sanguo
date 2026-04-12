@@ -24,6 +24,15 @@
   }
 }
 
+/*
+ * fit 主战场：须压过本文件上一段 `.battle-scene .battle-grid` 的 margin 简写。
+ * main.tsx 在 index.css 之后才 import 本文件，否则 2.35rem 顶边距会盖掉 index 里
+ * `.battle-scene--fit .battle-grid { margin-top: 0 }`，与 headroom 占位叠加倍吃顶行可滚空间。
+ */
+.battle-scene.battle-scene--fit .battle-grid {
+  margin: 0 auto;
+}
+
 /* 格顶：左上高光 + 右下收光，模拟砖块顶面 */
 .battle-scene .cell.terrain-plain::before,
 .battle-scene .cell.terrain-forest::before,

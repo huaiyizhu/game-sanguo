@@ -2037,7 +2037,8 @@ a:hover {
   margin: 0;
   display: flex;
   align-items: flex-start;
-  justify-content: center;
+  /* 顶对齐：避免列方向 justify-content:center 在容器高于内容时把棋盘顶到中部，像「滚不到最上面」 */
+  justify-content: flex-start;
   overflow: visible;
   padding: 0.35rem 0;
   box-sizing: border-box;
