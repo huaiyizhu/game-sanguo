@@ -145,7 +145,7 @@ export interface BattleState {
   playerTurnStart: PlayerTurnStartMap;
   enemyTurnQueue: string[] | null;
   enemyTurnCursor: number;
-  /** 非空时表示单位正在沿路逐格移动，由 UI 定时器调用 advancePendingMove */
+  /** 非空时表示单位正在沿路逐格移动，由 UI 定时器调用 `advancePendingMove` */
   pendingMove: PendingMove | null;
   /**
    * 本帧造成的伤害提示（受害者 id + 数值），供 UI 在正确单位上播放受击/飘字；

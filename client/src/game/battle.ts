@@ -88,17 +88,19 @@ export const POST_ACTION_TURN_BANNER_DELAY_MS =
   DAMAGE_FLOAT_DELAY_MS + DAMAGE_FLOAT_ANIM_MS + 280;
 
 /**
- * 与 `index.css` 中 `.unit-standee.unit-move-slide` 的 `animation-duration` 一致（毫秒）。
- * 改动画时长时须同步改此处与下方步进间隔。
+ * 与 `index.css` 中 `.unit-standee.unit-move-slide` 的 `--unit-move-slide-ms` / 动画一致（毫秒）。
+ * 改动画时长时须同步改此处、下方步进间隔、以及 `troopWalkSprites.ts`（多帧行走间隔）。
+ * 走格为沿路逐格推进，与 `GamePage` 定时调用 `advancePendingMove` 一致。
  */
-export const MOVE_SLIDE_DURATION_MS = 240;
+export const MOVE_SLIDE_DURATION_MS = 280;
 
 /**
  * 沿路逐格移动时每格间隔（毫秒），供 GamePage 定时器使用。
- * 须明显大于 MOVE_SLIDE_DURATION_MS，避免下一格逻辑开始时上一格滑动动画未完成造成叠跳。
+ * 须明显大于 MOVE_SLIDE_DURATION_MS，给 `animationend` 与合成帧留余量；过小则下一格逻辑步
+ * 可能在上一段动画尚未结束时到达，仅改写 `--sdx`/`--sdy` 时部分浏览器不重启 keyframes，会「跳」。
  */
-export const MOVE_STEP_MS_PLAYER = MOVE_SLIDE_DURATION_MS + 50;
-export const MOVE_STEP_MS_ENEMY = MOVE_SLIDE_DURATION_MS + 72;
+export const MOVE_STEP_MS_PLAYER = MOVE_SLIDE_DURATION_MS + 52;
+export const MOVE_STEP_MS_ENEMY = MOVE_SLIDE_DURATION_MS + 56;
 
 function terrainAt(state: BattleState, x: number, y: number): Terrain {
   const row = state.terrain[y];

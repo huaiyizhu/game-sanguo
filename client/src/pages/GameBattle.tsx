@@ -776,7 +776,17 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   const pendingDeathRevealTimersRef = useRef<Map<string, ReturnType<typeof window.setTimeout>>>(
     new Map()
   );
-  const [moveSlide, setMoveSlide] = useState<Record<string, { dx: number; dy: number }>>({});
+  /**
+   * 走格滑步的 fallback 定时器（prefers-reduced-motion 下无 animationend）。
+   * 每格须先清掉该单位上一格的定时器，否则下一步在 ~MOVE_STEP_MS 触发时，旧定时器仍在
+   * ~MOVE_SLIDE_DURATION_MS+48ms 执行 delete，会把当前格的 moveSlide 清掉，从第二格起动画被截断、体感一跳一跳。
+   */
+  const moveSlideFallbackTimersRef = useRef<Map<string, ReturnType<typeof window.setTimeout>>>(
+    new Map()
+  );
+  const [moveSlide, setMoveSlide] = useState<
+    Record<string, { dx: number; dy: number; gen: number }>
+  >({});
   const [troopFacingById, setTroopFacingById] = useState<Record<string, TroopFacing>>({});
   const [actionMenuRevealReady, setActionMenuRevealReady] = useState(false);
   const [dyingVisuals, setDyingVisuals] = useState<DyingVisual[]>([]);
@@ -825,6 +835,10 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       window.clearTimeout(t);
     }
     pendingDeathRevealTimersRef.current.clear();
+    for (const t of moveSlideFallbackTimersRef.current.values()) {
+      window.clearTimeout(t);
+    }
+    moveSlideFallbackTimersRef.current.clear();
   }, [visualEpoch]);
 
   const battleMenuActive =
@@ -1280,19 +1294,29 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
           const id = u.id;
           const dx = old.x - u.x;
           const dy = old.y - u.y;
+          const prevClear = moveSlideFallbackTimersRef.current.get(id);
+          if (prevClear) {
+            window.clearTimeout(prevClear);
+            moveSlideFallbackTimersRef.current.delete(id);
+          }
           setTroopFacingById((prev) => ({
             ...prev,
             [id]: facingFromGridStep({ x: old.x, y: old.y }, { x: u.x, y: u.y }),
           }));
-          setMoveSlide((prev) => ({ ...prev, [id]: { dx, dy } }));
+          setMoveSlide((prev) => ({
+            ...prev,
+            [id]: { dx, dy, gen: (prev[id]?.gen ?? 0) + 1 },
+          }));
           /* prefers-reduced-motion 下无 animation，animationend 不会触发 */
-          window.setTimeout(() => {
+          const tid = window.setTimeout(() => {
+            moveSlideFallbackTimersRef.current.delete(id);
             setMoveSlide((prev) => {
               const next = { ...prev };
               delete next[id];
               return next;
             });
           }, MOVE_SLIDE_DURATION_MS + 48);
+          moveSlideFallbackTimersRef.current.set(id, tid);
         }
       }
 
@@ -1966,6 +1990,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                 }}
               >
                 <div
+                  key={slide ? `mv-${u.id}-${slide.gen}` : `st-${u.id}`}
                   className={[
                     "unit-standee",
                     u.side,
@@ -1979,6 +2004,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                       ? ({
                           "--sdx": String(slide.dx),
                           "--sdy": String(slide.dy),
+                          "--unit-move-slide-ms": `${MOVE_SLIDE_DURATION_MS}ms`,
                         } as CSSProperties)
                       : undefined
                   }
@@ -1986,6 +2012,11 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                     if (e.target !== e.currentTarget) return;
                     if (e.animationName !== "unit-move-slide-in") return;
                     const uid = u.id;
+                    const fb = moveSlideFallbackTimersRef.current.get(uid);
+                    if (fb) {
+                      window.clearTimeout(fb);
+                      moveSlideFallbackTimersRef.current.delete(uid);
+                    }
                     setMoveSlide((prev) => {
                       if (!prev[uid]) return prev;
                       const next = { ...prev };
@@ -2056,6 +2087,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                       side={u.side}
                       facing={troopFacingById[u.id] ?? (u.side === "enemy" ? "down" : "up")}
                       showTroopBadge={false}
+                      motion={slide ? "walk" : "idle"}
                     />
                   </div>
                   {dmgFx?.unitId === u.id && (

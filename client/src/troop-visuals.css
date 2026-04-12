@@ -85,6 +85,15 @@
   animation-play-state: paused;
 }
 
+/*
+ * 行走多帧：JS 轮播 `*_walk_{i}.png` 时加类 `unit-troop-sprite--walking`。
+ * 若改雪碧图单文件，可在此用 background + steps() 替代多请求（见 game/troopWalkSprites.ts 注释）。
+ */
+.unit-troop-sprite--walking {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
 .unit-standee__body.selectable:hover .unit-troop-figure-model--raster {
   animation-play-state: paused;
   transform: translateY(-3px);

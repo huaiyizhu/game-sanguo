@@ -2202,9 +2202,10 @@ a:hover {
 }
 
 /* 步长须与 .battle-grid 的 gap: 3px 一致，否则每格落点偏一像素会有顿挫感 */
-/* 时长须与 battle.ts MOVE_SLIDE_DURATION_MS 一致；步进见 MOVE_STEP_MS_PLAYER / ENEMY */
+/* 时长：GameBattle 注入 --unit-move-slide-ms，须与 battle.ts MOVE_SLIDE_DURATION_MS 一致 */
 .unit-standee.unit-move-slide {
-  animation: unit-move-slide-in 240ms ease-out forwards;
+  /* linear：逐格衔接时避免每格 ease-in-out 像小加速刹车叠成「蹦」 */
+  animation: unit-move-slide-in var(--unit-move-slide-ms, 280ms) linear forwards;
   z-index: 5;
   will-change: transform;
 }
