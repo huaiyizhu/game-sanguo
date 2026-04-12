@@ -331,76 +331,15 @@ a:hover {
     gap: 0.5rem;
     -webkit-overflow-scrolling: touch;
   }
-
-  .battle-overview__title {
-    margin-bottom: 0.15rem;
-    font-size: 0.72rem;
-  }
-
-  .battle-overview__rounds {
-    font-size: 0.7rem;
-    margin: 0 0 0.2rem;
-  }
-
-  .battle-overview__hint {
-    font-size: 0.62rem;
-    margin-top: 0.22rem;
-  }
-
-  .sidebar-expand-bar {
-    min-height: 44px;
-    padding: 0.5rem 0.75rem;
-    font-size: 0.82rem;
-    border-radius: 10px;
-  }
-
-  .game-left-toprow .battle-back-home--toprow {
-    min-height: 44px;
-    padding-top: 0.5rem;
-    padding-bottom: 0.5rem;
-  }
-
-  .game-left-newgame {
-    min-height: 44px;
-    padding: 0.35rem 0.55rem;
-    font-size: 0.78rem;
-  }
-
-  .unit-inspect-float__inner {
-    max-height: min(30dvh, 15rem);
-  }
 }
 
 @media (max-width: 640px) and (orientation: portrait) {
   .game-layout.game-layout--battle .game-left-stack {
     max-height: min(36dvh, 280px);
   }
-
-  .battle-roster-disclosure > summary {
-    min-height: 48px;
-    padding: 0.55rem 0.75rem;
-    display: flex;
-    align-items: center;
-    box-sizing: border-box;
-  }
-
-  .battle-roster__item {
-    min-height: 48px;
-    padding: 0.38rem 0.5rem;
-    box-sizing: border-box;
-  }
-
-  .battle-roster__col-actions .btn.tiny {
-    min-height: 40px;
-    padding: 0.28rem 0.5rem;
-  }
-
-  .unit-inspect-float__inner.battle-right-panel__body {
-    max-height: min(30dvh, 14rem);
-  }
 }
 
-/* 横屏手机：侧栏条 + 大地图同一行，避免纵向堆叠把地图压成一条 */
+/* 横屏手机：侧栏 + 主区同一行（列宽/边距在 `.game-layout--battle-mobile-ui` 内再收紧） */
 @media (max-width: 900px) and (orientation: landscape) {
   .page.game-layout.game-layout--battle {
     padding-top: max(0.2rem, env(safe-area-inset-top, 0px));
@@ -408,7 +347,7 @@ a:hover {
   }
 
   .game-layout.game-layout--battle {
-    grid-template-columns: minmax(104px, min(156px, 24vw)) minmax(0, 1fr);
+    grid-template-columns: minmax(140px, min(200px, 32vw)) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr);
     min-height: 0;
     gap: 0.32rem;
@@ -424,93 +363,10 @@ a:hover {
     max-height: none;
     align-self: stretch;
     overflow-y: auto;
-    gap: 0.38rem;
-  }
-
-  .game-left-toprow .battle-back-home--toprow {
-    padding: 0.26rem 0.32rem;
-    font-size: 0.62rem;
-    min-height: 36px;
-  }
-
-  .game-left-newgame {
-    padding: 0.22rem 0.38rem;
-    font-size: 0.62rem;
-    min-height: 36px;
-  }
-
-  .sidebar-expand-bar {
-    min-height: 38px;
-    padding: 0.34rem 0.45rem;
-    font-size: 0.68rem;
-    border-radius: 7px;
-  }
-
-  .game-meta-sidebar {
-    padding: 0.42rem 0.48rem;
-  }
-
-  .meta-sidebar-header {
-    margin-bottom: 0.35rem;
-  }
-
-  .meta-sidebar-header .back-link {
-    font-size: 0.72rem;
-  }
-
-  .meta-compact-line {
-    font-size: 0.68rem;
-    margin-bottom: 0.35rem;
-  }
-
-  .btn-collapse-sidebar {
-    font-size: 0.62rem;
-    padding: 0.2rem 0.35rem;
-  }
-
-  .battle-overview {
-    padding: 0.28rem 0.35rem 0.26rem;
-  }
-
-  .battle-overview__title {
-    font-size: 0.58rem;
-    margin-bottom: 0.08rem;
-  }
-
-  .battle-overview__rounds {
-    font-size: 0.56rem;
-    margin: 0 0 0.16rem;
-  }
-
-  .battle-overview__hint {
-    font-size: 0.52rem;
-    margin-top: 0.12rem;
-  }
-
-  .battle-roster-disclosure > summary {
-    padding: 0.32rem 0.42rem;
-    font-size: 0.64rem;
   }
 
   .battle-play-area {
     gap: 0.28rem;
-  }
-
-  .unit-inspect-float__summary {
-    padding: 0.3rem 0.48rem;
-    font-size: 0.72rem;
-  }
-
-  .unit-inspect-float__inner {
-    max-height: min(34dvh, 11rem);
-  }
-
-  .unit-inspect-float__inner.battle-right-panel__body {
-    max-height: min(40dvh, 18rem);
-  }
-
-  .game-layout.game-layout--battle .game-left-stack .battle-roster__list {
-    max-height: min(32dvh, 9.5rem);
   }
 
   .battle-wrap.battle-wrap--fit {
@@ -522,23 +378,277 @@ a:hover {
   }
 }
 
-@media (max-width: 640px) and (orientation: landscape) {
-  .game-layout.game-layout--battle {
-    grid-template-columns: minmax(92px, min(132px, 20vw)) minmax(0, 1fr);
+/*
+ * 战斗页窄视口（<=900px）：由 GamePage 注入 `game-layout--battle-mobile-ui`。
+ * 与桌面 min-width:901 分离：侧栏尽量窄、小字号；行动菜单/武将信息与存档/战报同步缩小。
+ */
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-left-stack {
+  gap: 0.35rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-left-toprow {
+  gap: 0.28rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-left-toprow .battle-back-home--toprow {
+  padding: 0.26rem 0.32rem;
+  font-size: 0.62rem;
+  line-height: 1.25;
+  min-height: 38px;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-left-newgame {
+  padding: 0.22rem 0.36rem;
+  font-size: 0.62rem;
+  min-height: 38px;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .sidebar-expand-bar {
+  min-height: 40px;
+  padding: 0.32rem 0.45rem;
+  font-size: 0.68rem;
+  border-radius: 7px;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-meta-sidebar {
+  padding: 0.4rem 0.46rem;
+  border-radius: 8px;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .meta-sidebar-header {
+  margin-bottom: 0.3rem;
+  gap: 0.25rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .meta-sidebar-title {
+  font-size: 0.68rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .meta-sidebar-header .back-link {
+  font-size: 0.68rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .btn-collapse-sidebar {
+  font-size: 0.58rem;
+  padding: 0.18rem 0.32rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .meta-compact-line {
+  font-size: 0.66rem;
+  margin-bottom: 0.32rem;
+  line-height: 1.3;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-meta-sidebar .scenario-story,
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-meta-sidebar .victory-hint,
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-meta-sidebar .toast-msg {
+  font-size: 0.62rem;
+  line-height: 1.32;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-overview {
+  padding: 0.26rem 0.32rem 0.22rem;
+  border-radius: 8px;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-overview__title {
+  margin: 0 0 0.06rem;
+  font-size: 0.56rem;
+  letter-spacing: 0.04em;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-overview__rounds {
+  font-size: 0.54rem;
+  margin: 0 0 0.12rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-overview__hint {
+  font-size: 0.5rem;
+  margin-top: 0.08rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-overview__frame {
+  max-height: min(120px, 22dvh);
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-roster-disclosure > summary {
+  padding: 0.3rem 0.4rem;
+  font-size: 0.64rem;
+  min-height: 0;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-roster--in-sidebar {
+  padding: 0.3rem 0.36rem 0.36rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-roster__col h4,
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-roster__col-head h4 {
+  font-size: 0.6rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-roster__col-actions .btn.tiny {
+  min-height: 34px;
+  padding: 0.2rem 0.36rem;
+  font-size: 0.58rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-roster__item {
+  min-height: 38px;
+  padding: 0.26rem 0.36rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-roster__item-name {
+  font-size: 0.65rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-roster__item-sub {
+  font-size: 0.56rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-roster__item-tag {
+  font-size: 0.54rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-left-stack .battle-roster__list {
+  max-height: min(30dvh, 9rem);
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .unit-inspect-float__summary {
+  padding: 0.28rem 0.42rem;
+  font-size: 0.68rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .unit-inspect-float__inner {
+  padding: 0.26rem 0.4rem 0.34rem;
+  max-height: min(32dvh, 14rem);
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .unit-inspect-float__inner.battle-right-panel__body {
+  --battle-right-tabpanel-max-h: min(calc(40dvh - 2.5rem), calc(19rem - 2.5rem));
+  max-height: min(40dvh, 19rem);
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-right-tab {
+  font-size: 0.62rem;
+  padding: 0.3rem 0.28rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-right-tabs--three .battle-right-tab {
+  font-size: 0.56rem;
+  padding: 0.26rem 0.16rem;
+  letter-spacing: 0.01em;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-right-tabpanel {
+  padding: 0.28rem 0.4rem 0.36rem;
+  font-size: 0.64rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .unit-inspect {
+  padding: 0.42rem 0.48rem;
+  border-radius: 8px;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .unit-inspect h3 {
+  font-size: 0.78rem;
+  margin: 0 0 0.32rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .unit-inspect-dl {
+  font-size: 0.68rem;
+  gap: 0.2rem 0.48rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .unit-inspect-dl.unit-inspect-dl--horizontal {
+  font-size: 0.62rem;
+  gap: 0.2rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .unit-inspect-float__inner .terrain-legend--inline .terrain-legend-title,
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-right-tabpanel.unit-inspect .terrain-legend--inline .terrain-legend-title {
+  font-size: 0.58rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .unit-inspect-float__inner .terrain-legend--inline .terrain-legend-row,
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-right-tabpanel.unit-inspect .terrain-legend--inline .terrain-legend-row {
+  font-size: 0.56rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .save-details > summary {
+  font-size: 0.66rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .meta-save-buttons .btn {
+  font-size: 0.64rem;
+  padding: 0.3rem 0.48rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-log-tab-intro {
+  font-size: 0.6rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-log-list {
+  font-size: 0.62rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-menu-hint-slot {
+  min-height: 2.05rem;
+  margin-top: 0.3rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .menu-hint {
+  font-size: 0.6rem;
+  line-height: 1.35;
+  padding: 0 0.28rem;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .action-menu {
+  gap: 3px;
+  padding: 4px;
+  min-width: 5.35rem;
+  border-radius: 6px;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .action-menu-item {
+  font-size: 0.6rem;
+  padding: 0.3rem 0.38rem;
+  border-radius: 4px;
+}
+
+.page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-wrap.battle-wrap--fit {
+  padding: 0.38rem 0.42rem;
+}
+
+@media (max-width: 900px) and (orientation: landscape) {
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui {
+    grid-template-columns: minmax(88px, min(128px, 20vw)) minmax(0, 1fr);
     gap: 0.22rem;
   }
 
-  .battle-overview__title {
-    font-size: 0.54rem;
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-overview__frame {
+    max-height: min(96px, 18dvh);
   }
 
-  .battle-overview__rounds {
-    font-size: 0.52rem;
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-left-stack .battle-roster__list {
+    max-height: min(28dvh, 8.2rem);
   }
+}
 
-  .battle-wrap.battle-wrap--fit {
-    padding: 0.35rem 0.4rem;
+@media (max-width: 640px) and (orientation: landscape) {
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui {
+    grid-template-columns: minmax(78px, min(108px, 17vw)) minmax(0, 1fr);
+    gap: 0.18rem;
   }
+}
+
+@media (max-width: 640px) and (orientation: portrait) {
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-left-stack {
+    max-height: min(38dvh, 260px);
+  }
+}
+
+.page.game-layout.game-layout--battle.game-layout--cheat-mobile.game-layout--battle-mobile-ui .game-left-stack {
+  gap: 0.35rem !important;
 }
 
 /* 秘籍 Ctrl+M：任意视口强开「竖屏手机」式战斗栅格（与 max-width:900 + portrait 主效果一致） */
@@ -563,44 +673,6 @@ a:hover {
   gap: 0.5rem !important;
   -webkit-overflow-scrolling: touch;
   top: auto !important;
-}
-
-.page.game-layout.game-layout--battle.game-layout--cheat-mobile .battle-overview__title {
-  margin-bottom: 0.15rem;
-  font-size: 0.72rem;
-}
-
-.page.game-layout.game-layout--battle.game-layout--cheat-mobile .battle-overview__rounds {
-  font-size: 0.7rem;
-  margin: 0 0 0.2rem;
-}
-
-.page.game-layout.game-layout--battle.game-layout--cheat-mobile .battle-overview__hint {
-  font-size: 0.62rem;
-  margin-top: 0.22rem;
-}
-
-.page.game-layout.game-layout--battle.game-layout--cheat-mobile .sidebar-expand-bar {
-  min-height: 44px;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.82rem;
-  border-radius: 10px;
-}
-
-.page.game-layout.game-layout--battle.game-layout--cheat-mobile .game-left-toprow .battle-back-home--toprow {
-  min-height: 44px;
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
-}
-
-.page.game-layout.game-layout--battle.game-layout--cheat-mobile .game-left-newgame {
-  min-height: 44px;
-  padding: 0.35rem 0.55rem;
-  font-size: 0.78rem;
-}
-
-.page.game-layout.game-layout--battle.game-layout--cheat-mobile .unit-inspect-float__inner {
-  max-height: min(30dvh, 15rem);
 }
 
 .game-left-stack {

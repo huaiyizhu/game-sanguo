@@ -223,6 +223,17 @@ export default function GamePage() {
   const [inspectTapSeq, setInspectTapSeq] = useState(0);
   /** 秘籍 Ctrl+M：桌面强开竖屏手机式栅格与侧栏，便于调试窄屏 UI */
   const [cheatForceMobileLayout, setCheatForceMobileLayout] = useState(false);
+  /** 与桌面版分离的窄屏战斗样式（侧栏/行动菜单/信息区），见 index.css `.game-layout--battle-mobile-ui` */
+  const [battleMobileUi, setBattleMobileUi] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 900px)").matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 900px)");
+    const sync = () => setBattleMobileUi(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
   const [metaSidebarCollapsed, setMetaSidebarCollapsed] = useState(() => {
     try {
       const raw = localStorage.getItem("sanguo_meta_sidebar_collapsed");
@@ -946,7 +957,7 @@ export default function GamePage() {
     <div
       className={`page game-layout game-layout--battle${
         cheatForceMobileLayout ? " game-layout--cheat-mobile" : ""
-      }`}
+      }${cheatForceMobileLayout || battleMobileUi ? " game-layout--battle-mobile-ui" : ""}`}
     >
       {stagePickerOpen && (
         <div
