@@ -106,7 +106,10 @@ const CHEAT_MOBILE_PORTRAIT_COMBO = (e: KeyboardEvent) =>
 
 type CheatBattleLayout = "none" | "landscape" | "portrait";
 
-/** 战斗页启用手机式侧栏/字号：≤900px，或典型手机横屏（矮视口，避免宽度>900 时未挂类） */
+/**
+ * 战斗页启用手机式侧栏/字号：≤900px，或典型手机横屏（矮视口；真机横屏常 >900px 宽）。
+ * 横屏侧栏列宽等 CSS 须与本条件一致，见 index.css「横屏战斗」：`(landscape) and (max-width:900px)` 与 `(landscape) and (max-height:560px)` 逗号或。
+ */
 const BATTLE_MOBILE_UI_MATCH_MEDIA =
   "(max-width: 900px), ((orientation: landscape) and (max-height: 560px))";
 

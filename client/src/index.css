@@ -339,8 +339,13 @@ a:hover {
   }
 }
 
-/* 横屏手机：侧栏 + 主区同一行（列宽/边距在 `.game-layout--battle-mobile-ui` 内再收紧） */
-@media (max-width: 900px) and (orientation: landscape) {
+/*
+ * 横屏战斗：侧栏 + 主区同一行。
+ * 条件须与 GamePage `BATTLE_MOBILE_UI_MATCH_MEDIA` 一致：许多手机横屏宽度 >900px，
+ * 仅靠 max-width:900px 会导致本段与 `.battle-mobile-ui` 下收窄规则永远不生效。
+ */
+@media (orientation: landscape) and (max-width: 900px),
+  (orientation: landscape) and (max-height: 560px) {
   .page.game-layout.game-layout--battle {
     padding-top: max(0.2rem, env(safe-area-inset-top, 0px));
     padding-bottom: max(0.28rem, env(safe-area-inset-bottom, 0px));
@@ -638,7 +643,8 @@ a:hover {
   padding: 0.38rem 0.42rem;
 }
 
-@media (max-width: 900px) and (orientation: landscape) {
+@media (orientation: landscape) and (max-width: 900px),
+  (orientation: landscape) and (max-height: 560px) {
   .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui {
     /* 约为常见「宽侧栏」的 2/3 量级，避免占掉半屏 */
     grid-template-columns: minmax(0, min(23.5vw, 10.5rem)) minmax(0, 1fr) !important;
@@ -647,8 +653,28 @@ a:hover {
 
   .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-left-stack {
     min-width: 0;
+    max-width: 100%;
     overflow-x: hidden;
     gap: 0.28rem;
+  }
+
+  /* 战局略图 / 单位列表：禁止 min-content 横向撑破窄栅格列 */
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-overview,
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-overview-disclosure,
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-roster-disclosure {
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-overview {
+    flex-shrink: 1;
+  }
+
+  .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .battle-overview__frame {
+    max-width: 100%;
+    box-sizing: border-box;
   }
 
   .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui .game-left-toprow .battle-back-home--toprow {
@@ -769,7 +795,8 @@ a:hover {
   }
 }
 
-@media (max-width: 640px) and (orientation: landscape) {
+@media (orientation: landscape) and (max-width: 640px) and (max-width: 900px),
+  (orientation: landscape) and (max-width: 640px) and (max-height: 560px) {
   .page.game-layout.game-layout--battle.game-layout--battle-mobile-ui {
     grid-template-columns: minmax(0, min(22vw, 9.5rem)) minmax(0, 1fr) !important;
     gap: 0.12rem;
