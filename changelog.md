@@ -28,10 +28,21 @@
 
 - **`scenarios.ts`**：`sanitizeUnitSpawnPositions` 在 **`buildBattleStateForScenario`** 拼装单位后执行，将落在 **水 / 墙 / 城门** 的单位 **BFS 挪到最近合法空位**，避免剧情布阵与地形生成叠在禁格上。
 
+### 战场剧情对白（开场与关键阵亡）
+
+- **`BattleState.battleScript`**：队列含 **`opening` / `reaction`**、已解析台词与 **`cursor`**；**`ensureBattleFields`** 做规范化。
+- **开场**：**`buildBattleStateForScenario`** 在地图与单位就绪后挂 **`buildOpeningBattleScript`**；部分关卡有专属台词表，其余用 **刘备 / 关羽 + 旁白胜利条件** 的默认开场。
+- **阵亡反应**：关键敌我将领阵亡时 **`tryQueueDeathReactionScript`**（若当前无对白队列）写入 **`reaction`**；含 **张角 / 吕布 / 刘备（序章）** 等表，**歼灭标定主将** 类胜利可回落到通用两句。
+- **UI**：**`BattleDialogueOverlay`** 叠在 **`.battle-map-viewport`** 内地图之上（半透明底 + 卡片、头像 / 姓名 / 阵营与等级、进度）；**按任意键或点击** 推进下一句（**Esc** 留给关闭秘籍等，不推进对白）。
+- **流程**：对白期间 **`battleScriptBlocked`** 传入 **`GameBattle`**，与 **`turnIntroLocked`** 一并锁定格子/菜单/敌军 AI 等；**开场最后一句结束** 后 **`bumpVisualEpoch`** 重放回合门控与「我方回合」字幕。
+- **胜利揭示**：存在 **`battleScript`** 时 **`pendingVictory`** 的揭示定时器 **不启动**，待阵亡反应对白播完后再 **`commitPendingVictory`**。
+- **逻辑集中**：**`client/src/game/battleScript.ts`**（解析、建场、推进、表数据）；**`battle.ts`** 在击杀路径调用阵亡入队并 **再导出** **`advanceBattleScript`** 供 UI 使用。
+
 ### 涉及文件（便于检索）
 
-- `client/src/pages/GamePage.tsx`、`client/src/pages/GameBattle.tsx`、`client/src/components/BattleOverviewMap.tsx`
-- `client/src/game/scenarios.ts`、`client/src/game/battle.ts`
+- `client/src/pages/GamePage.tsx`、`client/src/pages/GameBattle.tsx`、`client/src/components/BattleOverviewMap.tsx`、`client/src/components/BattleDialogueOverlay.tsx`
+- `client/src/game/scenarios.ts`、`client/src/game/battle.ts`、`client/src/game/battleScript.ts`、`client/src/game/types.ts`
+- `client/src/index.css`
 
 ---
 
