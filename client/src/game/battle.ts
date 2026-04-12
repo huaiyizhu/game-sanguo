@@ -752,7 +752,7 @@ export function advancePendingMove(state: BattleState): BattleState {
   s = { ...s, pendingMove: null };
   if (p.kind === "player") {
     const u = s.units.find((x) => x.id === uid);
-    const logLine = u ? `${u.name} 移动至 (${step.x + 1},${step.y + 1})。` : "";
+    const logLine = u ? `${u.name} 完成移动。` : "";
     s = {
       ...s,
       units: s.units.map((x) => (x.id === uid ? { ...x, moved: true } : x)),

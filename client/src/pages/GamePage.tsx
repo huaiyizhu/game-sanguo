@@ -234,6 +234,27 @@ export default function GamePage() {
   inspectUnitIdRef.current = inspectUnitId;
   /** 每次点将/检视递增，使 GameBattle 在再次点同一单位时仍能重播属性浮窗 */
   const [inspectTapSeq, setInspectTapSeq] = useState(0);
+  /** 主战场有指针活动时为 true；静止一段时间后隐藏左侧提要、右侧地形图例与格上地形提示 */
+  const MAP_POINTER_IDLE_MS = 1400;
+  const [battleMapPointerActive, setBattleMapPointerActive] = useState(true);
+  const battleMapPointerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bumpBattleMapPointer = useCallback(() => {
+    setBattleMapPointerActive(true);
+    if (battleMapPointerTimerRef.current) clearTimeout(battleMapPointerTimerRef.current);
+    battleMapPointerTimerRef.current = window.setTimeout(() => {
+      setBattleMapPointerActive(false);
+      battleMapPointerTimerRef.current = null;
+    }, MAP_POINTER_IDLE_MS);
+  }, []);
+  useEffect(
+    () => () => {
+      if (battleMapPointerTimerRef.current) clearTimeout(battleMapPointerTimerRef.current);
+    },
+    []
+  );
+  useEffect(() => {
+    bumpBattleMapPointer();
+  }, [battle.scenarioId, bumpBattleMapPointer]);
   /** 秘籍：桌面强开手机战斗栅格（Ctrl+M 横屏 / Ctrl+Shift+M 竖屏 / 再 Ctrl+M 恢复） */
   const [cheatBattleLayout, setCheatBattleLayout] = useState<CheatBattleLayout>("none");
   /** 与桌面版分离的窄屏战斗样式（侧栏/行动菜单/信息区），见 index.css `.game-layout--battle-mobile-ui` */
@@ -1175,10 +1196,10 @@ export default function GamePage() {
               <br />
               <span className="status-inline">{statusLine}</span>
             </p>
-            {battle.scenarioBrief ? (
+            {battleMapPointerActive && battle.scenarioBrief ? (
               <p className="scenario-story small">{battle.scenarioBrief}</p>
             ) : null}
-            {battle.victoryBrief ? (
+            {battleMapPointerActive && battle.victoryBrief ? (
               <p className="victory-hint small">
                 <strong>胜利条件：</strong>
                 {battle.victoryBrief}
@@ -1284,10 +1305,12 @@ export default function GamePage() {
                           <span className="battle-roster__item-sub">
                             <span className="battle-roster__item-tag">{rosterStatusTag(u, "player")}</span>
                             {u.hp <= 0 ? (
-                              <>({u.x + 1},{u.y + 1})</>
+                              <>
+                                Lv.{u.level} · {TROOP_KIND_LABEL[u.troopKind]}
+                              </>
                             ) : (
                               <>
-                                {u.hp}/{u.maxHp} · ({u.x + 1},{u.y + 1})
+                                Lv.{u.level} · {TROOP_KIND_LABEL[u.troopKind]} · {u.hp}/{u.maxHp}
                               </>
                             )}
                           </span>
@@ -1324,10 +1347,12 @@ export default function GamePage() {
                           <span className="battle-roster__item-sub">
                             <span className="battle-roster__item-tag">{rosterStatusTag(u, "enemy")}</span>
                             {u.hp <= 0 ? (
-                              <>({u.x + 1},{u.y + 1})</>
+                              <>
+                                Lv.{u.level} · {TROOP_KIND_LABEL[u.troopKind]}
+                              </>
                             ) : (
                               <>
-                                Lv.{u.level} · {u.hp}/{u.maxHp} · ({u.x + 1},{u.y + 1})
+                                Lv.{u.level} · {TROOP_KIND_LABEL[u.troopKind]} · {u.hp}/{u.maxHp}
                               </>
                             )}
                           </span>
@@ -1433,7 +1458,7 @@ export default function GamePage() {
               )}
               {inspectedRosterTarget && inspectedRosterTarget.hp <= 0 && (
                 <p className="unit-inspect-dead-note muted small">
-                  <strong>{inspectedRosterTarget.name}</strong> 已阵亡，坐标（{inspectedRosterTarget.x + 1}，{inspectedRosterTarget.y + 1}）。
+                  <strong>{inspectedRosterTarget.name}</strong> 已阵亡。
                 </p>
               )}
               {inspectedUnit && (
@@ -1592,23 +1617,25 @@ export default function GamePage() {
                   )}
                 </dl>
               )}
-              <div className="terrain-legend terrain-legend--inline">
-                <p className="terrain-legend-title">战场地形</p>
-                <div className="terrain-legend-row">
-                  {TERRAIN_LEGEND.map(({ id, ch }) => (
-                    <span key={id} className="terrain-legend-item">
-                      <span
-                        className={`terrain-legend-swatch ${id}`}
-                        title={TERRAIN_LABEL[id]}
-                        aria-hidden
-                      >
-                        {ch}
+              {battleMapPointerActive ? (
+                <div className="terrain-legend terrain-legend--inline">
+                  <p className="terrain-legend-title">战场地形</p>
+                  <div className="terrain-legend-row">
+                    {TERRAIN_LEGEND.map(({ id, ch }) => (
+                      <span key={id} className="terrain-legend-item">
+                        <span
+                          className={`terrain-legend-swatch ${id}`}
+                          title={TERRAIN_LABEL[id]}
+                          aria-hidden
+                        >
+                          {ch}
+                        </span>
+                        <span>{TERRAIN_LABEL[id]}</span>
                       </span>
-                      <span>{TERRAIN_LABEL[id]}</span>
-                    </span>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              ) : null}
               </div>
               <div
                 role="tabpanel"
@@ -1721,7 +1748,11 @@ export default function GamePage() {
               </div>
             </div>
           </details>
-          <div className="battle-map-viewport">
+          <div
+            className="battle-map-viewport"
+            onMouseMove={bumpBattleMapPointer}
+            onMouseEnter={bumpBattleMapPointer}
+          >
             <GameBattle
               ref={gameBattleRef}
               battle={battle}
@@ -1732,6 +1763,7 @@ export default function GamePage() {
               forceNarrowLayout={cheatBattleLayout !== "none"}
               keyboardBlocked={stagePickerOpen || generalCodexOpen}
               fitViewport
+              mapHoverTipsActive={battleMapPointerActive}
               onScrollViewportChange={onBattleScrollViewportChange}
               onTurnActionReady={onTurnActionReady}
               onDamagePulseConsumed={onDamagePulseConsumed}

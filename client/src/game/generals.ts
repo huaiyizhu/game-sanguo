@@ -117,11 +117,35 @@ const FAMOUS: GeneralCatalogEntry[] = [
   G("chen_gong", "陈宫", "吕", "ping", "archer", 6, 20, 90, 90, "弃曹从吕，白门楼殉义。"),
   G("zhang_ren", "张任", "蜀", "shan", "cavalry", 8, 78, 58, 112, "蜀中名将，落凤坡射庞统，终为刘备所擒。"),
   G("yan_yan", "严颜", "蜀", "shan", "infantry", 7, 74, 54, 108, "巴郡老将，张飞义释后降。"),
+  G("mi_zhu", "糜竺", "蜀", "ping", "archer", 6, 32, 78, 95, "徐州别驾，资军助刘备，妹为糜夫人。"),
+  G("mi_fang", "糜芳", "蜀", "ping", "infantry", 5, 48, 36, 98, "南郡太守，公安降吴，为后世所议。"),
+  G("jian_yong", "简雍", "蜀", "ping", "archer", 6, 28, 72, 92, "从刘备周旋，滑稽善辩，鸿胪之才。"),
+  G("xu_shu", "徐庶", "蜀", "ping", "archer", 7, 48, 92, 98, "单福荐卧龙，入曹营终身不设一谋。"),
+  G("huang_quan", "黄权", "蜀", "shan", "archer", 7, 58, 86, 105, "巴西名士，夷陵断后，降魏仍见史笔。"),
+  G("guan_xing", "关兴", "蜀", "ping", "cavalry", 6, 74, 56, 108, "关羽次子，夷陵报仇随军。"),
+  G("zhang_baof", "张苞", "蜀", "shan", "cavalry", 6, 76, 48, 110, "张飞长子，与关兴并肩北伐。"),
+  G("liu_feng", "刘封", "蜀", "shan", "infantry", 6, 78, 42, 112, "刘备养子，刚猛有罪，赐死。"),
+  G("ma_liang", "马良", "蜀", "ping", "archer", 6, 38, 88, 96, "白眉最良，入蜀掌文书。"),
+  G("chen_dao", "陈到", "蜀", "ping", "infantry", 6, 72, 48, 102, "白毦督，昭烈帐前劲卒。"),
+  G("liao_hua", "廖化", "蜀", "shan", "infantry", 6, 68, 52, 105, "历事姜维北伐，蜀中宿将。"),
+  G("ma_su", "马谡", "蜀", "shan", "archer", 6, 42, 86, 94, "参军才辩，街亭违令。"),
+  G("fei_yi", "费祎", "蜀", "ping", "archer", 7, 36, 88, 98, "宽济相业，续孔明之后。"),
+  G("jiang_wan", "蒋琬", "蜀", "ping", "infantry", 7, 34, 84, 96, "社稷器量，诸葛亮托以后事。"),
+  G("wu_ban", "吴班", "蜀", "shan", "infantry", 6, 72, 50, 102, "夷陵督军，族妹为昭烈穆皇后。"),
+  G("dong_yun", "董允", "蜀", "ping", "infantry", 6, 40, 80, 94, "掌宫中郎将，匡弼后主。"),
+  G("li_yan", "李严", "蜀", "ping", "infantry", 7, 62, 58, 108, "托孤重臣，督江州，后与孔明龃龉。"),
+  G("cheng_yu", "程昱", "魏", "ping", "infantry", 8, 52, 86, 108, "孟德谋臣，十面埋伏皆出于算。"),
+  G("xun_you", "荀攸", "魏", "ping", "archer", 8, 38, 92, 98, "谋主深远，官渡画策。"),
+  G("man_chong", "满宠", "魏", "ping", "archer", 7, 58, 78, 102, "合肥守则，忠勤善断。"),
+  G("cao_chun", "曹纯", "魏", "ping", "cavalry", 7, 76, 52, 110, "虎豹骑统领，长坂追击。"),
+  G("xu_you", "许攸", "群", "ping", "archer", 6, 22, 82, 88, "本袁谋士，官渡叛绍投曹。"),
+  G("zhu_ling", "朱灵", "魏", "ping", "infantry", 6, 62, 48, 100, "河北宿将，曹魏偏师。"),
+  G("zhu_ran", "朱然", "吴", "shui", "infantry", 7, 72, 62, 108, "擒关羽、夷陵拒陆逊之名将。"),
 ];
 
 /** 演义中常见部将、文臣、诸侯（批量生成，属性有随机带） */
 const NPC_SPEC =
-  "程昱|魏|ping|infantry|荀攸|魏|ping|archer|孔融|汉|ping|archer|祢衡|汉|ping|archer|陈琳|魏|ping|archer|王粲|魏|ping|archer|蔡瑁|魏|shui|infantry|张允|魏|shui|archer|文聘|魏|ping|cavalry|韩当|吴|shui|infantry|程普|吴|shui|infantry|周泰|吴|shui|infantry|蒋钦|吴|shui|cavalry|丁奉|吴|shui|infantry|徐盛|吴|shui|archer|潘璋|吴|shui|infantry|朱然|吴|shui|infantry|韩遂|群|ping|cavalry|马腾|群|ping|cavalry|庞德|魏|ping|infantry|魏延部将|蜀|shan|infantry|李恢|蜀|shan|archer|马谡|蜀|ping|archer|廖化|蜀|shan|infantry|吴懿|蜀|ping|cavalry|陈到|蜀|ping|infantry|向宠|蜀|ping|infantry|张松|蜀|ping|archer|泠苞|蜀|shan|cavalry|邓贤|蜀|shan|archer|刘璝|蜀|shan|infantry|高沛|蜀|shan|cavalry|杨怀|蜀|shan|infantry|刘巴|蜀|ping|archer|李严|蜀|ping|infantry|费祎|蜀|ping|archer|董允|蜀|ping|infantry|蒋琬|蜀|ping|archer|向朗|蜀|ping|infantry|邓芝|蜀|ping|archer|夏侯霸|魏|ping|cavalry|曹彰|魏|ping|cavalry|曹植|魏|ping|archer|牛金|魏|ping|infantry|史涣|魏|ping|cavalry|吕旷|魏|ping|cavalry|吕翔|魏|ping|archer|淳于琼|袁|ping|infantry|审配|袁|shan|archer|逢纪|袁|ping|archer|郭图|袁|ping|archer|辛评|袁|ping|infantry|麴义|袁|ping|cavalry|田丰|袁|ping|archer|沮授|袁|ping|archer|公孙瓒|群|ping|cavalry|陶谦|汉|ping|infantry|孔伷|汉|ping|archer|张邈|群|ping|infantry|张绣|群|ping|cavalry|李傕|董|ping|cavalry|郭汜|董|ping|cavalry|李典副将|魏|ping|infantry|蔡阳|魏|ping|cavalry|秦琪|魏|ping|archer|王植|魏|shan|infantry|卞喜|魏|shan|infantry|韩福|魏|ping|archer|孟坦|魏|ping|cavalry|孔秀|魏|ping|infantry|裴元绍|黄巾|shan|infantry|周仓旧部|黄巾|shan|infantry|杜远|黄巾|ping|infantry|廖化同行|蜀|shan|infantry|范疆|蜀|shan|archer|张达|蜀|shan|infantry|傅士仁|蜀|ping|infantry|糜芳|蜀|ping|infantry|郝萌|吕|ping|cavalry|魏续|吕|ping|cavalry|宋宪|吕|ping|archer|侯成|吕|ping|infantry|曹性|吕|ping|archer|高顺副将|吕|ping|infantry|陈登|汉|ping|archer|陈珪|汉|ping|archer|刘繇|汉|ping|infantry|严白虎|吴|shan|infantry|王朗|魏|ping|archer|钟繇|魏|ping|archer|华歆|魏|ping|infantry|满宠|魏|ping|archer|吕虔|魏|ping|infantry|毛玠|魏|ping|archer|崔琰|魏|ping|infantry|杨修|魏|ping|archer|丁仪|魏|ping|archer|吴质|魏|ping|archer|刘晔|魏|ping|archer|蒋济|魏|ping|archer|孙礼|魏|ping|infantry|孙坚|吴|ping|cavalry|孙策|吴|ping|cavalry|吴国太|吴|shui|archer|大乔|吴|shui|archer|小乔|吴|shui|archer|诸葛瑾|吴|shui|archer|步骘|吴|shui|infantry|张昭|吴|shui|archer|张纮|吴|shui|archer|虞翻|吴|shui|archer|陆绩|吴|shui|archer|骆统|吴|shui|infantry|吾粲|吴|shui|archer|留赞|吴|shui|infantry";
+  "孔融|汉|ping|archer|祢衡|汉|ping|archer|陈琳|魏|ping|archer|王粲|魏|ping|archer|蔡瑁|魏|shui|infantry|张允|魏|shui|archer|文聘|魏|ping|cavalry|韩当|吴|shui|infantry|程普|吴|shui|infantry|周泰|吴|shui|infantry|蒋钦|吴|shui|cavalry|丁奉|吴|shui|infantry|徐盛|吴|shui|archer|潘璋|吴|shui|infantry|韩遂|群|ping|cavalry|马腾|群|ping|cavalry|庞德|魏|ping|infantry|魏延部将|蜀|shan|infantry|李恢|蜀|shan|archer|吴懿|蜀|ping|cavalry|向宠|蜀|ping|infantry|张松|蜀|ping|archer|泠苞|蜀|shan|cavalry|邓贤|蜀|shan|archer|刘璝|蜀|shan|infantry|高沛|蜀|shan|cavalry|杨怀|蜀|shan|infantry|刘巴|蜀|ping|archer|向朗|蜀|ping|infantry|邓芝|蜀|ping|archer|夏侯霸|魏|ping|cavalry|曹彰|魏|ping|cavalry|曹植|魏|ping|archer|牛金|魏|ping|infantry|史涣|魏|ping|cavalry|吕旷|魏|ping|cavalry|吕翔|魏|ping|archer|淳于琼|袁|ping|infantry|审配|袁|shan|archer|逢纪|袁|ping|archer|郭图|袁|ping|archer|辛评|袁|ping|infantry|麴义|袁|ping|cavalry|田丰|袁|ping|archer|沮授|袁|ping|archer|公孙瓒|群|ping|cavalry|陶谦|汉|ping|infantry|孔伷|汉|ping|archer|张邈|群|ping|infantry|张绣|群|ping|cavalry|李傕|董|ping|cavalry|郭汜|董|ping|cavalry|李典副将|魏|ping|infantry|蔡阳|魏|ping|cavalry|秦琪|魏|ping|archer|王植|魏|shan|infantry|卞喜|魏|shan|infantry|韩福|魏|ping|archer|孟坦|魏|ping|cavalry|孔秀|魏|ping|infantry|裴元绍|黄巾|shan|infantry|周仓旧部|黄巾|shan|infantry|杜远|黄巾|ping|infantry|廖化同行|蜀|shan|infantry|范疆|蜀|shan|archer|张达|蜀|shan|infantry|傅士仁|蜀|ping|infantry|郝萌|吕|ping|cavalry|魏续|吕|ping|cavalry|宋宪|吕|ping|archer|侯成|吕|ping|infantry|曹性|吕|ping|archer|高顺副将|吕|ping|infantry|陈登|汉|ping|archer|陈珪|汉|ping|archer|刘繇|汉|ping|infantry|严白虎|吴|shan|infantry|王朗|魏|ping|archer|钟繇|魏|ping|archer|华歆|魏|ping|infantry|吕虔|魏|ping|infantry|毛玠|魏|ping|archer|崔琰|魏|ping|infantry|杨修|魏|ping|archer|丁仪|魏|ping|archer|吴质|魏|ping|archer|刘晔|魏|ping|archer|蒋济|魏|ping|archer|孙礼|魏|ping|infantry|孙坚|吴|ping|cavalry|孙策|吴|ping|cavalry|吴国太|吴|shui|archer|大乔|吴|shui|archer|小乔|吴|shui|archer|诸葛瑾|吴|shui|archer|步骘|吴|shui|infantry|张昭|吴|shui|archer|张纮|吴|shui|archer|虞翻|吴|shui|archer|陆绩|吴|shui|archer|骆统|吴|shui|infantry|吾粲|吴|shui|archer|留赞|吴|shui|infantry";
 
 function parseNpcSpec(): GeneralCatalogEntry[] {
   const parts = NPC_SPEC.split("|");

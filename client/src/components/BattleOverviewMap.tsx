@@ -1,4 +1,5 @@
 import type { Terrain, Unit } from "../game/types";
+import { TERRAIN_LABEL } from "../game/types";
 
 /** 相对整张可滚动战场的视口矩形，0–1 归一化（与主战场 scroll 同步） */
 export type BattleViewportNorm = {
@@ -89,7 +90,7 @@ export default function BattleOverviewMap({
             <div
               key={`${x}-${y}`}
               className={["battle-overview__cell", `battle-overview__cell--${t}`].join(" ")}
-              title={`(${x + 1},${y + 1})`}
+              title={TERRAIN_LABEL[t]}
             />
           ))}
         </div>

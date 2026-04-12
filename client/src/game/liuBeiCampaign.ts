@@ -187,7 +187,7 @@ const CAMPAIGN = {
     victoryBrief: "围解，北海与徐州声气相通。",
     winCondition: { type: "eliminate_marked_enemies", unitIds: ["e_zhang_liang_bh"] } as WinCondition,
     extraLog: ["胜利条件：击破黄巾主将张梁所部本阵（演义向：管亥之围以贼酋溃败为胜）。"],
-    allyExtras: [],
+    allyExtras: ["mi_zhu"],
     enemies: [
       U("zhang_liang", "e_zhang_liang_bh", 14, 4),
       G("e_bh1", "管亥旧部", 22, 6, 90, 5, 28, 24, "cavalry", "ping"),
@@ -206,9 +206,10 @@ const CAMPAIGN = {
     scenarioBrief: "开阔战场，骑兵威胁大；敌军以夏侯渊偏师与青州兵为主，宜先破弓弩再折其翼。",
     victoryBrief: "曹军前锋受挫，徐州城下稍缓。",
     winCondition: { type: "eliminate_all" } as WinCondition,
-    allyExtras: [],
+    allyExtras: ["mi_zhu", "jian_yong"],
     enemies: [
       U("xiahou_yuan", "e_xhy_tq", 20, 4),
+      U("cheng_yu", "e_cy_tq", 8, 8),
       G("e_tq1", "青州兵", 28, 6, 84, 5, 27, 26, "infantry", "ping"),
       G("e_tq2", "曹军弩手", 10, 6, 72, 5, 25, 32, "archer", "ping"),
       G("e_tq3", "斥候骑", 24, 8, 76, 5, 28, 22, "cavalry", "ping"),
@@ -226,12 +227,13 @@ const CAMPAIGN = {
       "战场开阔，河中游可迟滞骑兵。曹操本人督阵，夏侯惇、张辽、于禁分统诸部，需分路牵制。",
     victoryBrief: "击退曹军前锋，徐州暂得喘息（本关以全歼敌军为胜）。",
     winCondition: { type: "eliminate_all" } as WinCondition,
-    allyExtras: ["zhao_yun"],
+    allyExtras: ["zhao_yun", "mi_zhu", "jian_yong"],
     enemies: [
       U("cao_cao", "e_cao_cao", 18, 4),
       U("xiahou_dun", "e_xiahou_dun", 24, 4),
       U("zhang_liao", "e_zhang_liao2", 12, 4),
       U("yu_jin", "e_yu_jin", 28, 6),
+      U("cao_chun", "e_cc_xz", 6, 10),
       G("e_c1", "青州兵", 8, 8, 82, 5, 27, 26, "infantry", "ping"),
       G("e_c2", "曹军弩手", 32, 8, 68, 5, 25, 32, "archer", "ping"),
       G("e_c3", "虎豹骑斥候", 16, 8, 76, 6, 30, 24, "cavalry", "ping"),
@@ -248,7 +250,7 @@ const CAMPAIGN = {
     scenarioBrief: "并州骑射凌厉，宜以步兵卡要、弓兵断其回旋；敌军数量不多但精悍。",
     victoryBrief: "吕军偏师退却，暂保营栅。",
     winCondition: { type: "eliminate_all" } as WinCondition,
-    allyExtras: ["zhao_yun"],
+    allyExtras: ["zhao_yun", "mi_zhu", "mi_fang"],
     enemies: [
       U("gao_shun", "e_gs_hub", 22, 4),
       G("e_hb1", "并州狼骑", 30, 6, 78, 6, 29, 22, "cavalry", "ping"),
@@ -269,7 +271,7 @@ const CAMPAIGN = {
     victoryBrief: "吕布败走，小沛之围得解。",
     winCondition: { type: "eliminate_marked_enemies", unitIds: ["e_lu_bu"] } as WinCondition,
     extraLog: ["胜利条件：击败飞将吕布（余部可溃散不顾）。"],
-    allyExtras: ["zhao_yun", "guan_ping"],
+    allyExtras: ["zhao_yun", "guan_ping", "jian_yong"],
     enemies: [
       U("lu_bu", "e_lu_bu", 20, 4),
       U("gao_shun", "e_gao_shun", 16, 6),
@@ -291,7 +293,7 @@ const CAMPAIGN = {
     scenarioBrief: "河道迟滞追兵，水军兵种在浅滩有优势；敌军以张辽、许褚为锋。",
     victoryBrief: "突出重围，暂保义兵火种。",
     winCondition: { type: "eliminate_all" } as WinCondition,
-    allyExtras: ["zhao_yun", "guan_ping"],
+    allyExtras: ["zhao_yun", "guan_ping", "mi_fang"],
     enemies: [
       U("zhang_liao", "e_zl_xr", 32, 3),
       U("xu_chu", "e_xc_xr", 26, 5),
@@ -311,10 +313,11 @@ const CAMPAIGN = {
     scenarioBrief: "平原战场，敌骑与弓弩兼备；宜先断其两翼再逼中军。",
     victoryBrief: "小胜而归，袁绍帐前暂立脚跟。",
     winCondition: { type: "eliminate_all" } as WinCondition,
-    allyExtras: ["zhao_yun", "guan_ping"],
+    allyExtras: ["zhao_yun", "guan_ping", "xu_shu"],
     enemies: [
       U("zhang_he", "e_zh_yu", 18, 4),
       U("yan_liang", "e_yl_yu", 26, 4),
+      U("xu_you", "e_xu_you_yc", 6, 8),
       G("e_yu1", "河北弓骑", 30, 6, 78, 6, 28, 28, "cavalry", "ping"),
       G("e_yu2", "大戟士", 12, 8, 90, 7, 30, 26, "infantry", "ping"),
       G("e_yu3", "曹军斥候", 22, 10, 74, 6, 26, 30, "archer", "ping"),
@@ -330,10 +333,11 @@ const CAMPAIGN = {
     scenarioBrief: "密林分割战场，骑兵难展；敌军含曹仁、李典等善守之将。",
     victoryBrief: "粮道震动，曹军分兵，官渡正面稍松。",
     winCondition: { type: "eliminate_all" } as WinCondition,
-    allyExtras: ["zhao_yun", "guan_ping"],
+    allyExtras: ["zhao_yun", "guan_ping", "fa_zheng"],
     enemies: [
       U("cao_ren", "e_cr_gd", 20, 4),
       U("li_dian", "e_ld_gd", 28, 6),
+      U("man_chong", "e_mc_gd", 12, 10),
       G("e_gd1", "辎重护卫", 14, 8, 88, 7, 28, 26, "infantry", "ping"),
       G("e_gd2", "强弩营", 32, 8, 76, 7, 27, 36, "archer", "ping"),
       G("e_gd3", "汝南黄巾残部", 8, 10, 82, 6, 25, 28, "infantry", "shan"),
@@ -350,7 +354,7 @@ const CAMPAIGN = {
     victoryBrief: "追兵溃散，刘军得投荆州。",
     winCondition: { type: "eliminate_marked_enemies", unitIds: ["e_caiyang"] } as WinCondition,
     extraLog: ["胜利条件：斩杀蔡阳（余众可不计）。"],
-    allyExtras: ["zhao_yun", "guan_ping"],
+    allyExtras: ["zhao_yun", "guan_ping", "xu_shu"],
     enemies: [
       G("e_caiyang", "蔡阳", 24, 3, 88, 8, 31, 26, "cavalry", "ping"),
       G("e_mc1", "蔡阳部曲", 30, 5, 86, 7, 28, 26, "cavalry", "ping"),
@@ -370,7 +374,7 @@ const CAMPAIGN = {
     victoryBrief: "曹军前锋大败，新野军民知孔明非虚谈。",
     winCondition: { type: "eliminate_marked_enemies", unitIds: ["e_xiahou_dun_bw"] } as WinCondition,
     extraLog: ["胜利条件：击破夏侯惇中军（演义向火攻定局）。"],
-    allyExtras: ["zhao_yun", "guan_ping", "zhuge_liang"],
+    allyExtras: ["zhao_yun", "zhuge_liang", "fa_zheng"],
     enemies: [
       U("xiahou_dun", "e_xiahou_dun_bw", 22, 4),
       U("li_dian", "e_li_dian_bw", 30, 6),
@@ -418,7 +422,7 @@ const CAMPAIGN = {
       "河道横贯地图中央，非水军难渡。骑兵自两翼包抄，需利用河岸迟滞与弓兵牵制。",
     victoryBrief: "敌军全灭，百姓得续向南。",
     winCondition: { type: "eliminate_all" } as WinCondition,
-    allyExtras: ["zhao_yun", "guan_ping", "zhuge_liang"],
+    allyExtras: ["zhao_yun", "huang_zhong", "zhuge_liang"],
     enemies: [
       U("zhang_liao", "e_zhang_liao_cb", 36, 2),
       U("xu_chu", "e_xu_chu", 32, 4),
@@ -443,7 +447,7 @@ const CAMPAIGN = {
     scenarioBrief: "水泽与浅滩交错，水军与弓兵占优；敌军以曹军水师偏师与荆州降卒混编为主。",
     victoryBrief: "南岸肃清，为赤壁结盟铺路。",
     winCondition: { type: "eliminate_all" } as WinCondition,
-    allyExtras: ["zhao_yun", "pang_tong", "zhuge_liang"],
+    allyExtras: ["zhao_yun", "xu_shu", "zhuge_liang"],
     enemies: [
       U("zhang_he", "e_zhang_he_jx", 22, 4),
       G("e_jx1", "荆州水卒", 30, 6, 80, 8, 28, 28, "infantry", "shui"),
@@ -487,7 +491,7 @@ const CAMPAIGN = {
     scenarioBrief: "河道纵贯，弓弩封浅滩可断敌迂回；东吴与曹军降卒混战中立为敌。",
     victoryBrief: "江陵外垒动摇，为借荆州与取四郡张本。",
     winCondition: { type: "eliminate_all" } as WinCondition,
-    allyExtras: ["zhao_yun", "wei_yan", "zhuge_liang"],
+    allyExtras: ["zhao_yun", "wei_yan", "ma_liang"],
     enemies: [
       U("zhou_yu", "e_zy_jj", 24, 4),
       U("cao_ren", "e_cr_jj", 32, 6),
@@ -507,7 +511,7 @@ const CAMPAIGN = {
     victoryBrief: "魏军东方机动受挫，荆州侧翼稍安。",
     winCondition: { type: "eliminate_marked_enemies", unitIds: ["e_gan_ning_hf"] } as WinCondition,
     extraLog: ["胜利条件：击退甘宁先锋（演义向江淮机动战）。"],
-    allyExtras: ["zhao_yun", "wei_yan", "zhuge_liang"],
+    allyExtras: ["zhao_yun", "huang_zhong", "huang_quan"],
     enemies: [
       U("gan_ning", "e_gan_ning_hf", 22, 4),
       U("ling_tong", "e_ling_tong_hf", 30, 6),
@@ -527,11 +531,12 @@ const CAMPAIGN = {
     victoryBrief: "剑阁外垒尽拔，益州震动。",
     winCondition: { type: "eliminate_marked_enemies", unitIds: ["e_liu_zhang"] } as WinCondition,
     extraLog: ["胜利条件：击破刘璋本队（迫其退守成都，余众可不究）。"],
-    allyExtras: ["zhao_yun", "wei_yan", "zhuge_liang"],
+    allyExtras: ["zhao_yun", "wei_yan", "fa_zheng"],
     enemies: [
       U("liu_zhang", "e_liu_zhang", 8, 6),
       U("yan_yan", "e_yan_yan", 16, 8),
       U("zhang_ren", "e_zhang_ren", 12, 10),
+      U("li_yan", "e_li_yan_yz", 20, 12),
       G("e_yz1", "益州弓手", 24, 12, 76, 9, 29, 32, "archer", "shan"),
       G("e_yz2", "剑阁守军", 20, 10, 90, 9, 28, 28, "infantry", "shan"),
       G("e_yz3", "益州骑兵", 28, 14, 80, 9, 30, 24, "cavalry", "ping"),
@@ -552,7 +557,7 @@ const CAMPAIGN = {
     victoryBrief: "张任伏兵溃散，为雒城决战清障（演义向）。",
     winCondition: { type: "eliminate_marked_enemies", unitIds: ["e_zhang_ren_lf"] } as WinCondition,
     extraLog: ["胜利条件：击破张任（伏军主将）。"],
-    allyExtras: ["zhao_yun", "wei_yan", "zhuge_liang"],
+    allyExtras: ["zhao_yun", "wei_yan", "liu_feng"],
     enemies: [
       U("zhang_ren", "e_zhang_ren_lf", 16, 6),
       U("yan_yan", "e_yy_lf", 24, 8),
@@ -572,7 +577,7 @@ const CAMPAIGN = {
     victoryBrief: "成都易帜，益州底定。",
     winCondition: { type: "eliminate_marked_enemies", unitIds: ["e_ma_chao_cd"] } as WinCondition,
     extraLog: ["胜利条件：击破马超所部前锋（象征成都外围决战）。"],
-    allyExtras: ["zhao_yun", "wei_yan", "zhuge_liang"],
+    allyExtras: ["zhao_yun", "wei_yan", "fa_zheng"],
     enemies: [
       U("ma_chao", "e_ma_chao_cd", 20, 4),
       U("liu_zhang", "e_lz_cd", 10, 8),
@@ -591,7 +596,7 @@ const CAMPAIGN = {
     scenarioBrief: "沙地与山麓交错，骑兵与弓弩齐备；宜占高地再压谷口。",
     victoryBrief: "魏军外垒动摇，为定军山决战蓄势。",
     winCondition: { type: "eliminate_all" } as WinCondition,
-    allyExtras: ["zhao_yun", "huang_zhong", "zhuge_liang"],
+    allyExtras: ["zhao_yun", "huang_zhong", "ma_liang"],
     enemies: [
       U("zhang_he", "e_zh_hz_p", 26, 4),
       U("xu_huang", "e_xh_hz_p", 32, 6),
@@ -640,7 +645,7 @@ const CAMPAIGN = {
     scenarioBrief: "河道与岸炮相持，水军与弓弩为核心；宜断浮桥、分击两岸。",
     victoryBrief: "魏军外援迟滞，为樊城大战蓄势。",
     winCondition: { type: "eliminate_all" } as WinCondition,
-    allyExtras: ["zhao_yun", "ma_chao", "zhuge_liang"],
+    allyExtras: ["guan_xing", "zhang_baof", "zhou_cang"],
     enemies: [
       U("zhang_he", "e_zh_jf", 20, 4),
       U("xu_huang", "e_xh_jf", 30, 6),
@@ -661,7 +666,7 @@ const CAMPAIGN = {
     victoryBrief: "七军溃散，樊城外援断绝（本关以全歼敌军为胜）。",
     winCondition: { type: "eliminate_all" } as WinCondition,
     maxBattleRounds: 95,
-    allyExtras: ["zhao_yun", "ma_chao", "zhuge_liang"],
+    allyExtras: ["guan_xing", "zhang_baof", "ma_liang"],
     enemies: [
       U("cao_ren", "e_cao_ren_xf", 20, 4),
       U("yu_jin", "e_yu_jin_xf", 28, 6),
@@ -687,7 +692,7 @@ const CAMPAIGN = {
     victoryBrief: "魏援再挫，威震华夏之势达于顶点。",
     winCondition: { type: "eliminate_marked_enemies", unitIds: ["e_xu_huang_fw"] } as WinCondition,
     extraLog: ["胜利条件：击破徐晃救樊前锋。"],
-    allyExtras: ["zhao_yun", "ma_chao", "zhuge_liang"],
+    allyExtras: ["guan_xing", "zhang_baof", "liao_hua"],
     enemies: [
       U("xu_huang", "e_xu_huang_fw", 22, 4),
       U("cao_ren", "e_cao_ren_fw", 30, 6),
@@ -707,10 +712,11 @@ const CAMPAIGN = {
     victoryBrief: "吴军追势顿挫（史实虽悲，本关以战术突围为胜）。",
     winCondition: { type: "eliminate_marked_enemies", unitIds: ["e_lu_meng_mc"] } as WinCondition,
     extraLog: ["胜利条件：击破吕蒙中军，挫其追势。"],
-    allyExtras: ["zhao_yun", "zhou_cang", "zhuge_liang"],
+    allyExtras: ["zhao_yun", "liao_hua", "ma_liang"],
     enemies: [
       U("lu_meng", "e_lu_meng_mc", 20, 4),
       U("gan_ning", "e_gan_ning_mc", 28, 6),
+      U("zhu_ran", "e_zhuran_mc", 26, 6),
       G("e_mc1", "吴军强弩", 14, 8, 76, 11, 28, 38, "archer", "ping"),
       G("e_mc2", "麦城伏兵", 32, 8, 88, 11, 30, 28, "infantry", "shan"),
       G("e_mc3", "江岸死士", 10, 10, 92, 11, 31, 26, "infantry", "shui"),
@@ -729,7 +735,7 @@ const CAMPAIGN = {
     winCondition: { type: "eliminate_marked_enemies", unitIds: ["e_lu_xun_yi"] } as WinCondition,
     extraLog: ["胜利条件：击破吴军大都督陆逊本阵（余众可溃）。"],
     maxBattleRounds: 100,
-    allyExtras: ["zhao_yun", "zhou_cang", "zhuge_liang"],
+    allyExtras: ["zhao_yun", "zhang_baof", "wu_ban"],
     enemies: [
       U("lu_xun", "e_lu_xun_yi", 32, 6),
       U("lu_meng", "e_lu_meng_yi", 24, 8),
@@ -754,7 +760,7 @@ const CAMPAIGN = {
     scenarioBrief: "岸滩火迹未冷，林带仍有伏弩；宜以弓步层层迟滞，勿与吴水军深缠。",
     victoryBrief: "追兵遏止，蜀汉元气得续。",
     winCondition: { type: "eliminate_all" } as WinCondition,
-    allyExtras: ["zhao_yun", "zhou_cang", "zhuge_liang"],
+    allyExtras: ["zhao_yun", "chen_dao", "dong_yun"],
     enemies: [
       U("gan_ning", "e_gn_xt", 24, 4),
       U("ling_tong", "e_lt_xt", 30, 6),
@@ -769,13 +775,13 @@ const CAMPAIGN = {
     h: 28,
     terrain: "qishan",
     openingLog:
-      "诸葛亮再上祁山，司马懿深沟高垒；姜维新降，正是锐气可用之时。（秉承昭烈帝遗志，兴复汉室。）",
+      "诸葛亮再上祁山，司马懿深沟高垒；姜维、费祎等分掌军政，正是锐气可用之时。（秉承昭烈帝遗志，兴复汉室。）",
     scenarioBrief:
       "沙地与浅溪分割战场，骑兵与弓弩齐备。司马懿与张郃、徐晃诸部互为掎角，宜分兵牵制、寻机破其中军。",
     victoryBrief: "魏军全灭，祁山前哨得定（本关以全歼敌军为胜）。",
     winCondition: { type: "eliminate_all" } as WinCondition,
     maxBattleRounds: 105,
-    northernTeam: ["zhuge_liang", "zhao_yun", "jiang_wei", "wei_yan", "huang_zhong", "wang_ping"],
+    northernTeam: ["zhuge_liang", "jiang_wei", "wei_yan", "ma_su", "wang_ping", "fei_yi"],
     allyExtras: [],
     enemies: [
       U("si_ma_yi", "e_si_ma_yi_qs", 16, 4),

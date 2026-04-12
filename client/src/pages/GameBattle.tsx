@@ -445,6 +445,10 @@ type Props = {
   forceNarrowLayout?: boolean;
   /** 主战场滚动容器视口相对整张地图的比例（用于侧栏缩略图） */
   onScrollViewportChange?: (norm: BattleViewportNorm) => void;
+  /**
+   * 为 false 时：主地图格不显示地形类原生提示，属性浮窗不显示「脚下」地形行（鼠标静止时由父级置 false）。
+   */
+  mapHoverTipsActive?: boolean;
 };
 
 const MENU_ORDER: MenuAction[] = ["attack", "tactic", "wait"];
@@ -583,6 +587,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   onScrollViewportChange,
   inspectUnitId = null,
   inspectTapSeq = 0,
+  mapHoverTipsActive = true,
   }: Props,
   ref
 ) {
@@ -1900,9 +1905,11 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                 </div>
               );
             })()}
-            <div className="unit-attr-float__terrain">
-              脚下 {TERRAIN_LABEL[terrainAt(floatUnit.x, floatUnit.y)]}
-            </div>
+            {mapHoverTipsActive ? (
+              <div className="unit-attr-float__terrain">
+                脚下 {TERRAIN_LABEL[terrainAt(floatUnit.x, floatUnit.y)]}
+              </div>
+            ) : null}
           </div>
         </div>
       )}
@@ -1972,7 +1979,9 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                 onClick={() => {
                   if (canClickTile) onCellClick(x, y);
                 }}
-                title={`${TERRAIN_LABEL[terrainAt(x, y)]} (${x + 1},${y + 1})`}
+                title={
+                  mapHoverTipsActive ? TERRAIN_LABEL[terrainAt(x, y)] : undefined
+                }
                 role="presentation"
               />
               {dmgFx &&

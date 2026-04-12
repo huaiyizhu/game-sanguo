@@ -29,6 +29,73 @@ export function getNextScenarioId(currentId: string): string | null {
   return SCENARIO_ORDER[idx + 1];
 }
 
+const spawnOccupancyKey = (x: number, y: number) => `${x},${y}`;
+
+/** 不可作为出生点的地形（水、城墙、城门格） */
+export function isBlockedSpawnTerrain(t: Terrain): boolean {
+  return t === "water" || t === "wall" || t === "gate";
+}
+
+function bfsNearestValidSpawn(
+  terrain: Terrain[][],
+  w: number,
+  h: number,
+  sx: number,
+  sy: number,
+  taken: Set<string>
+): { x: number; y: number } | null {
+  const q: [number, number][] = [];
+  const seen = new Set<string>();
+  const push = (x: number, y: number) => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return;
+    const k = spawnOccupancyKey(x, y);
+    if (seen.has(k)) return;
+    seen.add(k);
+    q.push([x, y]);
+  };
+  push(sx, sy);
+  for (let qi = 0; qi < q.length; qi++) {
+    const [x, y] = q[qi]!;
+    const k = spawnOccupancyKey(x, y);
+    const cell = terrain[y]?.[x] ?? "plain";
+    if (!isBlockedSpawnTerrain(cell) && !taken.has(k)) {
+      return { x, y };
+    }
+    push(x + 1, y);
+    push(x - 1, y);
+    push(x, y + 1);
+    push(x, y - 1);
+  }
+  return null;
+}
+
+/**
+ * 将落在水/墙/城门格的单位挪到最近的合法陆地空位（按数组顺序，避免重叠）。
+ * 仅用于关卡拼装时的初始站位修正。
+ */
+export function sanitizeUnitSpawnPositions(terrain: Terrain[][], units: readonly Unit[]): Unit[] {
+  const h = terrain.length;
+  const w = terrain[0]?.length ?? 0;
+  if (w <= 0 || h <= 0) return [...units];
+  const taken = new Set<string>();
+  for (const u of units) {
+    taken.add(spawnOccupancyKey(u.x, u.y));
+  }
+  return units.map((u) => {
+    const cell = terrain[u.y]?.[u.x] ?? "plain";
+    if (!isBlockedSpawnTerrain(cell)) return u;
+    const k0 = spawnOccupancyKey(u.x, u.y);
+    taken.delete(k0);
+    const found = bfsNearestValidSpawn(terrain, w, h, u.x, u.y, taken);
+    if (!found) {
+      taken.add(k0);
+      return u;
+    }
+    taken.add(spawnOccupancyKey(found.x, found.y));
+    return { ...u, x: found.x, y: found.y };
+  });
+}
+
 /** 在指定横排铺城墙，仅 gateX 为城门（可通行），其余格为不可通行的城墙 */
 function addCityWallRow(
   rows: Terrain[][],
@@ -576,11 +643,12 @@ export function buildBattleStateForScenario(scenarioId: string): BattleState {
     ? playersNorthernTeam(w, h, tier, body.northernTeam)
     : playersFromExtras(w, h, tier, body.allyExtras);
   const enemies = compileCampaignEnemies(body.enemies, tier);
+  const placed = sanitizeUnitSpawnPositions(terrainGrid, [...players, ...enemies]);
   return baseState(
     scenarioId,
     title,
     terrainGrid,
-    [...players, ...enemies],
+    placed,
     openingLog,
     {
       scenarioBrief,
