@@ -48,6 +48,8 @@ const ENEMY_TURN_BANNER_FINISH_BUFFER_MS = 120;
 
 /** 格子边长上限（px）；低于旧版 96 便于一屏多看地图，立绘随 --cell 仍可读 */
 const BATTLE_CELL_MAX_PX = 76;
+/** 与 index.css `.battle-grid` gap 一致 */
+const BATTLE_GRID_GAP_PX = 3;
 
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));
@@ -117,6 +119,42 @@ function getWrapScrollportViewportRect(wrap: HTMLElement): DOMRect {
   const right = br.right - brw - pr;
   const bottom = br.bottom - bb - pb;
   return new DOMRect(left, top, Math.max(0, right - left), Math.max(0, bottom - top));
+}
+
+/** fit 模式：按 .battle-wrap 内容区与棋盘格数反推正方形格边长，使一屏内尽量多看格（仍受 MIN/MAX 限制） */
+function readBattleWrapPaddingBox(wrap: HTMLElement): { innerW: number; innerH: number } {
+  const st = getComputedStyle(wrap);
+  const pl = parseFloat(st.paddingLeft) || 0;
+  const pr = parseFloat(st.paddingRight) || 0;
+  const pt = parseFloat(st.paddingTop) || 0;
+  const pb = parseFloat(st.paddingBottom) || 0;
+  return {
+    innerW: Math.max(0, wrap.clientWidth - pl - pr),
+    innerH: Math.max(0, wrap.clientHeight - pt - pb),
+  };
+}
+
+function computeFitCellPxForViewport(args: {
+  innerW: number;
+  innerH: number;
+  gridW: number;
+  gridH: number;
+  headroomPx: number;
+}): number {
+  const { innerW, innerH, gridW, gridH, headroomPx } = args;
+  const gw = Math.max(1, gridW);
+  const gh = Math.max(1, gridH);
+  const gap = BATTLE_GRID_GAP_PX;
+  const sceneChromeV = 10;
+  const availHForGrid = Math.max(0, innerH - headroomPx - sceneChromeV);
+  const cellW = (innerW - (gw - 1) * gap) / gw;
+  const cellH = (availHForGrid - (gh - 1) * gap) / gh;
+  let cell = Math.min(cellW, cellH);
+  if (!Number.isFinite(cell) || cell <= 0) {
+    cell = BATTLE_CELL_MAX_PX;
+  }
+  cell = Math.floor(cell);
+  return Math.max(BATTLE_CELL_MIN_PX, Math.min(BATTLE_CELL_MAX_PX, cell));
 }
 
 /** 宽屏行动菜单锚点（与 index.css @media min-width 901 配套） */
@@ -280,8 +318,8 @@ function scrollBattleWrapToRevealCell(
   }
   clampBattleWrapScrollToGrid(wrap);
 }
-/** 极宽地图时每格不低于此值，避免点选过难 */
-const BATTLE_CELL_MIN_PX = 32;
+/** 极宽地图时每格不低于此值，避免点选过难；手机横屏可略压以换可视格数 */
+const BATTLE_CELL_MIN_PX = 30;
 /** fitViewport 下每格固定为该值（与上限一致） */
 const BATTLE_CELL_PX_VIEWPORT = BATTLE_CELL_MAX_PX;
 /** 一格 + 行间 gap（与 index.css .battle-grid gap: 3px 一致） */
@@ -573,6 +611,12 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     if (fitViewport) return fitCellPx > 0 ? `${fitCellPx}px` : `${BATTLE_CELL_PX_VIEWPORT}px`;
     return cellCss;
   }, [fitViewport, fitCellPx, cellCss]);
+  /** fit 顶缓冲随格长略缩，与 recomputeFitCellPx 内 head1 一致，避免横屏上占位过大 */
+  const fitScrollHeadroomPx = useMemo(() => {
+    if (!fitViewport) return BATTLE_GRID_SCROLL_HEADROOM_PX;
+    const c = fitCellPx > 0 ? fitCellPx : BATTLE_CELL_MIN_PX;
+    return Math.min(BATTLE_GRID_SCROLL_HEADROOM_PX, Math.round((c + BATTLE_GRID_GAP_PX) * 1.5));
+  }, [fitViewport, fitCellPx]);
   const battleWrapRef = useRef<HTMLDivElement>(null);
   const onScrollViewportChangeRef = useRef(onScrollViewportChange);
   onScrollViewportChangeRef.current = onScrollViewportChange;
@@ -688,12 +732,38 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     };
   }, []);
 
+  const recomputeFitCellPx = useCallback(() => {
+    if (!fitViewport) return;
+    const wrap = battleWrapRef.current;
+    if (!wrap || wrap.clientWidth < 8 || wrap.clientHeight < 8) return;
+    const { innerW, innerH } = readBattleWrapPaddingBox(wrap);
+    const gap = BATTLE_GRID_GAP_PX;
+    const head0 = Math.round((BATTLE_CELL_MIN_PX + gap) * 1.5);
+    let cell = computeFitCellPxForViewport({
+      innerW,
+      innerH,
+      gridW,
+      gridH,
+      headroomPx: head0,
+    });
+    const head1 = Math.min(
+      BATTLE_GRID_SCROLL_HEADROOM_PX,
+      Math.round((cell + gap) * 1.5)
+    );
+    cell = computeFitCellPxForViewport({
+      innerW,
+      innerH,
+      gridW,
+      gridH,
+      headroomPx: head1,
+    });
+    setFitCellPx((prev) => (prev === cell ? prev : cell));
+  }, [fitViewport, gridW, gridH]);
+
   useEffect(() => {
     if (!fitViewport) {
       setFitCellPx(0);
-      return;
     }
-    setFitCellPx(BATTLE_CELL_PX_VIEWPORT);
   }, [fitViewport]);
 
   const reportScrollViewport = useCallback(() => {
@@ -736,17 +806,25 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     if (!fitViewport || !onScrollViewportChange) return;
     const el = battleWrapRef.current;
     if (!el) return;
+    recomputeFitCellPx();
     reportScrollViewport();
     el.addEventListener("scroll", reportScrollViewport, { passive: true });
-    const ro = new ResizeObserver(() => reportScrollViewport());
+    const ro = new ResizeObserver(() => {
+      recomputeFitCellPx();
+      reportScrollViewport();
+    });
     ro.observe(el);
-    window.addEventListener("resize", reportScrollViewport);
+    const onWinResize = () => {
+      recomputeFitCellPx();
+      reportScrollViewport();
+    };
+    window.addEventListener("resize", onWinResize);
     return () => {
       el.removeEventListener("scroll", reportScrollViewport);
       ro.disconnect();
-      window.removeEventListener("resize", reportScrollViewport);
+      window.removeEventListener("resize", onWinResize);
     };
-  }, [fitViewport, onScrollViewportChange, reportScrollViewport, gridW, gridH]);
+  }, [fitViewport, onScrollViewportChange, reportScrollViewport, recomputeFitCellPx, gridW, gridH]);
 
   useLayoutEffect(() => {
     if (!fitViewport) return;
@@ -754,7 +832,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     if (!wrap) return;
     const id = requestAnimationFrame(() => clampBattleWrapScrollToGrid(wrap));
     return () => cancelAnimationFrame(id);
-  }, [fitViewport, gridW, gridH, cellCssEffective, visualEpoch]);
+  }, [fitViewport, gridW, gridH, cellCssEffective, fitScrollHeadroomPx, visualEpoch]);
 
   const moveSet = new Set(moveTargets.map((t) => `${t.x},${t.y}`));
   const [menuFocus, setMenuFocus] = useState(0);
@@ -1826,7 +1904,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
             style={{
               flexShrink: 0,
               width: "100%",
-              height: BATTLE_GRID_SCROLL_HEADROOM_PX,
+              height: fitScrollHeadroomPx,
               pointerEvents: "none",
             }}
           />

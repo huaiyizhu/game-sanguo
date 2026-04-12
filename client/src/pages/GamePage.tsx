@@ -227,10 +227,11 @@ export default function GamePage() {
     try {
       const raw = localStorage.getItem("sanguo_meta_sidebar_collapsed");
       if (raw === "0" || raw === "1") return raw === "1";
-      if (
-        typeof window !== "undefined" &&
-        window.matchMedia("(max-width: 640px) and (orientation: portrait)").matches
-      ) {
+      if (typeof window === "undefined") return false;
+      if (window.matchMedia("(max-width: 640px) and (orientation: portrait)").matches) {
+        return true;
+      }
+      if (window.matchMedia("(max-width: 900px) and (orientation: landscape)").matches) {
         return true;
       }
       return false;
@@ -240,10 +241,11 @@ export default function GamePage() {
   });
   const [rosterExpanded, setRosterExpanded] = useState(() => {
     try {
-      if (
-        typeof window !== "undefined" &&
-        window.matchMedia("(max-width: 640px) and (orientation: portrait)").matches
-      ) {
+      if (typeof window === "undefined") return true;
+      if (window.matchMedia("(max-width: 640px) and (orientation: portrait)").matches) {
+        return false;
+      }
+      if (window.matchMedia("(max-width: 900px) and (orientation: landscape)").matches) {
         return false;
       }
     } catch {
@@ -253,10 +255,11 @@ export default function GamePage() {
   });
   const [unitInspectExpanded, setUnitInspectExpanded] = useState(() => {
     try {
-      if (
-        typeof window !== "undefined" &&
-        window.matchMedia("(max-width: 640px) and (orientation: portrait)").matches
-      ) {
+      if (typeof window === "undefined") return true;
+      if (window.matchMedia("(max-width: 640px) and (orientation: portrait)").matches) {
+        return false;
+      }
+      if (window.matchMedia("(max-width: 900px) and (orientation: landscape)").matches) {
         return false;
       }
     } catch {

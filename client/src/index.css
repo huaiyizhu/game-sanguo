@@ -402,10 +402,16 @@ a:hover {
 
 /* 横屏手机：侧栏条 + 大地图同一行，避免纵向堆叠把地图压成一条 */
 @media (max-width: 900px) and (orientation: landscape) {
+  .page.game-layout.game-layout--battle {
+    padding-top: max(0.2rem, env(safe-area-inset-top, 0px));
+    padding-bottom: max(0.28rem, env(safe-area-inset-bottom, 0px));
+  }
+
   .game-layout.game-layout--battle {
-    grid-template-columns: minmax(140px, min(200px, 32vw)) minmax(0, 1fr);
+    grid-template-columns: minmax(104px, min(156px, 24vw)) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr);
     min-height: 0;
+    gap: 0.32rem;
   }
 
   .game-layout.game-layout--battle .game-main.game-main--battle {
@@ -418,14 +424,120 @@ a:hover {
     max-height: none;
     align-self: stretch;
     overflow-y: auto;
+    gap: 0.38rem;
+  }
+
+  .game-left-toprow .battle-back-home--toprow {
+    padding: 0.26rem 0.32rem;
+    font-size: 0.62rem;
+    min-height: 36px;
+  }
+
+  .game-left-newgame {
+    padding: 0.22rem 0.38rem;
+    font-size: 0.62rem;
+    min-height: 36px;
+  }
+
+  .sidebar-expand-bar {
+    min-height: 38px;
+    padding: 0.34rem 0.45rem;
+    font-size: 0.68rem;
+    border-radius: 7px;
+  }
+
+  .game-meta-sidebar {
+    padding: 0.42rem 0.48rem;
+  }
+
+  .meta-sidebar-header {
+    margin-bottom: 0.35rem;
+  }
+
+  .meta-sidebar-header .back-link {
+    font-size: 0.72rem;
+  }
+
+  .meta-compact-line {
+    font-size: 0.68rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .btn-collapse-sidebar {
+    font-size: 0.62rem;
+    padding: 0.2rem 0.35rem;
+  }
+
+  .battle-overview {
+    padding: 0.28rem 0.35rem 0.26rem;
+  }
+
+  .battle-overview__title {
+    font-size: 0.58rem;
+    margin-bottom: 0.08rem;
+  }
+
+  .battle-overview__rounds {
+    font-size: 0.56rem;
+    margin: 0 0 0.16rem;
+  }
+
+  .battle-overview__hint {
+    font-size: 0.52rem;
+    margin-top: 0.12rem;
+  }
+
+  .battle-roster-disclosure > summary {
+    padding: 0.32rem 0.42rem;
+    font-size: 0.64rem;
+  }
+
+  .battle-play-area {
+    gap: 0.28rem;
+  }
+
+  .unit-inspect-float__summary {
+    padding: 0.3rem 0.48rem;
+    font-size: 0.72rem;
   }
 
   .unit-inspect-float__inner {
-    max-height: min(42dvh, 12rem);
+    max-height: min(34dvh, 11rem);
+  }
+
+  .unit-inspect-float__inner.battle-right-panel__body {
+    max-height: min(40dvh, 18rem);
   }
 
   .game-layout.game-layout--battle .game-left-stack .battle-roster__list {
-    max-height: min(36dvh, 11rem);
+    max-height: min(32dvh, 9.5rem);
+  }
+
+  .battle-wrap.battle-wrap--fit {
+    padding: 0.42rem 0.48rem;
+  }
+
+  .battle-scene.battle-scene--fit {
+    padding: 0.2rem 0;
+  }
+}
+
+@media (max-width: 640px) and (orientation: landscape) {
+  .game-layout.game-layout--battle {
+    grid-template-columns: minmax(92px, min(132px, 20vw)) minmax(0, 1fr);
+    gap: 0.22rem;
+  }
+
+  .battle-overview__title {
+    font-size: 0.54rem;
+  }
+
+  .battle-overview__rounds {
+    font-size: 0.52rem;
+  }
+
+  .battle-wrap.battle-wrap--fit {
+    padding: 0.35rem 0.4rem;
   }
 }
 
