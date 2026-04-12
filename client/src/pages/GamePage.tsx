@@ -8,6 +8,7 @@ import {
   type ServerSaveRow,
 } from "../api";
 import {
+  advanceBattleScript,
   advancePendingMove,
   cancelPickTarget,
   cancelTacticMenu,
@@ -71,6 +72,7 @@ import { LOCAL_SAVES_KEY } from "../game/types";
 import BattleOverviewMap, {
   type BattleViewportNorm,
 } from "../components/BattleOverviewMap";
+import BattleDialogueOverlay from "../components/BattleDialogueOverlay";
 import GeneralAvatar from "../components/GeneralAvatar";
 import GameBattle, { type GameBattleHandle, type MenuAction } from "./GameBattle";
 
@@ -367,6 +369,18 @@ export default function GamePage() {
     setVisualEpoch((n) => n + 1);
   }, []);
 
+  const advanceBattleDialogue = useCallback(() => {
+    setBattle((b) => {
+      if (!b.battleScript) return b;
+      const kind = b.battleScript.kind;
+      const next = advanceBattleScript(b);
+      if (kind === "opening" && !next.battleScript) {
+        queueMicrotask(() => bumpVisualEpoch());
+      }
+      return next;
+    });
+  }, [bumpVisualEpoch]);
+
   const setMetaCollapsed = useCallback((collapsed: boolean) => {
     setMetaSidebarCollapsed(collapsed);
     try {
@@ -559,6 +573,7 @@ export default function GamePage() {
   /** 胜利条件已达成：等最后一击飘字 + 阵亡动画播完再揭示 outcome: "won"（与 GameBattle 时长一致） */
   useEffect(() => {
     if (!battle.pendingVictory) return;
+    if (battle.battleScript) return;
     const reduced =
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -567,7 +582,7 @@ export default function GamePage() {
       setBattle((b) => commitPendingVictory(b));
     }, ms);
     return () => window.clearTimeout(tid);
-  }, [battle.pendingVictory]);
+  }, [battle.pendingVictory, battle.battleScript]);
 
   useEffect(() => {
     const onVis = () => {
@@ -723,6 +738,7 @@ export default function GamePage() {
   const onCellClick = useCallback(async (x: number, y: number) => {
     if (battleRef.current.pendingVictory) return;
     if (battleRef.current.pendingMove) return;
+    if (battleRef.current.battleScript) return;
     if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
     if (battleRef.current.outcome === "playing" && battleRef.current.turn !== "player") return;
     const occupant = battleRef.current.units.find(
@@ -754,6 +770,7 @@ export default function GamePage() {
   const onUnitClick = useCallback((unitId: string, side: "player" | "enemy") => {
     if (battleRef.current.pendingVictory) return;
     if (battleRef.current.pendingMove) return;
+    if (battleRef.current.battleScript) return;
     if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
     if (battleRef.current.outcome === "playing" && battleRef.current.turn !== "player") return;
     setInspectUnitId(unitId);
@@ -770,6 +787,7 @@ export default function GamePage() {
 
   const onMenuAction = useCallback((action: MenuAction) => {
     if (battleRef.current.pendingVictory) return;
+    if (battleRef.current.battleScript) return;
     if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
     if (action === "wait") {
       /* 待机后不再回弹属性浮窗：清掉当前检视目标 */
@@ -784,24 +802,28 @@ export default function GamePage() {
 
   const onTacticPick = useCallback((kind: TacticKind) => {
     if (battleRef.current.pendingVictory) return;
+    if (battleRef.current.battleScript) return;
     if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
     setBattle((s) => tacticMenuChoose(s, kind));
   }, []);
 
   const onEscapeOrRevert = useCallback(() => {
     if (battleRef.current.pendingVictory) return;
+    if (battleRef.current.battleScript) return;
     if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
     setBattle((s) => escapeOrRevertUnit(s));
   }, []);
 
   const onPickNavigate = useCallback((delta: number) => {
     if (battleRef.current.pendingVictory) return;
+    if (battleRef.current.battleScript) return;
     if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
     setBattle((s) => pickTargetNavigate(s, delta));
   }, []);
 
   const onPickConfirmFocused = useCallback(() => {
     if (battleRef.current.pendingVictory) return;
+    if (battleRef.current.battleScript) return;
     if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
     setBattle((s) => {
       const p = s.pickTarget;
@@ -813,12 +835,14 @@ export default function GamePage() {
 
   const onPickHoverEnemy = useCallback((enemyId: string) => {
     if (battleRef.current.pendingVictory) return;
+    if (battleRef.current.battleScript) return;
     if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
     setBattle((s) => pickTargetFocusEnemy(s, enemyId));
   }, []);
 
   const onWait = useCallback(() => {
     if (battleRef.current.pendingVictory) return;
+    if (battleRef.current.battleScript) return;
     if (battleRef.current.outcome === "playing" && turnIntroLockedRef.current) return;
     setBattle((s) => {
       if (s.phase === "pick-target") return cancelPickTarget(s);
@@ -834,6 +858,7 @@ export default function GamePage() {
     if (battleRef.current.outcome !== "playing") return;
     if (battleRef.current.turn !== "player") return;
     if (battleRef.current.pendingMove) return;
+    if (battleRef.current.battleScript) return;
     if (turnIntroLockedRef.current) return;
     setBattle((s) => endPlayerTurnImmediately(s));
   }, []);
@@ -991,6 +1016,7 @@ export default function GamePage() {
   }, [battle.units]);
 
   const onRosterPickUnit = useCallback((u: Unit) => {
+    if (battleRef.current.battleScript) return;
     if (battleRef.current.outcome === "playing" && battleRef.current.turn !== "player") return;
     setInspectUnitId(u.id);
     setRightInspectorTab("unit");
@@ -1277,7 +1303,8 @@ export default function GamePage() {
                         battle.turn !== "player" ||
                         !battle.selectedId ||
                         battle.phase === "enemy" ||
-                        turnIntroLocked
+                        turnIntroLocked ||
+                        Boolean(battle.battleScript)
                       }
                       title="当前选中单位待机"
                     >
@@ -1291,7 +1318,8 @@ export default function GamePage() {
                         battle.outcome !== "playing" ||
                         battle.turn !== "player" ||
                         turnIntroLocked ||
-                        Boolean(battle.pendingMove)
+                        Boolean(battle.pendingMove) ||
+                        Boolean(battle.battleScript)
                       }
                       title="直接结束我方回合"
                     >
@@ -1793,6 +1821,7 @@ export default function GamePage() {
               inspectTapSeq={inspectTapSeq}
               visualEpoch={visualEpoch}
               turnIntroLocked={turnIntroLocked}
+              battleScriptBlocked={Boolean(battle.battleScript)}
               forceNarrowLayout={cheatBattleLayout !== "none"}
               keyboardBlocked={stagePickerOpen || generalCodexOpen}
               fitViewport
@@ -1809,6 +1838,15 @@ export default function GamePage() {
               onPickConfirmFocused={onPickConfirmFocused}
               onPickHoverEnemy={onPickHoverEnemy}
             />
+            {battle.outcome === "playing" &&
+            battle.battleScript &&
+            battle.battleScript.lines.length > 0 ? (
+              <BattleDialogueOverlay
+                line={battle.battleScript.lines[battle.battleScript.cursor]!}
+                progressLabel={`${battle.battleScript.cursor + 1} / ${battle.battleScript.lines.length}`}
+                onAdvance={advanceBattleDialogue}
+              />
+            ) : null}
           </div>
         </div>
       </main>

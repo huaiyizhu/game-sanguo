@@ -122,6 +122,34 @@ export type PendingMove = {
   from?: { x: number; y: number };
 };
 
+/** 剧情对白一行（配置）：按 catalog / 姓名在场上找发言人 */
+export type BattleScriptLineDef = {
+  speakerCatalogId?: string;
+  speakerNameIncludes?: string;
+  displayName?: string;
+  displayLevel?: number;
+  displaySide?: Side;
+  text: string;
+};
+
+/** 已解析到具体头像与等级的对白行 */
+export type BattleScriptLineResolved = {
+  name: string;
+  level: number;
+  side: Side;
+  portraitCatalogId?: string;
+  text: string;
+};
+
+export type BattleScriptKind = "opening" | "reaction";
+
+/** 对白队列：cursor 为当前条下标，任意键推进，满后清空 */
+export type BattleScriptQueue = {
+  kind: BattleScriptKind;
+  lines: BattleScriptLineResolved[];
+  cursor: number;
+};
+
 export interface BattleState {
   version: 2;
   scenarioId: string;
@@ -171,6 +199,11 @@ export interface BattleState {
   battleRound: number;
   /** 回合上限；超过后仍未达成胜利则败北。未设则由关卡默认 */
   maxBattleRounds?: number;
+  /**
+   * 开场或关键阵亡等剧情对白；非空时 UI 盖在地图之上并阻塞操作，逐条按任意键推进。
+   * 旧存档无此字段时视为 null。
+   */
+  battleScript?: BattleScriptQueue | null;
 }
 
 export const LOCAL_SAVES_KEY = "sanguo_local_saves";

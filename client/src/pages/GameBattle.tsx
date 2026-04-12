@@ -449,6 +449,8 @@ type Props = {
    * 为 false 时：主地图格不显示地形类原生提示，属性浮窗不显示「脚下」地形行（鼠标静止时由父级置 false）。
    */
   mapHoverTipsActive?: boolean;
+  /** 剧情对白盖在地图上时阻塞回合门控与开场横幅，避免与对白抢时序 */
+  battleScriptBlocked?: boolean;
 };
 
 const MENU_ORDER: MenuAction[] = ["attack", "tactic", "wait"];
@@ -589,6 +591,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   inspectUnitId = null,
   inspectTapSeq = 0,
   mapHoverTipsActive = true,
+  battleScriptBlocked = false,
   }: Props,
   ref
 ) {
@@ -900,6 +903,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   const prevPhaseRef = useRef<BattlePhase | null>(null);
   const prevTurnBattleRef = useRef<"player" | "enemy" | undefined>(undefined);
   const prevGateTurnRef = useRef<"player" | "enemy" | undefined>(undefined);
+  const scriptGateLatchRef = useRef(false);
   const turnBannerTimerRef = useRef<number>(0);
   const turnBannerDelayRef = useRef<number>(0);
   const turnGateTimerRef = useRef<number>(0);
@@ -942,6 +946,8 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     moveSlideFallbackTimersRef.current.clear();
   }, [visualEpoch]);
 
+  const mapInteractLocked = turnIntroLocked || battleScriptBlocked;
+
   const battleMenuActive =
     outcome === "playing" &&
     turn === "player" &&
@@ -973,6 +979,12 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       window.clearTimeout(turnBannerDelayRef.current);
       setTurnBanner(null);
       prevTurnBattleRef.current = battle.turn;
+      return;
+    }
+    if (battleScriptBlocked) {
+      window.clearTimeout(turnBannerTimerRef.current);
+      window.clearTimeout(turnBannerDelayRef.current);
+      setTurnBanner(null);
       return;
     }
     const prev = prevTurnBattleRef.current;
@@ -1017,14 +1029,26 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       window.clearTimeout(turnBannerTimerRef.current);
       window.clearTimeout(turnBannerDelayRef.current);
     };
-  }, [battle.turn, battle.outcome]);
+  }, [battle.turn, battle.outcome, battleScriptBlocked]);
 
   useEffect(() => {
     if (battle.outcome !== "playing") {
       window.clearTimeout(turnGateTimerRef.current);
       prevGateTurnRef.current = battle.turn;
+      scriptGateLatchRef.current = false;
       onTurnActionReady(true);
       return;
+    }
+    if (battleScriptBlocked) {
+      window.clearTimeout(turnGateTimerRef.current);
+      onTurnActionReady(false);
+      prevGateTurnRef.current = battle.turn;
+      scriptGateLatchRef.current = true;
+      return;
+    }
+    if (scriptGateLatchRef.current) {
+      scriptGateLatchRef.current = false;
+      prevGateTurnRef.current = undefined;
     }
     const prev = prevGateTurnRef.current;
     const curr = battle.turn;
@@ -1050,7 +1074,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       /* React Strict Mode：首次 effect 的定时器被清掉后，若 ref 已写入 curr，再次执行会 prev===curr 直接 return，永远不调 onTurnActionReady(true) */
       prevGateTurnRef.current = undefined;
     };
-  }, [battle.turn, battle.outcome, visualEpoch, onTurnActionReady]);
+  }, [battle.turn, battle.outcome, visualEpoch, onTurnActionReady, battleScriptBlocked]);
 
   const tabWasHiddenRef = useRef(false);
   useEffect(() => {
@@ -1072,6 +1096,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
 
   useEffect(() => {
     if (outcome !== "playing") return;
+    if (battleScriptBlocked) return;
     if (!turnBanner && !turnIntroLocked && !keyboardBlocked) return;
     const block = (e: Event) => {
       e.preventDefault();
@@ -1083,7 +1108,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       window.removeEventListener("keydown", block, true);
       window.removeEventListener("keyup", block, true);
     };
-  }, [turnBanner, turnIntroLocked, keyboardBlocked, outcome]);
+  }, [turnBanner, turnIntroLocked, keyboardBlocked, outcome, battleScriptBlocked]);
 
   const selectedUnit = selectedId ? units.find((u) => u.id === selectedId) : undefined;
   const attackOk =
@@ -1615,7 +1640,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
 
   const onContextMenu = useCallback(
     (e: MouseEvent) => {
-      if (outcome !== "playing" || turn !== "player" || turnIntroLocked) return;
+      if (outcome !== "playing" || turn !== "player" || mapInteractLocked) return;
       if (
         phase === "move" ||
         phase === "menu" ||
@@ -1626,7 +1651,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
         onEscapeOrRevert();
       }
     },
-    [outcome, turn, phase, turnIntroLocked, onEscapeOrRevert]
+    [outcome, turn, phase, mapInteractLocked, onEscapeOrRevert]
   );
 
   const cells: { x: number; y: number }[] = [];
@@ -1707,7 +1732,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       (isMove || onOwnCell) &&
       selectedId &&
       !pendingMove &&
-      !turnIntroLocked;
+      !mapInteractLocked;
     const showMenu =
       Boolean(u) &&
       u!.id === selectedId &&
@@ -1769,7 +1794,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       aria-label="battlefield"
       onContextMenu={onContextMenu}
     >
-      {outcome === "playing" && turnIntroLocked && (
+      {outcome === "playing" && turnIntroLocked && !battleScriptBlocked && (
         <div className="turn-intro-input-blocker" aria-hidden />
       )}
       {turnBanner && (
@@ -2155,7 +2180,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                       u.hp > 0 &&
                       !(u.moved && u.acted) &&
                       !pendingMove &&
-                      !turnIntroLocked &&
+                      !mapInteractLocked &&
                       selectedId != null &&
                       u.id === selectedId
                         ? "selectable"

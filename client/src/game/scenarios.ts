@@ -12,6 +12,7 @@ import {
   movePointsForTroop,
   tacticMaxForUnit,
 } from "./types";
+import { buildOpeningBattleScript } from "./battleScript";
 import {
   SCENARIO_ORDER,
   type CampaignEnemyRow,
@@ -629,6 +630,7 @@ function baseState(
     winCondition: meta.winCondition,
     battleRound: 1,
     maxBattleRounds: meta.maxBattleRounds ?? 85,
+    battleScript: null,
   };
 }
 
@@ -644,7 +646,7 @@ export function buildBattleStateForScenario(scenarioId: string): BattleState {
     : playersFromExtras(w, h, tier, body.allyExtras);
   const enemies = compileCampaignEnemies(body.enemies, tier);
   const placed = sanitizeUnitSpawnPositions(terrainGrid, [...players, ...enemies]);
-  return baseState(
+  const base = baseState(
     scenarioId,
     title,
     terrainGrid,
@@ -658,6 +660,8 @@ export function buildBattleStateForScenario(scenarioId: string): BattleState {
       extraLog: body.extraLog,
     }
   );
+  const opening = buildOpeningBattleScript(scenarioId, title, victoryBrief, base.units);
+  return opening ? { ...base, battleScript: opening } : base;
 }
 
 /** 秘籍选关面板用：全部关卡 id 与标题 */

@@ -1,3 +1,4 @@
+import { tryQueueDeathReactionScript } from "./battleScript";
 import type {
   ArmyType,
   BattleState,
@@ -38,6 +39,8 @@ import {
   createDefaultTerrain,
   getNextScenarioId,
 } from "./scenarios";
+
+export { advanceBattleScript } from "./battleScript";
 
 const key = (x: number, y: number) => `${x},${y}`;
 
@@ -995,6 +998,7 @@ function applyPlayerMeleeDamage(
     log: [...state.log, ...lines],
   };
   if (dmg > 0) next = attachDamagePulse(next, enemyId, dmg, hpBeforeMelee, "melee");
+  if (killed) next = tryQueueDeathReactionScript(next, { ...target, hp: newHp });
   next = checkOutcome(next);
   if (next.pendingVictory) return next;
   if (next.outcome !== "playing") return next;
@@ -1048,6 +1052,7 @@ function applyPlayerTacticDamage(
     log: [...state.log, ...lines],
   };
   if (dmg > 0) next = attachDamagePulse(next, enemyId, dmg, hpBeforeTactic, "tactic");
+  if (killed) next = tryQueueDeathReactionScript(next, { ...target, hp: newHp });
   next = checkOutcome(next);
   if (next.pendingVictory) return next;
   if (next.outcome !== "playing") return next;
@@ -1282,6 +1287,7 @@ function enemyAttackAfterAdvance(s: BattleState, eid: string): BattleState {
     ],
   };
   if (dmg > 0) hit = attachDamagePulse(hit, adj2.id, dmg, hpBeforeEnemyHit, "melee");
+  if (newHp <= 0) hit = tryQueueDeathReactionScript(hit, { ...adj2, hp: newHp });
   return hit;
 }
 
@@ -1308,6 +1314,7 @@ function executeEnemyUnitAction(state: BattleState, eid: string): BattleState {
       ],
     };
     if (dmg > 0) hit = attachDamagePulse(hit, adj.id, dmg, hpBeforeEnemyMelee, "melee");
+    if (newHp <= 0) hit = tryQueueDeathReactionScript(hit, { ...adj, hp: newHp });
     return checkOutcome(hit);
   }
   const target = players.reduce((a, b) => {
@@ -1539,6 +1546,20 @@ export function ensureBattleFields(b: BattleState): BattleState {
         return createDefaultTerrain(s.gridW, s.gridH);
       }
       return s.terrain.map((row) => row.map((c) => normalizeTerrainCell(c)));
+    })(),
+    battleScript: (() => {
+      const q = s.battleScript;
+      if (!q || typeof q !== "object" || !Array.isArray(q.lines) || q.lines.length === 0) {
+        return null;
+      }
+      const kind = q.kind === "reaction" ? "reaction" : "opening";
+      const lines = q.lines.filter(
+        (l) => l && typeof l === "object" && typeof (l as { text?: unknown }).text === "string"
+      ) as NonNullable<BattleState["battleScript"]>["lines"];
+      if (lines.length === 0) return null;
+      const raw = typeof q.cursor === "number" ? Math.floor(q.cursor) : 0;
+      const cursor = Math.max(0, Math.min(lines.length - 1, raw));
+      return { kind, lines, cursor };
     })(),
   };
   s = { ...s, units: s.units.map((u) => ensureUnitShape(u as Unit | Record<string, unknown>)) };
