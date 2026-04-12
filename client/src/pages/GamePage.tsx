@@ -234,7 +234,7 @@ export default function GamePage() {
   inspectUnitIdRef.current = inspectUnitId;
   /** 每次点将/检视递增，使 GameBattle 在再次点同一单位时仍能重播属性浮窗 */
   const [inspectTapSeq, setInspectTapSeq] = useState(0);
-  /** 主战场有指针活动时为 true；静止一段时间后隐藏左侧提要、右侧地形图例与格上地形提示 */
+  /** 主战场有指针活动时为 true；静止一段时间后隐藏右侧地形图例与格上地形提示（左侧「战局」提要不受此项影响，避免随地图边缘微动反复伸缩与滚动条闪烁） */
   const MAP_POINTER_IDLE_MS = 1400;
   const [battleMapPointerActive, setBattleMapPointerActive] = useState(true);
   const battleMapPointerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -299,6 +299,8 @@ export default function GamePage() {
       return false;
     }
   });
+  /** 整块左侧（战局 / 略图 / 战场单位）收起为一条边栏，仅留主区「信息与存档」与地图 */
+  const [battleLeftPanelHidden, setBattleLeftPanelHidden] = useState(false);
   const [rosterExpanded, setRosterExpanded] = useState(() => {
     try {
       if (typeof window === "undefined") return true;
@@ -1020,7 +1022,9 @@ export default function GamePage() {
           : cheatBattleLayout === "landscape"
             ? " game-layout--cheat-mobile-landscape"
             : ""
-      }${cheatBattleLayout !== "none" || battleMobileUi ? " game-layout--battle-mobile-ui" : ""}`}
+      }${cheatBattleLayout !== "none" || battleMobileUi ? " game-layout--battle-mobile-ui" : ""}${
+        battleLeftPanelHidden ? " game-layout--battle-left-hidden" : ""
+      }`}
     >
       {stagePickerOpen && (
         <div
@@ -1161,13 +1165,28 @@ export default function GamePage() {
           </div>
         </div>
       )}
-      <div className="game-left-stack">
+      <div
+        className={["game-left-stack", battleLeftPanelHidden ? "game-left-stack--rail-only" : ""]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        {!battleLeftPanelHidden ? (
+          <div className="game-left-stack__body">
         <div className="game-left-toprow" role="toolbar" aria-label="导航与开局">
           <Link to="/" className="battle-back-home battle-back-home--sidebar battle-back-home--toprow">
             ← 返回首页
           </Link>
           <button type="button" className="btn tiny game-left-newgame" onClick={onNewGame}>
             新游戏
+          </button>
+          <button
+            type="button"
+            className="btn tiny game-left-hide-panel"
+            onClick={() => setBattleLeftPanelHidden(true)}
+            title="收起左侧，仅保留地图与「信息与存档」"
+            aria-label="收起左侧战局、略图与战场单位"
+          >
+            ⟨
           </button>
         </div>
         {metaSidebarCollapsed ? (
@@ -1196,10 +1215,10 @@ export default function GamePage() {
               <br />
               <span className="status-inline">{statusLine}</span>
             </p>
-            {battleMapPointerActive && battle.scenarioBrief ? (
+            {battle.scenarioBrief ? (
               <p className="scenario-story small">{battle.scenarioBrief}</p>
             ) : null}
-            {battleMapPointerActive && battle.victoryBrief ? (
+            {battle.victoryBrief ? (
               <p className="victory-hint small">
                 <strong>胜利条件：</strong>
                 {battle.victoryBrief}
@@ -1365,6 +1384,20 @@ export default function GamePage() {
             </div>
           </aside>
         </details>
+          </div>
+        ) : null}
+        {battleLeftPanelHidden ? (
+          <button
+            type="button"
+            className="game-left-edge-toggle"
+            onClick={() => setBattleLeftPanelHidden(false)}
+            aria-expanded={false}
+            aria-label="展开左侧战局、略图与战场单位"
+            title="展开左侧战局、略图与战场单位"
+          >
+            ⟩
+          </button>
+        ) : null}
       </div>
 
       <main className="game-main game-main--battle">
