@@ -437,7 +437,7 @@ type Props = {
   keyboardBlocked?: boolean;
   /** 为 true 时棋盘在容器内缩放铺满，不出现滚动条 */
   fitViewport?: boolean;
-  /** 秘籍：桌面强开窄屏 UI（与 max-width:900 时一致，用于 Ctrl+M 调试） */
+  /** 秘籍：桌面强开窄屏 UI（与 max-width:900 时一致；GamePage Ctrl+M / Ctrl+Shift+M） */
   forceNarrowLayout?: boolean;
   /** 主战场滚动容器视口相对整张地图的比例（用于侧栏缩略图） */
   onScrollViewportChange?: (norm: BattleViewportNorm) => void;

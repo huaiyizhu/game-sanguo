@@ -16,6 +16,8 @@ type Props = {
   viewport: BattleViewportNorm | null;
   battleRound: number;
   maxBattleRounds: number;
+  /** 外层 summary 已写「战局略图」时隐藏组件内标题行，避免重复 */
+  hideHeading?: boolean;
 };
 
 function terrainAt(terrain: Terrain[][], x: number, y: number): Terrain {
@@ -30,6 +32,7 @@ export default function BattleOverviewMap({
   viewport,
   battleRound,
   maxBattleRounds,
+  hideHeading = false,
 }: Props) {
   const cells: { x: number; y: number; t: Terrain }[] = [];
   for (let y = 0; y < gridH; y++) {
@@ -63,7 +66,7 @@ export default function BattleOverviewMap({
 
   return (
     <div className="battle-overview" aria-label="战场缩略图">
-      <p className="battle-overview__title">战局略图</p>
+      {!hideHeading ? <p className="battle-overview__title">战局略图</p> : null}
       <p className="battle-overview__rounds" aria-live="polite">
         回合 <span className="battle-overview__rounds-num">{r}</span>
         <span className="battle-overview__rounds-sep"> / </span>

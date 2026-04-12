@@ -96,9 +96,15 @@ const CHEAT_LEVEL_UP_COMBO = (e: KeyboardEvent) =>
 const CHEAT_NEXT_STAGE_COMBO = (e: KeyboardEvent) =>
   e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && e.code === "KeyD";
 
-/** 秘籍：切换「手机式」战斗布局（桌面强开窄屏样式；再按切回） */
-const CHEAT_MOBILE_LAYOUT_COMBO = (e: KeyboardEvent) =>
+/** 秘籍：手机横屏布局；已在秘籍横/竖屏时再按则恢复桌面 */
+const CHEAT_MOBILE_LANDSCAPE_COMBO = (e: KeyboardEvent) =>
   e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && e.code === "KeyM";
+
+/** 秘籍：手机竖屏布局 */
+const CHEAT_MOBILE_PORTRAIT_COMBO = (e: KeyboardEvent) =>
+  e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.code === "KeyM";
+
+type CheatBattleLayout = "none" | "landscape" | "portrait";
 
 const SCENARIO_PICKER_ENTRIES = listScenarioEntries();
 const GENERALS_CODEX_LIST = listGeneralsSorted();
@@ -221,8 +227,8 @@ export default function GamePage() {
   inspectUnitIdRef.current = inspectUnitId;
   /** 每次点将/检视递增，使 GameBattle 在再次点同一单位时仍能重播属性浮窗 */
   const [inspectTapSeq, setInspectTapSeq] = useState(0);
-  /** 秘籍 Ctrl+M：桌面强开竖屏手机式栅格与侧栏，便于调试窄屏 UI */
-  const [cheatForceMobileLayout, setCheatForceMobileLayout] = useState(false);
+  /** 秘籍：桌面强开手机战斗栅格（Ctrl+M 横屏 / Ctrl+Shift+M 竖屏 / 再 Ctrl+M 恢复） */
+  const [cheatBattleLayout, setCheatBattleLayout] = useState<CheatBattleLayout>("none");
   /** 与桌面版分离的窄屏战斗样式（侧栏/行动菜单/信息区），见 index.css `.game-layout--battle-mobile-ui` */
   const [battleMobileUi, setBattleMobileUi] = useState(
     () => typeof window !== "undefined" && window.matchMedia("(max-width: 900px)").matches
@@ -234,6 +240,20 @@ export default function GamePage() {
     mq.addEventListener("change", sync);
     return () => mq.removeEventListener("change", sync);
   }, []);
+  const [battlePortraitMobile, setBattlePortraitMobile] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 900px) and (orientation: portrait)").matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 900px) and (orientation: portrait)");
+    const sync = () => setBattlePortraitMobile(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  /** 竖屏手机：战局略图 details 默认展开，可收起省高度 */
+  const [battleOverviewOpen, setBattleOverviewOpen] = useState(true);
   const [metaSidebarCollapsed, setMetaSidebarCollapsed] = useState(() => {
     try {
       const raw = localStorage.getItem("sanguo_meta_sidebar_collapsed");
@@ -421,20 +441,30 @@ export default function GamePage() {
         return;
       }
 
-      if (CHEAT_MOBILE_LAYOUT_COMBO(e)) {
+      if (CHEAT_MOBILE_PORTRAIT_COMBO(e)) {
         if (e.repeat) return;
         e.preventDefault();
         e.stopImmediatePropagation();
-        setCheatForceMobileLayout((prev) => {
-          const next = !prev;
+        setCheatBattleLayout("portrait");
+        queueMicrotask(() =>
+          setMessage("秘籍：手机竖屏布局（再按 Ctrl+M 恢复桌面，仅 Ctrl+M 为横屏）。")
+        );
+        return;
+      }
+
+      if (CHEAT_MOBILE_LANDSCAPE_COMBO(e)) {
+        if (e.repeat) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setCheatBattleLayout((prev) => {
+          if (prev === "landscape" || prev === "portrait") {
+            queueMicrotask(() => setMessage("秘籍：已恢复桌面布局。"));
+            return "none";
+          }
           queueMicrotask(() =>
-            setMessage(
-              next
-                ? "秘籍：已切换为手机式布局（Ctrl+M 恢复桌面）。"
-                : "秘籍：已恢复桌面布局。"
-            )
+            setMessage("秘籍：手机横屏布局（再按 Ctrl+M 恢复桌面；Ctrl+Shift+M 为竖屏）。")
           );
-          return next;
+          return "landscape";
         });
         return;
       }
@@ -956,8 +986,12 @@ export default function GamePage() {
   return (
     <div
       className={`page game-layout game-layout--battle${
-        cheatForceMobileLayout ? " game-layout--cheat-mobile" : ""
-      }${cheatForceMobileLayout || battleMobileUi ? " game-layout--battle-mobile-ui" : ""}`}
+        cheatBattleLayout === "portrait"
+          ? " game-layout--cheat-mobile"
+          : cheatBattleLayout === "landscape"
+            ? " game-layout--cheat-mobile-landscape"
+            : ""
+      }${cheatBattleLayout !== "none" || battleMobileUi ? " game-layout--battle-mobile-ui" : ""}`}
     >
       {stagePickerOpen && (
         <div
@@ -978,8 +1012,10 @@ export default function GamePage() {
               <kbd className="kbd-chip">K</kbd> 或 <kbd className="kbd-chip">Esc</kbd> 关闭。
               战斗中 <kbd className="kbd-chip">Ctrl</kbd>+<kbd className="kbd-chip">D</kbd>{" "}
               直接进入下一关（与胜利相同：继承存活我军；最后一关后回序章）。
-              <kbd className="kbd-chip">Ctrl</kbd>+<kbd className="kbd-chip">M</kbd>{" "}
-              切换手机式 / 桌面战斗布局（秘籍）。
+              <kbd className="kbd-chip">Ctrl</kbd>+<kbd className="kbd-chip">M</kbd> 手机横屏，
+              <kbd className="kbd-chip">Ctrl</kbd>+<kbd className="kbd-chip">Shift</kbd>+
+              <kbd className="kbd-chip">M</kbd> 手机竖屏；再按 <kbd className="kbd-chip">Ctrl</kbd>+
+              <kbd className="kbd-chip">M</kbd> 恢复桌面。
             </p>
             <ul className="stage-picker-list">
               {SCENARIO_PICKER_ENTRIES.map((row, i) => (
@@ -1143,15 +1179,35 @@ export default function GamePage() {
             {message && <p className="toast-msg">{message}</p>}
           </aside>
         )}
-        <BattleOverviewMap
-          gridW={battle.gridW}
-          gridH={battle.gridH}
-          terrain={battle.terrain}
-          units={battle.units}
-          viewport={battleViewportNorm}
-          battleRound={battle.battleRound}
-          maxBattleRounds={battle.maxBattleRounds ?? 60}
-        />
+        {(battlePortraitMobile && battleMobileUi) || cheatBattleLayout === "portrait" ? (
+          <details
+            className="sidebar-disclosure battle-overview-disclosure"
+            open={battleOverviewOpen}
+            onToggle={(e) => setBattleOverviewOpen(e.currentTarget.open)}
+          >
+            <summary>战局略图 · 展开 / 收起</summary>
+            <BattleOverviewMap
+              gridW={battle.gridW}
+              gridH={battle.gridH}
+              terrain={battle.terrain}
+              units={battle.units}
+              viewport={battleViewportNorm}
+              battleRound={battle.battleRound}
+              maxBattleRounds={battle.maxBattleRounds ?? 60}
+              hideHeading
+            />
+          </details>
+        ) : (
+          <BattleOverviewMap
+            gridW={battle.gridW}
+            gridH={battle.gridH}
+            terrain={battle.terrain}
+            units={battle.units}
+            viewport={battleViewportNorm}
+            battleRound={battle.battleRound}
+            maxBattleRounds={battle.maxBattleRounds ?? 60}
+          />
+        )}
         <details
           className="sidebar-disclosure battle-roster-disclosure"
           open={rosterExpanded}
@@ -1665,7 +1721,7 @@ export default function GamePage() {
               inspectTapSeq={inspectTapSeq}
               visualEpoch={visualEpoch}
               turnIntroLocked={turnIntroLocked}
-              forceNarrowLayout={cheatForceMobileLayout}
+              forceNarrowLayout={cheatBattleLayout !== "none"}
               keyboardBlocked={stagePickerOpen || generalCodexOpen}
               fitViewport
               onScrollViewportChange={onBattleScrollViewportChange}
