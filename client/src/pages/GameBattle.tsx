@@ -2316,6 +2316,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
           }) => {
             if (!u) return null;
             const hpForBar = hpBarLag[u.id] ?? u.hp;
+            /* 同向连走时 --sdx/--sdy 不变，仅靠 class 可能无法重启 keyframes；slide.gen 参与 standee key 强制每格新动画 */
             return (
               <div
                 key={`unit-${u.id}`}
@@ -2346,7 +2347,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                 }}
               >
                 <div
-                  key={`standee-${u.id}`}
+                  key={slide ? `standee-${u.id}-slide-${slide.gen}` : `standee-${u.id}`}
                   className={[
                     "unit-standee",
                     u.side,

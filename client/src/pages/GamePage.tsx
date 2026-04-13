@@ -625,6 +625,7 @@ export default function GamePage() {
       setBattle((s) => advancePendingMove(s));
     };
     if (immediate) {
+      /* 双 rAF：等本帧 commit + layout 后再推进，避免与 GameBattle 滑步 effect 抢同一帧 */
       rafOuter = requestAnimationFrame(() => {
         rafInner = requestAnimationFrame(run);
       });

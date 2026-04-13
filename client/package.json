@@ -6,6 +6,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "verify:scroll-pin": "node ./scripts/verify-battle-scroll-pin.mjs",
+    "verify:move-timing": "node ./scripts/verify-move-timing.mjs",
     "preview": "vite preview",
     "sprites:units": "node scripts/remove-sprite-bg.mjs",
     "sprites:units-size": "node scripts/normalize-unit-sprites.mjs",

@@ -106,7 +106,7 @@ export const MOVE_SLIDE_FALLBACK_MS = MOVE_SLIDE_DURATION_MS + 32;
 /**
  * 沿路每格逻辑步间隔（毫秒），供 GamePage 定时器使用。
  * 与 `MOVE_SLIDE_DURATION_MS` 对齐，使上一格滑步结束与下一格逻辑步同拍，格间不停顿。
- * 新移动链的**首格**由 GamePage 用 `setTimeout(0)` 立即推进，避免起手再等一整段滑步时长。
+ * 新移动链的**首格**由 GamePage 用双 `requestAnimationFrame` 立即推进（等 layout 后再 `advancePendingMove`），避免起手再等一整段滑步时长。
  */
 export const MOVE_STEP_MS_PLAYER = MOVE_SLIDE_DURATION_MS;
 export const MOVE_STEP_MS_ENEMY = MOVE_SLIDE_DURATION_MS;
