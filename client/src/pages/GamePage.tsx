@@ -1678,25 +1678,31 @@ export default function GamePage() {
                   )}
                 </dl>
               )}
-              {battleMapPointerActive ? (
-                <div className="terrain-legend terrain-legend--inline">
-                  <p className="terrain-legend-title">战场地形</p>
-                  <div className="terrain-legend-row">
-                    {TERRAIN_LEGEND.map(({ id, ch }) => (
-                      <span key={id} className="terrain-legend-item">
-                        <span
-                          className={`terrain-legend-swatch ${id}`}
-                          title={TERRAIN_LABEL[id]}
-                          aria-hidden
-                        >
-                          {ch}
-                        </span>
-                        <span>{TERRAIN_LABEL[id]}</span>
+              <div
+                className={[
+                  "terrain-legend terrain-legend--inline",
+                  battleMapPointerActive ? "" : "terrain-legend--pointer-idle",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                aria-hidden={!battleMapPointerActive}
+              >
+                <p className="terrain-legend-title">战场地形</p>
+                <div className="terrain-legend-row">
+                  {TERRAIN_LEGEND.map(({ id, ch }) => (
+                    <span key={id} className="terrain-legend-item">
+                      <span
+                        className={`terrain-legend-swatch ${id}`}
+                        title={battleMapPointerActive ? TERRAIN_LABEL[id] : undefined}
+                        aria-hidden
+                      >
+                        {ch}
                       </span>
-                    ))}
-                  </div>
+                      <span>{TERRAIN_LABEL[id]}</span>
+                    </span>
+                  ))}
                 </div>
-              ) : null}
+              </div>
               </div>
               <div
                 role="tabpanel"

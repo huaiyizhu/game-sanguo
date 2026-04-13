@@ -20,6 +20,14 @@
   backface-visibility: hidden;
 }
 
+@media (max-width: 900px), ((orientation: landscape) and (max-height: 560px)) {
+  .battle-slot--units.battle-slot--unit-sliding {
+    transform: translate3d(0, 0, 16px);
+    -webkit-transform: translate3d(0, 0, 16px);
+    will-change: transform;
+  }
+}
+
 .battle-slot--units {
   pointer-events: none;
   /* 需可见 overflow，否则 .dmg-float 向上飘出时被裁切 */

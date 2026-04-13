@@ -2007,6 +2007,13 @@ a:hover {
   border-top: 1px solid var(--border);
 }
 
+/* 指针静止：不卸载 DOM，避免侧栏高度骤降 → fit 棋盘重算 → 主战场整体上跳 */
+.terrain-legend--inline.terrain-legend--pointer-idle {
+  visibility: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
 .meta-sidebar-title {
   font-size: 0.82rem;
   font-weight: 700;
@@ -2930,6 +2937,33 @@ a:hover {
   }
   to {
     transform: translate3d(0, 0, 0);
+  }
+}
+
+/*
+ * 窄屏 WebKit：纯 XY 滑步与邻格地形（::before 贴图 / filter）合成时偶发压层。
+ * 独立 keyframes 名避免覆盖桌面版；略抬 Z + 滑步时去掉敌军 hue filter。
+ */
+@keyframes unit-move-slide-in-mobile {
+  from {
+    transform: translate3d(
+      calc(var(--sdx, 0) * (var(--cell) + var(--battle-grid-gap, 0px))),
+      calc(var(--sdy, 0) * (var(--cell) + var(--battle-grid-gap, 0px))),
+      12px
+    );
+  }
+  to {
+    transform: translate3d(0, 0, 12px);
+  }
+}
+
+@media (max-width: 900px), ((orientation: landscape) and (max-height: 560px)) {
+  .unit-standee.unit-move-slide {
+    animation-name: unit-move-slide-in-mobile;
+  }
+
+  .unit-standee.unit-move-slide .unit-troop-sprite--enemy {
+    filter: none;
   }
 }
 
