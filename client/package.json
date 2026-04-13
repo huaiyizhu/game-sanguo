@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "verify:scroll-pin": "node ./scripts/verify-battle-scroll-pin.mjs",
     "preview": "vite preview",
     "sprites:units": "node scripts/remove-sprite-bg.mjs",
     "sprites:units-size": "node scripts/normalize-unit-sprites.mjs",

@@ -19,11 +19,13 @@ import {
   DAMAGE_FLOAT_ANIM_MS,
   DAMAGE_FLOAT_DELAY_MS,
   MOVE_SLIDE_DURATION_MS,
+  MOVE_SLIDE_FALLBACK_MS,
   POST_ACTION_TURN_BANNER_DELAY_MS,
   physicalAttackMenuLabel,
   TURN_PHASE_BANNER_MS,
 } from "../game/battle";
 import type { BattleViewportNorm } from "../components/BattleOverviewMap";
+import { computePinnedBattleWrapScroll } from "./battleWrapScrollPin";
 import type { BattlePhase, BattleState, Side, TacticKind, Terrain, TroopKind } from "../game/types";
 import {
   ARMY_TYPE_LABEL,
@@ -208,14 +210,18 @@ function getBattleGridScrollBounds(wrap: HTMLElement): {
   return { tMin: yt.mn, tMax: yt.mx, lMin: xl.mn, lMax: xl.mx };
 }
 
-function clampBattleWrapScrollToGrid(wrap: HTMLElement): void {
+/**
+ * @param upperSlackPx 仅放宽「向下/向右」边界：侧栏/滤镜等导致 tMax 亚像素抖动时，避免 scroll 回调里反复把 scrollTop 拉回产生整块地图跳。
+ */
+function clampBattleWrapScrollToGrid(wrap: HTMLElement, opts?: { upperSlackPx?: number }): void {
+  const slack = opts?.upperSlackPx ?? 0;
   const { tMin, tMax, lMin, lMax } = getBattleGridScrollBounds(wrap);
   let t = wrap.scrollTop;
   let l = wrap.scrollLeft;
   if (t < tMin - 0.5) t = tMin;
-  else if (t > tMax + 0.5) t = tMax;
+  else if (t > tMax + 0.5 + slack) t = tMax;
   if (l < lMin - 0.5) l = lMin;
-  else if (l > lMax + 0.5) l = lMax;
+  else if (l > lMax + 0.5 + slack) l = lMax;
   if (t !== wrap.scrollTop || l !== wrap.scrollLeft) {
     wrap.scrollTop = t;
     wrap.scrollLeft = l;
@@ -264,18 +270,9 @@ function computeWideMenuAnchor(
 }
 
 /**
- * 在 .battle-wrap 内滚动，使目标格（及单位层立绘/HUD）完整落在可视区内。
- * 视口用 border+padding 内沿；有立绘时在包围盒上方再扩一整行（HUD/_sprite 常超出 bbox）。
+ * 与 `scrollBattleWrapToRevealCell` 相同的屏幕包围盒（含 HUD、立绘向上伸入上一行），用于判断是否在视口内。
  */
-function scrollBattleWrapToRevealCell(
-  wrap: HTMLElement,
-  anchor: Element,
-  opts?: { margin?: number }
-): void {
-  const margin = opts?.margin ?? 10;
-  /** 用 instant，避免 smooth 未结束时用旧 rect 再算仍偏一行 */
-  const behavior: ScrollBehavior = "auto";
-
+function getBattleAnchorRevealScreenRect(wrap: HTMLElement, anchor: Element): DOMRect | null {
   const parts: Element[] = [anchor];
   const standee = anchor.querySelector(".unit-standee");
   if (standee) parts.push(standee);
@@ -291,12 +288,98 @@ function scrollBattleWrapToRevealCell(
   }
 
   let cr = unionScreenRect(parts);
-  if (!cr) return;
+  if (!cr) return null;
 
   const rowStep = getBattleGridRowStepPx(wrap);
   if (standee) {
     cr = new DOMRect(cr.left, cr.top - rowStep, cr.width, cr.height + rowStep);
   }
+  return cr;
+}
+
+const BATTLE_SCROLL_REVEAL_MARGIN_PX = 10;
+
+/**
+ * 用地形层格子的包围盒（不含单位层立绘的 transform），再向上扩一行，判断「格位是否已在滚动视口内」。
+ * 用于跳过点选/跟随时滚动：立绘滑动时 `getBoundingClientRect` 会随动画膨胀，用全量 rect 会误判出屏导致地图抖。
+ */
+function getBattleTerrainStableRevealRect(wrap: HTMLElement, x: number, y: number): DOMRect | null {
+  const terrain = wrap.querySelector(`[data-battle-cell="${x},${y}"]`);
+  if (!terrain) return null;
+  const parts: Element[] = [terrain];
+  if (y >= 1) {
+    const above = wrap.querySelector(`[data-battle-cell="${x},${y - 1}"]`);
+    if (above) parts.push(above);
+  }
+  const u = unionScreenRect(parts);
+  if (!u) return null;
+  const rowStep = getBattleGridRowStepPx(wrap);
+  return new DOMRect(u.left, u.top - rowStep, u.width, u.height + rowStep);
+}
+
+function isBattleAnchorStableFullyInScrollport(
+  wrap: HTMLElement,
+  anchor: Element,
+  margin = BATTLE_SCROLL_REVEAL_MARGIN_PX
+): boolean {
+  const pos = parseBattleCellCoords(anchor);
+  if (!pos) return false;
+  const cr = getBattleTerrainStableRevealRect(wrap, pos.x, pos.y);
+  if (!cr) return false;
+  const vp = getWrapScrollportViewportRect(wrap);
+  return (
+    cr.top >= vp.top + margin - 0.5 &&
+    cr.bottom <= vp.bottom - margin + 0.5 &&
+    cr.left >= vp.left + margin - 0.5 &&
+    cr.right <= vp.right - margin + 0.5
+  );
+}
+
+/**
+ * 焦点落在单位格内且格位已在视口内时，撤销浏览器为 focus 做的 scroll-into-view（桌面点击 tabIndex 时常见）。
+ */
+function restoreBattleWrapScrollIfFocusedUnitCellAlreadyStable(
+  wrap: HTMLElement,
+  focusTarget: EventTarget | null
+): void {
+  if (!(focusTarget instanceof Element)) return;
+  const anchor = focusTarget.closest("[data-battle-unit-cell]");
+  if (!anchor || !wrap.contains(anchor)) return;
+  if (!isBattleAnchorStableFullyInScrollport(wrap, anchor)) return;
+  const st = wrap.scrollTop;
+  const sl = wrap.scrollLeft;
+  const restore = () => {
+    wrap.scrollTop = st;
+    wrap.scrollLeft = sl;
+  };
+  restore();
+  queueMicrotask(restore);
+  requestAnimationFrame(restore);
+  requestAnimationFrame(() => {
+    requestAnimationFrame(restore);
+  });
+}
+
+/**
+ * 在 .battle-wrap 内滚动，使目标格（及单位层立绘/HUD）完整落在可视区内。
+ * 视口用 border+padding 内沿；有立绘时在包围盒上方再扩一整行（HUD/_sprite 常超出 bbox）。
+ * 若格位（地形 + 上行 HUD 区）已在视口内，则不 clamp、不 scroll，避免点选/走格首步跟随时「跳一下」。
+ */
+function scrollBattleWrapToRevealCell(
+  wrap: HTMLElement,
+  anchor: Element,
+  opts?: { margin?: number }
+): void {
+  const margin = opts?.margin ?? BATTLE_SCROLL_REVEAL_MARGIN_PX;
+  /** 用 instant，避免 smooth 未结束时用旧 rect 再算仍偏一行 */
+  const behavior: ScrollBehavior = "auto";
+
+  if (isBattleAnchorStableFullyInScrollport(wrap, anchor, margin)) {
+    return;
+  }
+
+  const cr = getBattleAnchorRevealScreenRect(wrap, anchor);
+  if (!cr) return;
 
   const vp = getWrapScrollportViewportRect(wrap);
 
@@ -665,10 +748,22 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     return Math.min(cap, Math.round((c + BATTLE_GRID_GAP_PX) * 1.5));
   }, [fitViewport, fitCellPx, cellClamp]);
   const battleWrapRef = useRef<HTMLDivElement>(null);
+  /** 上一帧 .battle-wrap 的 client 尺寸，供 ResizeObserver 内钉住贴底/贴顶滚动 */
+  const lastBattleWrapClientRef = useRef<{ ch: number; cw: number }>({ ch: 0, cw: 0 });
+  /** `fitCellPx` 将变时记下当前滚动与尺寸，提交后按比例写回 scroll，避免侧栏/略图区变化导致格长重算时地图「整体跳一下」 */
+  const fitCellScrollSnapRef = useRef<{
+    st: number;
+    sh: number;
+    sl: number;
+    sw: number;
+    ch: number;
+    cw: number;
+  } | null>(null);
   const onScrollViewportChangeRef = useRef(onScrollViewportChange);
   onScrollViewportChangeRef.current = onScrollViewportChange;
   const battleSnapRef = useRef(battle);
   battleSnapRef.current = battle;
+
   const [rosterPulse, setRosterPulse] = useState<{ x: number; y: number } | null>(null);
   const rosterPulseTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
@@ -719,6 +814,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
           const terrainSlot = wrap.querySelector(`[data-battle-cell="${u.x},${u.y}"]`);
           const anchor = unitSlot ?? terrainSlot;
           if (!anchor) return;
+          if (isBattleAnchorStableFullyInScrollport(wrap, anchor)) return;
           scrollBattleWrapToRevealCell(wrap, anchor);
         });
       });
@@ -794,7 +890,21 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       minCellPx: cellClamp.min,
       maxCellPx: cellClamp.max,
     });
-    setFitCellPx((prev) => (prev === cell ? prev : cell));
+    fitCellScrollSnapRef.current = {
+      st: wrap.scrollTop,
+      sh: Math.max(1, wrap.scrollHeight),
+      sl: wrap.scrollLeft,
+      sw: Math.max(1, wrap.scrollWidth),
+      ch: wrap.clientHeight,
+      cw: wrap.clientWidth,
+    };
+    setFitCellPx((prev) => {
+      if (prev === cell) {
+        fitCellScrollSnapRef.current = null;
+        return prev;
+      }
+      return cell;
+    });
   }, [fitViewport, gridW, gridH, cellClamp]);
 
   useEffect(() => {
@@ -803,11 +913,16 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     }
   }, [fitViewport]);
 
-  const reportScrollViewport = useCallback(() => {
+  const reportScrollViewport = useCallback((opts?: { clamp?: boolean; clampUpperSlackPx?: number }) => {
     const wrap = battleWrapRef.current;
     const cb = onScrollViewportChangeRef.current;
     if (!wrap || !cb || !fitViewport) return;
-    clampBattleWrapScrollToGrid(wrap);
+    if (opts?.clamp !== false) {
+      clampBattleWrapScrollToGrid(
+        wrap,
+        opts?.clampUpperSlackPx != null ? { upperSlackPx: opts.clampUpperSlackPx } : undefined
+      );
+    }
     const grid =
     (wrap.querySelector(".battle-grid--terrain-layer") as HTMLElement | null) ??
     (wrap.querySelector(".battle-grid") as HTMLElement | null);
@@ -841,37 +956,134 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     });
   }, [fitViewport]);
 
+  useLayoutEffect(() => {
+    if (!fitViewport || fitCellPx <= 0) return;
+    const wrap = battleWrapRef.current;
+    const snap = fitCellScrollSnapRef.current;
+    fitCellScrollSnapRef.current = null;
+    if (!wrap || !snap) return;
+    const newSH = Math.max(1, wrap.scrollHeight);
+    const newSW = Math.max(1, wrap.scrollWidth);
+    if (newSH === snap.sh && newSW === snap.sw) return;
+    const maxOldY = Math.max(0, snap.sh - snap.ch);
+    const maxNewY = Math.max(0, newSH - wrap.clientHeight);
+    const fracY = maxOldY > 0 ? snap.st / maxOldY : 0;
+    wrap.scrollTop = Math.round(fracY * maxNewY);
+    const maxOldX = Math.max(0, snap.sw - snap.cw);
+    const maxNewX = Math.max(0, newSW - wrap.clientWidth);
+    const fracX = maxOldX > 0 ? snap.sl / maxOldX : 0;
+    wrap.scrollLeft = Math.round(fracX * maxNewX);
+    clampBattleWrapScrollToGrid(wrap);
+    reportScrollViewport({ clamp: false });
+  }, [fitCellPx, fitViewport, reportScrollViewport]);
+
+  useEffect(() => {
+    const wrap = battleWrapRef.current;
+    if (!wrap) return;
+    const onFocusIn = (ev: FocusEvent) => {
+      restoreBattleWrapScrollIfFocusedUnitCellAlreadyStable(wrap, ev.target);
+    };
+    wrap.addEventListener("focusin", onFocusIn, true);
+    return () => wrap.removeEventListener("focusin", onFocusIn, true);
+  }, [visualEpoch]);
+
   useEffect(() => {
     if (!fitViewport || !onScrollViewportChange) return;
     const el = battleWrapRef.current;
     if (!el) return;
+    lastBattleWrapClientRef.current = { ch: 0, cw: 0 };
     recomputeFitCellPx();
-    reportScrollViewport();
-    el.addEventListener("scroll", reportScrollViewport, { passive: true });
-    const ro = new ResizeObserver(() => {
+    reportScrollViewport({ clamp: true });
+    /* 首帧后容器高度才稳定时再算一次，避免仍依赖 RO 触发的格长抖动 */
+    const settleRaf = requestAnimationFrame(() => {
       recomputeFitCellPx();
-      reportScrollViewport();
+      reportScrollViewport({ clamp: false });
+    });
+    const onScroll = () => {
+      reportScrollViewport({ clamp: true, clampUpperSlackPx: 10 });
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    const ro = new ResizeObserver(() => {
+      /* 勿在此处 recomputeFitCellPx：点将/检视侧栏会让 wrap 轻微变高变矮，
+       * 反复重算 --cell 会导致整盘像素缩放，即使用户已滚在地图底部也会「整块跳」 */
+      const wrap = el;
+      const prev = lastBattleWrapClientRef.current;
+      const ch = wrap.clientHeight;
+      const cw = wrap.clientWidth;
+      const { scrollTop: st, scrollLeft: sl } = computePinnedBattleWrapScroll({
+        scrollTop: wrap.scrollTop,
+        scrollLeft: wrap.scrollLeft,
+        scrollHeight: wrap.scrollHeight,
+        scrollWidth: wrap.scrollWidth,
+        clientHeight: ch,
+        clientWidth: cw,
+        prevClientHeight: prev.ch > 0 ? prev.ch : undefined,
+        prevClientWidth: prev.cw > 0 ? prev.cw : undefined,
+      });
+      if (st !== wrap.scrollTop || sl !== wrap.scrollLeft) {
+        wrap.scrollTop = st;
+        wrap.scrollLeft = sl;
+      }
+      lastBattleWrapClientRef.current = { ch, cw };
+      reportScrollViewport({ clamp: false });
     });
     ro.observe(el);
     const onWinResize = () => {
       recomputeFitCellPx();
-      reportScrollViewport();
+      reportScrollViewport({ clamp: true });
     };
     window.addEventListener("resize", onWinResize);
     return () => {
-      el.removeEventListener("scroll", reportScrollViewport);
+      cancelAnimationFrame(settleRaf);
+      el.removeEventListener("scroll", onScroll);
       ro.disconnect();
       window.removeEventListener("resize", onWinResize);
     };
-  }, [fitViewport, onScrollViewportChange, reportScrollViewport, recomputeFitCellPx, gridW, gridH]);
+  }, [
+    fitViewport,
+    onScrollViewportChange,
+    reportScrollViewport,
+    recomputeFitCellPx,
+    gridW,
+    gridH,
+    cellClamp,
+    visualEpoch,
+  ]);
 
   useLayoutEffect(() => {
     if (!fitViewport) return;
     const wrap = battleWrapRef.current;
     if (!wrap) return;
-    const id = requestAnimationFrame(() => clampBattleWrapScrollToGrid(wrap));
+    const id = requestAnimationFrame(() => {
+      const b = battleSnapRef.current;
+      const pm = b.pendingMove;
+      if (!pm) return;
+      const u = b.units.find((x) => x.id === pm.unitId && x.hp > 0);
+      if (!u) return;
+      const unitSlot = wrap.querySelector(
+        `[data-battle-unit-cell="${u.x},${u.y}"]`
+      ) as HTMLElement | null;
+      const terrainSlot = wrap.querySelector(
+        `[data-battle-cell="${u.x},${u.y}"]`
+      ) as HTMLElement | null;
+      const anchor = unitSlot ?? terrainSlot;
+      if (anchor && isBattleAnchorStableFullyInScrollport(wrap, anchor)) {
+        return;
+      }
+      clampBattleWrapScrollToGrid(wrap);
+      if (anchor) scrollBattleWrapToRevealCell(wrap, anchor);
+    });
     return () => cancelAnimationFrame(id);
-  }, [fitViewport, gridW, gridH, cellCssEffective, fitScrollHeadroomPx, visualEpoch]);
+  }, [
+    fitViewport,
+    gridW,
+    gridH,
+    visualEpoch,
+    outcome,
+    pendingMove?.kind,
+    pendingMove?.unitId,
+    (pendingMove?.path ?? []).join("|"),
+  ]);
 
   const moveSet = new Set(moveTargets.map((t) => `${t.x},${t.y}`));
   const [menuFocus, setMenuFocus] = useState(0);
@@ -896,7 +1108,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   /**
    * 走格滑步的 fallback 定时器（prefers-reduced-motion 下无 animationend）。
    * 每格须先清掉该单位上一格的定时器，否则下一步在 ~MOVE_STEP_MS 触发时，旧定时器仍在
-   * ~MOVE_SLIDE_DURATION_MS+48ms 执行 delete，会把当前格的 moveSlide 清掉，从第二格起动画被截断、体感一跳一跳。
+   * `MOVE_SLIDE_FALLBACK_MS` 才执行 delete，会把当前格的 moveSlide 清掉，从第二格起动画被截断、体感一跳一跳。
    */
   const moveSlideFallbackTimersRef = useRef<Map<string, ReturnType<typeof window.setTimeout>>>(
     new Map()
@@ -1454,7 +1666,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
               delete next[id];
               return next;
             });
-          }, MOVE_SLIDE_DURATION_MS + 48);
+          }, MOVE_SLIDE_FALLBACK_MS);
           moveSlideFallbackTimersRef.current.set(id, tid);
         }
       }
@@ -2134,7 +2346,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                 }}
               >
                 <div
-                  key={slide ? `mv-${u.id}-${slide.gen}` : `st-${u.id}`}
+                  key={`standee-${u.id}`}
                   className={[
                     "unit-standee",
                     u.side,
@@ -2211,6 +2423,10 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                       if (phase === "pick-target" && u.side === "enemy" && isPickCandidate(u.id)) {
                         onPickHoverEnemy(u.id);
                       }
+                    }}
+                    onMouseDown={(e: MouseEvent) => {
+                      if (u.hp <= 0 || e.button !== 0) return;
+                      e.preventDefault();
                     }}
                     onClick={(e: MouseEvent) => {
                       e.stopPropagation();

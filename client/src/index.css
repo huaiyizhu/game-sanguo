@@ -1645,6 +1645,18 @@ a:hover {
   max-height: var(--battle-right-tabpanel-max-h);
 }
 
+/* 桌面：限制「信息与存档」总高度，避免点将后侧栏从提示行撑到近半屏，把地图区挤缩导致整块战场跳动 */
+@media (min-width: 901px) {
+  .game-layout.game-layout--battle:not(.game-layout--battle-mobile-ui) .unit-inspect-float__inner.battle-right-panel__body {
+    max-height: min(30dvh, 15rem);
+    --battle-right-tabpanel-max-h: min(calc(30dvh - 2.75rem), calc(15rem - 2.75rem));
+  }
+
+  .game-layout.game-layout--battle:not(.game-layout--battle-mobile-ui) .battle-map-viewport {
+    min-height: min(42dvh, 480px);
+  }
+}
+
 .unit-inspect-float__inner.unit-inspect {
   padding: 0.35rem 0.5rem 0.45rem;
 }
@@ -2123,6 +2135,8 @@ a:hover {
   position: relative;
   user-select: none;
   -webkit-user-select: none;
+  /* 避免上方 DOM（如移动范围滤镜）突变时浏览器 scroll anchoring 微调 scroll，体感像地图「跳」 */
+  overflow-anchor: none;
 }
 
 .battle-wrap.battle-wrap--fit {
@@ -2945,7 +2959,8 @@ a:hover {
 /* 时长：GameBattle 注入 --unit-move-slide-ms，须与 battle.ts MOVE_SLIDE_DURATION_MS 一致 */
 .unit-standee.unit-move-slide {
   /* linear：逐格衔接时避免每格 ease-in-out 像小加速刹车叠成「蹦」 */
-  animation: unit-move-slide-in var(--unit-move-slide-ms, 280ms) linear forwards;
+  /* both：首帧前即处于 from，避免仅 forwards 时首帧先显示 to 再进动画像「跳一格」 */
+  animation: unit-move-slide-in var(--unit-move-slide-ms, 280ms) linear both;
   z-index: 5;
   will-change: transform;
 }

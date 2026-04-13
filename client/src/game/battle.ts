@@ -98,12 +98,18 @@ export const POST_ACTION_TURN_BANNER_DELAY_MS =
 export const MOVE_SLIDE_DURATION_MS = 280;
 
 /**
- * 沿路逐格移动时每格间隔（毫秒），供 GamePage 定时器使用。
- * 须明显大于 MOVE_SLIDE_DURATION_MS，给 `animationend` 与合成帧留余量；过小则下一格逻辑步
- * 可能在上一段动画尚未结束时到达，仅改写 `--sdx`/`--sdy` 时部分浏览器不重启 keyframes，会「跳」。
+ * 无 `animationend`（如减弱动效）时清理滑步状态；GameBattle 里与 `moveSlide` 同单位旧计时器
+ * 会在下一格 effect 中 revoke，故可略短于旧版 +48，仍须 ≥ 滑步时长。
  */
-export const MOVE_STEP_MS_PLAYER = MOVE_SLIDE_DURATION_MS + 52;
-export const MOVE_STEP_MS_ENEMY = MOVE_SLIDE_DURATION_MS + 56;
+export const MOVE_SLIDE_FALLBACK_MS = MOVE_SLIDE_DURATION_MS + 32;
+
+/**
+ * 沿路每格逻辑步间隔（毫秒），供 GamePage 定时器使用。
+ * 与 `MOVE_SLIDE_DURATION_MS` 对齐，使上一格滑步结束与下一格逻辑步同拍，格间不停顿。
+ * 新移动链的**首格**由 GamePage 用 `setTimeout(0)` 立即推进，避免起手再等一整段滑步时长。
+ */
+export const MOVE_STEP_MS_PLAYER = MOVE_SLIDE_DURATION_MS;
+export const MOVE_STEP_MS_ENEMY = MOVE_SLIDE_DURATION_MS;
 
 function terrainAt(state: BattleState, x: number, y: number): Terrain {
   const row = state.terrain[y];
