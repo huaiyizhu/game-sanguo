@@ -2737,13 +2737,37 @@ a:hover {
   display: grid;
   gap: var(--battle-grid-gap);
   width: fit-content;
-  margin: 2.35rem auto 0;
+  margin: 0;
   isolation: isolate;
 }
 
-.battle-scene .battle-grid {
+/* 地形层 + 绝对叠放的单位层：整层单位压过全部地形，避免横移滑步时邻格贴图盖住立绘（尤其 WebKit） */
+.battle-grid-stack {
+  position: relative;
+  width: fit-content;
+  margin: 2.35rem auto 0;
+}
+
+.battle-scene .battle-grid-stack {
   z-index: 1;
   position: relative;
+}
+
+.battle-grid-stack > .battle-grid--terrain-layer {
+  position: relative;
+  z-index: 0;
+}
+
+.battle-grid-stack > .battle-grid--units-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
 }
 
 .battle-scene.battle-scene--fit {
@@ -2760,9 +2784,8 @@ a:hover {
   box-sizing: border-box;
 }
 
-.battle-scene--fit .battle-grid {
-  margin-top: 0;
-  margin-bottom: 0;
+.battle-scene--fit .battle-grid-stack {
+  margin: 0 auto;
 }
 
 /* fit 顶占位：与 .battle-wrap 底色一致，避免被当成「地图外未填充」 */
@@ -2937,33 +2960,6 @@ a:hover {
   }
   to {
     transform: translate3d(0, 0, 0);
-  }
-}
-
-/*
- * 窄屏 WebKit：纯 XY 滑步与邻格地形（::before 贴图 / filter）合成时偶发压层。
- * 独立 keyframes 名避免覆盖桌面版；略抬 Z + 滑步时去掉敌军 hue filter。
- */
-@keyframes unit-move-slide-in-mobile {
-  from {
-    transform: translate3d(
-      calc(var(--sdx, 0) * (var(--cell) + var(--battle-grid-gap, 0px))),
-      calc(var(--sdy, 0) * (var(--cell) + var(--battle-grid-gap, 0px))),
-      12px
-    );
-  }
-  to {
-    transform: translate3d(0, 0, 12px);
-  }
-}
-
-@media (max-width: 900px), ((orientation: landscape) and (max-height: 560px)) {
-  .unit-standee.unit-move-slide {
-    animation-name: unit-move-slide-in-mobile;
-  }
-
-  .unit-standee.unit-move-slide .unit-troop-sprite--enemy {
-    filter: none;
   }
 }
 

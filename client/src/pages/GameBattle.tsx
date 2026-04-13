@@ -165,7 +165,7 @@ function computeFitCellPxForViewport(args: {
 type WideMenuAnchor = "right" | "left" | "top" | "bottom";
 
 /**
- * 将 .battle-wrap 的滚动限制在「棋盘 .battle-grid 实际包围盒」与视口相交范围内，
+ * 将 .battle-wrap 的滚动限制在「棋盘 `.battle-grid--terrain-layer` 包围盒」与视口相交范围内，
  * 避免 fit 模式下顶/侧出现大块「滚出地图」的留白（略图黄框仍以格子为准）。
  */
 function getBattleGridScrollBounds(wrap: HTMLElement): {
@@ -174,7 +174,9 @@ function getBattleGridScrollBounds(wrap: HTMLElement): {
   lMin: number;
   lMax: number;
 } {
-  const grid = wrap.querySelector(".battle-grid") as HTMLElement | null;
+  const grid =
+    (wrap.querySelector(".battle-grid--terrain-layer") as HTMLElement | null) ??
+    (wrap.querySelector(".battle-grid") as HTMLElement | null);
   const hardMaxT = Math.max(0, wrap.scrollHeight - wrap.clientHeight);
   const hardMaxL = Math.max(0, wrap.scrollWidth - wrap.clientWidth);
   const fallback = { tMin: 0, tMax: hardMaxT, lMin: 0, lMax: hardMaxL };
@@ -646,6 +648,15 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     if (fitViewport) return fitCellPx > 0 ? `${fitCellPx}px` : `${cellClamp.fallback}px`;
     return cellCss;
   }, [fitViewport, fitCellPx, cellCss, cellClamp]);
+  const battleGridSharedStyle = useMemo(
+    () =>
+      ({
+        ["--cell" as string]: cellCssEffective,
+        gridTemplateColumns: `repeat(${gridW}, var(--cell))`,
+        gridTemplateRows: `repeat(${gridH}, var(--cell))`,
+      }) as CSSProperties,
+    [cellCssEffective, gridW, gridH]
+  );
   /** fit 顶缓冲随格长略缩，与 recomputeFitCellPx 内 head1 一致，避免横屏上占位过大 */
   const fitScrollHeadroomPx = useMemo(() => {
     if (!fitViewport) return BATTLE_GRID_SCROLL_HEADROOM_PX;
@@ -797,7 +808,9 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     const cb = onScrollViewportChangeRef.current;
     if (!wrap || !cb || !fitViewport) return;
     clampBattleWrapScrollToGrid(wrap);
-    const grid = wrap.querySelector(".battle-grid") as HTMLElement | null;
+    const grid =
+    (wrap.querySelector(".battle-grid--terrain-layer") as HTMLElement | null) ??
+    (wrap.querySelector(".battle-grid") as HTMLElement | null);
     if (!grid) return;
     const gRect = grid.getBoundingClientRect();
     if (gRect.width < 2 || gRect.height < 2) return;
@@ -1944,8 +1957,8 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       >
         <div className="battle-scene__ground" aria-hidden />
         {/*
-          fit 模式下 .battle-grid 的 margin-top 被置 0，顶行单位血条（伸出格子上方）会少可滚空间；
-          用占位撑出约 1.5 行格距的顶缓冲（非 fit 时仍靠原 margin-top）。
+          fit 模式下棋盘顶 margin 被置 0，顶行单位血条（伸出格子上方）会少可滚空间；
+          用占位撑出约 1.5 行格距的顶缓冲（非 fit 时仍靠 .battle-grid-stack 顶边距）。
         */}
         {fitViewport ? (
           <div
@@ -1959,18 +1972,16 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
             }}
           />
         ) : null}
-        <div
-          className={["battle-grid", showMoveRange ? "battle-grid--move-preview" : ""]
-            .filter(Boolean)
-            .join(" ")}
-          style={
-            {
-              ["--cell" as string]: cellCssEffective,
-              gridTemplateColumns: `repeat(${gridW}, var(--cell))`,
-              gridTemplateRows: `repeat(${gridH}, var(--cell))`,
-            } as CSSProperties
-          }
-        >
+        <div className="battle-grid-stack">
+          <div
+            className={[
+              "battle-grid battle-grid--terrain-layer",
+              showMoveRange ? "battle-grid--move-preview" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            style={battleGridSharedStyle}
+          >
         {battleCellCtxList.map(
           ({
             x,
@@ -2071,6 +2082,8 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
             </div>
           )
         )}
+          </div>
+          <div className="battle-grid battle-grid--units-layer" style={battleGridSharedStyle}>
         {battleCellCtxList.map(
           ({
             x,
@@ -2437,6 +2450,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
             </p>
           </div>
         ))}
+          </div>
         </div>
       </div>
       <div className="battle-menu-hint-slot" aria-live="polite">

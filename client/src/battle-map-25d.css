@@ -7,10 +7,9 @@
   perspective-origin: 50% 42%;
 }
 
-.battle-scene .battle-grid {
+.battle-scene .battle-grid-stack .battle-grid {
   transform: none;
   transform-style: flat;
-  margin: 2.35rem auto 0;
 }
 
 /* fit 主战场：去掉 perspective，避免与行动菜单 transform 叠加后错位、放大感 */
@@ -18,20 +17,7 @@
   perspective: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .battle-scene .battle-grid {
-    margin: 2.35rem auto 0;
-  }
-}
-
-/*
- * fit 主战场：须压过本文件上一段 `.battle-scene .battle-grid` 的 margin 简写。
- * main.tsx 在 index.css 之后才 import 本文件，否则 2.35rem 顶边距会盖掉 index 里
- * `.battle-scene--fit .battle-grid { margin-top: 0 }`，与 headroom 占位叠加倍吃顶行可滚空间。
- */
-.battle-scene.battle-scene--fit .battle-grid {
-  margin: 0 auto;
-}
+/* fit 外边距见 index.css `.battle-scene--fit .battle-grid-stack` */
 
 /* 主战场改为贴图无缝平铺：不再叠格顶高光与格缘「厚度」，避免接缝与四角露底 */
 
