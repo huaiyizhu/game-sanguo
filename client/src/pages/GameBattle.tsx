@@ -370,16 +370,26 @@ function scrollBattleWrapToRevealCell(
   anchor: Element,
   opts?: { margin?: number }
 ): void {
-  const margin = opts?.margin ?? BATTLE_SCROLL_REVEAL_MARGIN_PX;
+  const target = computeBattleRevealScrollTarget(wrap, anchor, opts);
+  if (!target) return;
   /** 用 instant，避免 smooth 未结束时用旧 rect 再算仍偏一行 */
   const behavior: ScrollBehavior = "auto";
+  wrap.scrollTo({ top: target.top, left: target.left, behavior });
+  clampBattleWrapScrollToGrid(wrap);
+}
 
+function computeBattleRevealScrollTarget(
+  wrap: HTMLElement,
+  anchor: Element,
+  opts?: { margin?: number }
+): { top: number; left: number } | null {
+  const margin = opts?.margin ?? BATTLE_SCROLL_REVEAL_MARGIN_PX;
   if (isBattleAnchorStableFullyInScrollport(wrap, anchor, margin)) {
-    return;
+    return null;
   }
 
   const cr = getBattleAnchorRevealScreenRect(wrap, anchor);
-  if (!cr) return;
+  if (!cr) return null;
 
   const vp = getWrapScrollportViewportRect(wrap);
 
@@ -402,10 +412,38 @@ function scrollBattleWrapToRevealCell(
   const hardMaxT = Math.max(0, wrap.scrollHeight - wrap.clientHeight);
   const nextL = Math.min(bounds.lMax, Math.max(bounds.lMin, Math.min(hardMaxL, Math.max(0, wrap.scrollLeft + dX))));
   const nextT = Math.min(bounds.tMax, Math.max(bounds.tMin, Math.min(hardMaxT, Math.max(0, wrap.scrollTop + dY))));
-  if (nextL !== wrap.scrollLeft || nextT !== wrap.scrollTop) {
-    wrap.scrollTo({ top: nextT, left: nextL, behavior });
-  }
-  clampBattleWrapScrollToGrid(wrap);
+  if (nextL === wrap.scrollLeft && nextT === wrap.scrollTop) return null;
+  return { top: nextT, left: nextL };
+}
+
+function animateBattleWrapScrollTo(
+  wrap: HTMLElement,
+  targetTop: number,
+  targetLeft: number,
+  durationMs = 360
+): Promise<void> {
+  const fromTop = wrap.scrollTop;
+  const fromLeft = wrap.scrollLeft;
+  const dy = targetTop - fromTop;
+  const dx = targetLeft - fromLeft;
+  if (Math.abs(dy) < 1 && Math.abs(dx) < 1) return Promise.resolve();
+  return new Promise((resolve) => {
+    const t0 = performance.now();
+    const ease = (t: number) => 1 - Math.pow(1 - t, 3);
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - t0) / durationMs);
+      const e = ease(p);
+      wrap.scrollTop = fromTop + dy * e;
+      wrap.scrollLeft = fromLeft + dx * e;
+      if (p >= 1) {
+        clampBattleWrapScrollToGrid(wrap);
+        resolve();
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
 }
 /** 极宽地图时每格不低于此值，避免点选过难；手机横屏可略压以换可视格数 */
 const BATTLE_CELL_MIN_PX = 30;
@@ -647,6 +685,7 @@ export type GameBattleHandle = {
    * 滚动战场使该单位所在格进入视野；可选在缩略格上短暂高亮（侧栏点将时为 true）。
    */
   focusUnitOnMap: (unitId: string, opts?: { rosterPulse?: boolean }) => boolean;
+  revealUnitOnMapBeforeAction: (unitId: string, opts?: { smoothIfNeeded?: boolean }) => Promise<boolean>;
   /**
    * 我军即将沿路走格前调用：若属性浮窗正展示该将，则先渐隐再 resolve，
    * 以便父组件在写入 pendingMove 前等待，避免浮窗与滑步重叠。
@@ -823,6 +862,40 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
         });
       });
       return true;
+    },
+    revealUnitOnMapBeforeAction(unitId: string, opts?: { smoothIfNeeded?: boolean }) {
+      return new Promise<boolean>((resolve) => {
+        const smooth = opts?.smoothIfNeeded !== false;
+        requestAnimationFrame(() => {
+          requestAnimationFrame(async () => {
+            const wrap = battleWrapRef.current;
+            const u = battleSnapRef.current.units.find((z) => z.id === unitId && z.hp > 0);
+            if (!wrap || !u) {
+              resolve(false);
+              return;
+            }
+            const unitSlot = wrap.querySelector(`[data-battle-unit-cell="${u.x},${u.y}"]`);
+            const terrainSlot = wrap.querySelector(`[data-battle-cell="${u.x},${u.y}"]`);
+            const anchor = unitSlot ?? terrainSlot;
+            if (!anchor) {
+              resolve(false);
+              return;
+            }
+            const target = computeBattleRevealScrollTarget(wrap, anchor);
+            if (!target) {
+              resolve(true);
+              return;
+            }
+            if (smooth) {
+              await animateBattleWrapScrollTo(wrap, target.top, target.left);
+            } else {
+              wrap.scrollTo({ top: target.top, left: target.left, behavior: "auto" });
+              clampBattleWrapScrollToGrid(wrap);
+            }
+            resolve(true);
+          });
+        });
+      });
     },
     beforePlayerMoveStart(
       movingUnitId: string,

@@ -3435,7 +3435,7 @@ a:hover {
 
 /* —— 回合转场：仅中央字幕渐显/渐隐，不改变战场画面 —— */
 .turn-phase-banner-root {
-  position: absolute;
+  position: fixed;
   inset: 0;
   z-index: 400;
   display: flex;

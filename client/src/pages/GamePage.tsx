@@ -658,11 +658,25 @@ export default function GamePage() {
     }
 
     const delay = c === 0 ? 0 : ENEMY_ACTION_GAP_MS;
+    let cancelled = false;
     const tid = window.setTimeout(() => {
-      setBattle((s) => processSingleEnemyStep(s));
+      void (async () => {
+        const b0 = battleRef.current;
+        const q0 = b0.enemyTurnQueue;
+        const c0 = b0.enemyTurnCursor;
+        const currentId = q0 && c0 < q0.length ? q0[c0] : null;
+        if (currentId) {
+          await gameBattleRef.current?.revealUnitOnMapBeforeAction(currentId, { smoothIfNeeded: true });
+        }
+        if (cancelled) return;
+        setBattle((s) => processSingleEnemyStep(s));
+      })();
     }, delay);
 
-    return () => window.clearTimeout(tid);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(tid);
+    };
   }, [
     battle.outcome,
     battle.pendingVictory,
@@ -678,29 +692,20 @@ export default function GamePage() {
     enemyTurnGateSeq,
   ]);
 
-  /** 敌军回合：随当前行动单位 / 沿路移动，把地图滚到其所在格（不触发侧栏点格脉冲） */
+  /** 敌军走格中：跟随当前移动单位（不触发侧栏点格脉冲） */
   const enemyCameraSig = useMemo(() => {
     if (battle.outcome !== "playing" || battle.pendingVictory) return "";
     if (battle.turn !== "enemy" || battle.phase !== "enemy") return "";
-    if (battle.pendingMove?.kind === "enemy") {
-      const p = battle.pendingMove;
-      const u = battle.units.find((x) => x.id === p.unitId);
-      return `m:${p.unitId}:${p.path.map((s) => `${s.x},${s.y}`).join("|")}:${u?.x ?? -1},${u?.y ?? -1}`;
-    }
-    const q = battle.enemyTurnQueue;
-    const c = battle.enemyTurnCursor;
-    if (!q?.length || c >= q.length) return "idle";
-    const id = q[c];
-    const u = battle.units.find((x) => x.id === id);
-    return `q:${c}:${id}:${u?.x ?? -1},${u?.y ?? -1}:${u?.hp ?? -1}`;
+    if (battle.pendingMove?.kind !== "enemy") return "idle";
+    const p = battle.pendingMove;
+    const u = battle.units.find((x) => x.id === p.unitId);
+    return `m:${p.unitId}:${p.path.map((s) => `${s.x},${s.y}`).join("|")}:${u?.x ?? -1},${u?.y ?? -1}`;
   }, [
     battle.outcome,
     battle.pendingVictory,
     battle.turn,
     battle.phase,
     battle.pendingMove,
-    battle.enemyTurnCursor,
-    battle.enemyTurnQueue,
     battle.units,
   ]);
 
@@ -713,11 +718,6 @@ export default function GamePage() {
 
     let unitId: string | null = null;
     if (b.pendingMove?.kind === "enemy") unitId = b.pendingMove.unitId;
-    else {
-      const q = b.enemyTurnQueue;
-      const c = b.enemyTurnCursor;
-      if (q && c < q.length) unitId = q[c] ?? null;
-    }
     if (!unitId) return;
     const u = b.units.find((x) => x.id === unitId && x.hp > 0);
     if (!u) return;
