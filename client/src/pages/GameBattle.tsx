@@ -1091,11 +1091,11 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
           anchor &&
           wrap.contains(anchor) &&
           snap &&
-          performance.now() - snap.at <= 480 &&
-          isBattleAnchorStableFullyInScrollport(wrap, anchor)
+          performance.now() - snap.at <= 480
         ) {
           const st = snap.st;
           const sl = snap.sl;
+          preFocusScrollRef.current = null;
           const restore = () => {
             wrap.scrollTop = st;
             wrap.scrollLeft = sl;
