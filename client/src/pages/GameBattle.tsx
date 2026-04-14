@@ -788,6 +788,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   attrFloatVisibleRef.current = attrFloatVisible;
   const inspectUnitIdPropRef = useRef<string | null>(null);
   inspectUnitIdPropRef.current = inspectUnitId;
+  const preFocusScrollRef = useRef<{ st: number; sl: number; at: number } | null>(null);
 
   /** 宽屏行动菜单锚点；用 ref 供属性浮窗 layout 同帧内读 skipSides */
   const [wideMenuAnchor, setWideMenuAnchor] = useState<WideMenuAnchor>("right");
@@ -1005,11 +1006,44 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   useEffect(() => {
     const wrap = battleWrapRef.current;
     if (!wrap) return;
+    const onMouseDownCapture = (ev: globalThis.MouseEvent) => {
+      if (ev.button !== 0) return;
+      preFocusScrollRef.current = { st: wrap.scrollTop, sl: wrap.scrollLeft, at: performance.now() };
+    };
     const onFocusIn = (ev: FocusEvent) => {
+      if (ev.target instanceof Element) {
+        const anchor = ev.target.closest("[data-battle-unit-cell]");
+        const snap = preFocusScrollRef.current;
+        if (
+          anchor &&
+          wrap.contains(anchor) &&
+          snap &&
+          performance.now() - snap.at <= 480 &&
+          isBattleAnchorStableFullyInScrollport(wrap, anchor)
+        ) {
+          const st = snap.st;
+          const sl = snap.sl;
+          const restore = () => {
+            wrap.scrollTop = st;
+            wrap.scrollLeft = sl;
+          };
+          restore();
+          queueMicrotask(restore);
+          requestAnimationFrame(restore);
+          requestAnimationFrame(() => {
+            requestAnimationFrame(restore);
+          });
+          return;
+        }
+      }
       restoreBattleWrapScrollIfFocusedUnitCellAlreadyStable(wrap, ev.target);
     };
+    wrap.addEventListener("mousedown", onMouseDownCapture, true);
     wrap.addEventListener("focusin", onFocusIn, true);
-    return () => wrap.removeEventListener("focusin", onFocusIn, true);
+    return () => {
+      wrap.removeEventListener("mousedown", onMouseDownCapture, true);
+      wrap.removeEventListener("focusin", onFocusIn, true);
+    };
   }, [visualEpoch]);
 
   useEffect(() => {
