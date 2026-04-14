@@ -31,8 +31,6 @@ export function computePinnedBattleWrapScroll(args: {
     const wasBottom = oldMaxY <= edge || st >= oldMaxY - edge;
     if (wasBottom) {
       st = maxY;
-    } else {
-      st = st + pch - ch;
     }
   }
 
@@ -42,8 +40,6 @@ export function computePinnedBattleWrapScroll(args: {
     const wasRight = oldMaxX <= edge || sl >= oldMaxX - edge;
     if (wasRight) {
       sl = maxX;
-    } else {
-      sl = sl + pcw - cw;
     }
   }
 

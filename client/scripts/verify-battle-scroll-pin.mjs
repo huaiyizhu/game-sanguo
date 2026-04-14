@@ -20,8 +20,6 @@ function computePinnedBattleWrapScroll(args) {
     const wasBottom = oldMaxY <= edge || st >= oldMaxY - edge;
     if (wasBottom) {
       st = maxY;
-    } else {
-      st = st + pch - ch;
     }
   }
 
@@ -31,8 +29,6 @@ function computePinnedBattleWrapScroll(args) {
     const wasRight = oldMaxX <= edge || sl >= oldMaxX - edge;
     if (wasRight) {
       sl = maxX;
-    } else {
-      sl = sl + pcw - cw;
     }
   }
 
@@ -74,7 +70,7 @@ assert.equal(
     prevClientHeight: 1200,
     prevClientWidth: 800,
   }).scrollTop,
-  300
+  100
 );
 
 assert.equal(
