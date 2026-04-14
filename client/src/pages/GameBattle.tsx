@@ -651,7 +651,10 @@ export type GameBattleHandle = {
    * 我军即将沿路走格前调用：若属性浮窗正展示该将，则先渐隐再 resolve，
    * 以便父组件在写入 pendingMove 前等待，避免浮窗与滑步重叠。
    */
-  beforePlayerMoveStart: (movingUnitId: string) => Promise<void>;
+  beforePlayerMoveStart: (
+    movingUnitId: string,
+    firstStep?: { from: { x: number; y: number }; to: { x: number; y: number } }
+  ) => Promise<void>;
 };
 
 const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
@@ -820,8 +823,30 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       });
       return true;
     },
-    beforePlayerMoveStart(movingUnitId: string) {
+    beforePlayerMoveStart(
+      movingUnitId: string,
+      firstStep?: { from: { x: number; y: number }; to: { x: number; y: number } }
+    ) {
       return new Promise<void>((resolve) => {
+        if (firstStep) {
+          const { from, to } = firstStep;
+          const dx = from.x - to.x;
+          const dy = from.y - to.y;
+          setTroopFacingById((prev) => ({
+            ...prev,
+            [movingUnitId]: facingFromGridStep(from, to),
+          }));
+          setPreMoveSlide((prev) => ({
+            ...prev,
+            [movingUnitId]: {
+              dx,
+              dy,
+              toX: to.x,
+              toY: to.y,
+              gen: (prev[movingUnitId]?.gen ?? 0) + 1,
+            },
+          }));
+        }
         const ft = attrFloatTimersRef.current;
         if (ft.hold != null) {
           window.clearTimeout(ft.hold);
@@ -1116,6 +1141,9 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   const [moveSlide, setMoveSlide] = useState<
     Record<string, { dx: number; dy: number; gen: number }>
   >({});
+  const [preMoveSlide, setPreMoveSlide] = useState<
+    Record<string, { dx: number; dy: number; toX: number; toY: number; gen: number }>
+  >({});
   const [troopFacingById, setTroopFacingById] = useState<Record<string, TroopFacing>>({});
   const [actionMenuRevealReady, setActionMenuRevealReady] = useState(false);
   const [dyingVisuals, setDyingVisuals] = useState<DyingVisual[]>([]);
@@ -1148,6 +1176,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     window.clearTimeout(turnGateTimerRef.current);
     setTurnBanner(null);
     setMoveSlide({});
+    setPreMoveSlide({});
     setTroopFacingById({});
     setActionMenuRevealReady(false);
     setDyingVisuals([]);
@@ -1658,6 +1687,12 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
             ...prev,
             [id]: { dx, dy, gen: (prev[id]?.gen ?? 0) + 1 },
           }));
+          setPreMoveSlide((prev) => {
+            if (!prev[id]) return prev;
+            const next = { ...prev };
+            delete next[id];
+            return next;
+          });
           /* prefers-reduced-motion 下无 animation，animationend 不会触发 */
           const tid = window.setTimeout(() => {
             moveSlideFallbackTimersRef.current.delete(id);
@@ -1977,7 +2012,13 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     const hitKind: "melee" | "tactic" | undefined = u ? hitFxKind[u.id] : undefined;
     const pickCand = Boolean(u && u.side === "enemy" && isPickCandidate(u.id));
     const pickFocus = Boolean(u && u.id === focusedEnemyId);
-    const slide = u && moveSlide[u.id];
+    const primed = u && preMoveSlide[u.id];
+    const slide =
+      u && primed && primed.toX === u.x && primed.toY === u.y
+        ? { dx: primed.dx, dy: primed.dy, gen: primed.gen }
+        : u
+          ? moveSlide[u.id]
+          : undefined;
     const pendingSelectionGlow = Boolean(
       isSelected &&
         u &&
@@ -2374,6 +2415,12 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                       window.clearTimeout(fb);
                       moveSlideFallbackTimersRef.current.delete(uid);
                     }
+                    setPreMoveSlide((prev) => {
+                      if (!prev[uid]) return prev;
+                      const next = { ...prev };
+                      delete next[uid];
+                      return next;
+                    });
                     setMoveSlide((prev) => {
                       if (!prev[uid]) return prev;
                       const next = { ...prev };

@@ -350,8 +350,6 @@ export default function GamePage() {
   }, []);
   const turnIntroLockedRef = useRef(true);
   turnIntroLockedRef.current = turnIntroLocked;
-  /** 沿路移动链：为 true 时下一步 `advancePendingMove` 用 0ms 延迟（新链首格，避免起手空等） */
-  const moveChainHeadRef = useRef(true);
   const onTurnActionReady = useCallback((ready: boolean) => {
     setTurnIntroLocked(!ready);
     if (!ready) {
@@ -606,37 +604,13 @@ export default function GamePage() {
   }, [bumpVisualEpoch]);
 
   useEffect(() => {
-    if (!battle.pendingMove) {
-      moveChainHeadRef.current = true;
-    }
-  }, [battle.pendingMove]);
-
-  useEffect(() => {
     if (battle.pendingVictory) return;
     if (battle.pendingMove?.kind !== "player") return;
     if (turnIntroLocked) return;
-    const immediate = moveChainHeadRef.current;
-    const delay = immediate ? 0 : MOVE_STEP_MS_PLAYER;
-    let rafOuter = 0;
-    let rafInner = 0;
-    let tid = 0;
-    const run = () => {
-      moveChainHeadRef.current = false;
+    const tid = window.setTimeout(() => {
       setBattle((s) => advancePendingMove(s));
-    };
-    if (immediate) {
-      /* 双 rAF：等本帧 commit + layout 后再推进，避免与 GameBattle 滑步 effect 抢同一帧 */
-      rafOuter = requestAnimationFrame(() => {
-        rafInner = requestAnimationFrame(run);
-      });
-    } else {
-      tid = window.setTimeout(run, delay);
-    }
-    return () => {
-      if (rafOuter) cancelAnimationFrame(rafOuter);
-      if (rafInner) cancelAnimationFrame(rafInner);
-      if (tid) window.clearTimeout(tid);
-    };
+    }, MOVE_STEP_MS_PLAYER);
+    return () => window.clearTimeout(tid);
   }, [
     battle.outcome,
     battle.pendingVictory,
@@ -677,27 +651,10 @@ export default function GamePage() {
     if (c >= q.length) return;
 
     if (battle.pendingMove?.kind === "enemy") {
-      const immediate = moveChainHeadRef.current;
-      const delay = immediate ? 0 : MOVE_STEP_MS_ENEMY;
-      let rafOuter = 0;
-      let rafInner = 0;
-      let tid = 0;
-      const run = () => {
-        moveChainHeadRef.current = false;
+      const tid = window.setTimeout(() => {
         setBattle((s) => advancePendingMove(s));
-      };
-      if (immediate) {
-        rafOuter = requestAnimationFrame(() => {
-          rafInner = requestAnimationFrame(run);
-        });
-      } else {
-        tid = window.setTimeout(run, delay);
-      }
-      return () => {
-        if (rafOuter) cancelAnimationFrame(rafOuter);
-        if (rafInner) cancelAnimationFrame(rafInner);
-        if (tid) window.clearTimeout(tid);
-      };
+      }, MOVE_STEP_MS_ENEMY);
+      return () => window.clearTimeout(tid);
     }
 
     const delay = c === 0 ? 0 : ENEMY_ACTION_GAP_MS;
@@ -805,7 +762,11 @@ export default function GamePage() {
     const preview = applyCellClick(s0);
     const pm = preview.pendingMove;
     if (pm?.kind === "player" && pm.unitId) {
-      await gameBattleRef.current?.beforePlayerMoveStart(pm.unitId);
+      const first = pm.path[0];
+      await gameBattleRef.current?.beforePlayerMoveStart(
+        pm.unitId,
+        pm.from && first ? { from: pm.from, to: first } : undefined
+      );
     }
     setBattle((s) => applyCellClick(s));
   }, []);

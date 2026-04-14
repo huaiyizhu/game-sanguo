@@ -1,6 +1,6 @@
 import type { Side, TroopKind } from "../game/types";
 import { TROOP_KIND_BADGE, TROOP_KIND_LABEL } from "../game/types";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import {
   troopWalkFrameCount,
   troopWalkFrameIntervalMs,
@@ -57,7 +57,7 @@ export default function TroopEmblem({
   const reducedMotion =
     typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setUsingRasterFallback(false);
     if (motion === "idle") setWalkFramesDisabled(false);
     if (motion !== "walk" || frameCount <= 1) {
