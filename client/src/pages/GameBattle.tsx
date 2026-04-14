@@ -335,6 +335,22 @@ function isBattleAnchorStableFullyInScrollport(
   );
 }
 
+function isBattleAnchorRevealFullyInScrollport(
+  wrap: HTMLElement,
+  anchor: Element,
+  margin = BATTLE_SCROLL_REVEAL_MARGIN_PX
+): boolean {
+  const cr = getBattleAnchorRevealScreenRect(wrap, anchor);
+  if (!cr) return false;
+  const vp = getWrapScrollportViewportRect(wrap);
+  return (
+    cr.top >= vp.top + margin - 0.5 &&
+    cr.bottom <= vp.bottom - margin + 0.5 &&
+    cr.left >= vp.left + margin - 0.5 &&
+    cr.right <= vp.right - margin + 0.5
+  );
+}
+
 /**
  * 焦点落在单位格内且格位已在视口内时，撤销浏览器为 focus 做的 scroll-into-view（桌面点击 tabIndex 时常见）。
  */
@@ -381,10 +397,13 @@ function scrollBattleWrapToRevealCell(
 function computeBattleRevealScrollTarget(
   wrap: HTMLElement,
   anchor: Element,
-  opts?: { margin?: number }
+  opts?: { margin?: number; dynamicRect?: boolean }
 ): { top: number; left: number } | null {
   const margin = opts?.margin ?? BATTLE_SCROLL_REVEAL_MARGIN_PX;
-  if (isBattleAnchorStableFullyInScrollport(wrap, anchor, margin)) {
+  const inView = opts?.dynamicRect
+    ? isBattleAnchorRevealFullyInScrollport(wrap, anchor, margin)
+    : isBattleAnchorStableFullyInScrollport(wrap, anchor, margin);
+  if (inView) {
     return null;
   }
 
@@ -444,6 +463,51 @@ function animateBattleWrapScrollTo(
     };
     requestAnimationFrame(tick);
   });
+}
+
+function smoothStepToward(value: number, target: number, maxDelta = 38): number {
+  const d = target - value;
+  if (Math.abs(d) <= 0.5) return target;
+  const eased = d * 0.22;
+  const clamped = Math.max(-maxDelta, Math.min(maxDelta, eased));
+  return value + clamped;
+}
+
+function computeBattleComfortScrollTarget(
+  wrap: HTMLElement,
+  anchor: Element
+): { top: number; left: number } | null {
+  const cr = getBattleAnchorRevealScreenRect(wrap, anchor);
+  if (!cr) return null;
+  const vp = getWrapScrollportViewportRect(wrap);
+  /* 舒适窗口：中间区域不跟随；只在接近边缘时轻推回窗口内 */
+  const marginX = Math.max(56, vp.width * 0.28);
+  const marginY = Math.max(62, vp.height * 0.3);
+  const minX = vp.left + marginX;
+  const maxX = vp.right - marginX;
+  const minY = vp.top + marginY;
+  const maxY = vp.bottom - marginY;
+
+  let dX = 0;
+  if (cr.left < minX) dX = cr.left - minX;
+  else if (cr.right > maxX) dX = cr.right - maxX;
+
+  let dY = 0;
+  if (cr.top < minY) dY = cr.top - minY;
+  else if (cr.bottom > maxY) dY = cr.bottom - maxY;
+
+  /* 小幅波动忽略：减少贴边抖动时的持续微调 */
+  if (Math.abs(dX) < 10) dX = 0;
+  if (Math.abs(dY) < 10) dY = 0;
+
+  if (Math.abs(dX) < 1 && Math.abs(dY) < 1) return null;
+  const bounds = getBattleGridScrollBounds(wrap);
+  const hardMaxL = Math.max(0, wrap.scrollWidth - wrap.clientWidth);
+  const hardMaxT = Math.max(0, wrap.scrollHeight - wrap.clientHeight);
+  const nextL = Math.min(bounds.lMax, Math.max(bounds.lMin, Math.min(hardMaxL, Math.max(0, wrap.scrollLeft + dX))));
+  const nextT = Math.min(bounds.tMax, Math.max(bounds.tMin, Math.min(hardMaxT, Math.max(0, wrap.scrollTop + dY))));
+  if (Math.abs(nextL - wrap.scrollLeft) < 0.5 && Math.abs(nextT - wrap.scrollTop) < 0.5) return null;
+  return { top: nextT, left: nextL };
 }
 /** 极宽地图时每格不低于此值，避免点选过难；手机横屏可略压以换可视格数 */
 const BATTLE_CELL_MIN_PX = 30;
@@ -1186,7 +1250,8 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     if (!fitViewport) return;
     const wrap = battleWrapRef.current;
     if (!wrap) return;
-    const id = requestAnimationFrame(() => {
+    let rid = 0;
+    const tick = () => {
       const b = battleSnapRef.current;
       const pm = b.pendingMove;
       if (!pm) return;
@@ -1199,13 +1264,30 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
         `[data-battle-cell="${u.x},${u.y}"]`
       ) as HTMLElement | null;
       const anchor = unitSlot ?? terrainSlot;
-      if (anchor && isBattleAnchorStableFullyInScrollport(wrap, anchor)) {
-        return;
+      if (anchor) {
+        clampBattleWrapScrollToGrid(wrap);
+        const target =
+          pm.kind === "enemy"
+            ? computeBattleComfortScrollTarget(wrap, anchor)
+            : computeBattleRevealScrollTarget(wrap, anchor, {
+                dynamicRect: true,
+                margin: BATTLE_SCROLL_REVEAL_MARGIN_PX + 18,
+              });
+        if (target) {
+          if (pm.kind === "enemy") {
+            const nextTop = smoothStepToward(wrap.scrollTop, target.top, 18);
+            const nextLeft = smoothStepToward(wrap.scrollLeft, target.left, 18);
+            wrap.scrollTo({ top: nextTop, left: nextLeft, behavior: "auto" });
+          } else {
+            wrap.scrollTo({ top: target.top, left: target.left, behavior: "auto" });
+          }
+          clampBattleWrapScrollToGrid(wrap);
+        }
       }
-      clampBattleWrapScrollToGrid(wrap);
-      if (anchor) scrollBattleWrapToRevealCell(wrap, anchor);
-    });
-    return () => cancelAnimationFrame(id);
+      rid = requestAnimationFrame(tick);
+    };
+    rid = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rid);
   }, [
     fitViewport,
     gridW,
@@ -1215,6 +1297,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     pendingMove?.kind,
     pendingMove?.unitId,
     (pendingMove?.path ?? []).join("|"),
+    units,
   ]);
 
   const moveSet = new Set(moveTargets.map((t) => `${t.x},${t.y}`));
