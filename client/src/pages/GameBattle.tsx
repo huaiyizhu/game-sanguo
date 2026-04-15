@@ -397,7 +397,7 @@ function scrollBattleWrapToRevealCell(
 function computeBattleRevealScrollTarget(
   wrap: HTMLElement,
   anchor: Element,
-  opts?: { margin?: number; dynamicRect?: boolean }
+  opts?: { margin?: number; dynamicRect?: boolean; upperSlackPx?: number }
 ): { top: number; left: number } | null {
   const margin = opts?.margin ?? BATTLE_SCROLL_REVEAL_MARGIN_PX;
   const inView = opts?.dynamicRect
@@ -427,10 +427,13 @@ function computeBattleRevealScrollTarget(
   }
 
   const bounds = getBattleGridScrollBounds(wrap);
+  const upperSlack = Math.max(0, opts?.upperSlackPx ?? 0);
   const hardMaxL = Math.max(0, wrap.scrollWidth - wrap.clientWidth);
   const hardMaxT = Math.max(0, wrap.scrollHeight - wrap.clientHeight);
-  const nextL = Math.min(bounds.lMax, Math.max(bounds.lMin, Math.min(hardMaxL, Math.max(0, wrap.scrollLeft + dX))));
-  const nextT = Math.min(bounds.tMax, Math.max(bounds.tMin, Math.min(hardMaxT, Math.max(0, wrap.scrollTop + dY))));
+  const softMaxL = Math.min(hardMaxL, bounds.lMax + upperSlack);
+  const softMaxT = Math.min(hardMaxT, bounds.tMax + upperSlack);
+  const nextL = Math.min(softMaxL, Math.max(bounds.lMin, Math.min(hardMaxL, Math.max(0, wrap.scrollLeft + dX))));
+  const nextT = Math.min(softMaxT, Math.max(bounds.tMin, Math.min(hardMaxT, Math.max(0, wrap.scrollTop + dY))));
   if (nextL === wrap.scrollLeft && nextT === wrap.scrollTop) return null;
   return { top: nextT, left: nextL };
 }
@@ -473,40 +476,42 @@ function smoothStepToward(value: number, target: number, maxDelta = 38): number 
   return value + clamped;
 }
 
-function computeBattleComfortScrollTarget(
+function computeSmoothDurationMs(fromTop: number, fromLeft: number, toTop: number, toLeft: number): number {
+  const dist = Math.hypot(toTop - fromTop, toLeft - fromLeft);
+  return Math.max(320, Math.min(780, Math.round(220 + dist * 0.6)));
+}
+
+function computeEnemyKeepVisibleTarget(
   wrap: HTMLElement,
   anchor: Element
 ): { top: number; left: number } | null {
   const cr = getBattleAnchorRevealScreenRect(wrap, anchor);
   if (!cr) return null;
   const vp = getWrapScrollportViewportRect(wrap);
-  /* 舒适窗口：中间区域不跟随；只在接近边缘时轻推回窗口内 */
-  const marginX = Math.max(56, vp.width * 0.28);
-  const marginY = Math.max(62, vp.height * 0.3);
-  const minX = vp.left + marginX;
-  const maxX = vp.right - marginX;
-  const minY = vp.top + marginY;
-  const maxY = vp.bottom - marginY;
-
-  let dX = 0;
-  if (cr.left < minX) dX = cr.left - minX;
-  else if (cr.right > maxX) dX = cr.right - maxX;
+  const step = getBattleGridRowStepPx(wrap);
+  const safeTop = vp.top + 14;
+  const safeBottom = vp.bottom - Math.max(18, Math.round(step * 0.22));
+  const safeLeft = vp.left + 10;
+  const safeRight = vp.right - 10;
 
   let dY = 0;
-  if (cr.top < minY) dY = cr.top - minY;
-  else if (cr.bottom > maxY) dY = cr.bottom - maxY;
+  if (cr.bottom > safeBottom) dY = cr.bottom - safeBottom;
+  else if (cr.top < safeTop) dY = cr.top - safeTop;
 
-  /* 小幅波动忽略：减少贴边抖动时的持续微调 */
-  if (Math.abs(dX) < 10) dX = 0;
-  if (Math.abs(dY) < 10) dY = 0;
+  let dX = 0;
+  if (cr.right > safeRight) dX = cr.right - safeRight;
+  else if (cr.left < safeLeft) dX = cr.left - safeLeft;
 
-  if (Math.abs(dX) < 1 && Math.abs(dY) < 1) return null;
+  if (Math.abs(dX) < 0.5 && Math.abs(dY) < 0.5) return null;
   const bounds = getBattleGridScrollBounds(wrap);
   const hardMaxL = Math.max(0, wrap.scrollWidth - wrap.clientWidth);
   const hardMaxT = Math.max(0, wrap.scrollHeight - wrap.clientHeight);
-  const nextL = Math.min(bounds.lMax, Math.max(bounds.lMin, Math.min(hardMaxL, Math.max(0, wrap.scrollLeft + dX))));
-  const nextT = Math.min(bounds.tMax, Math.max(bounds.tMin, Math.min(hardMaxT, Math.max(0, wrap.scrollTop + dY))));
-  if (Math.abs(nextL - wrap.scrollLeft) < 0.5 && Math.abs(nextT - wrap.scrollTop) < 0.5) return null;
+  const slackY = Math.round(step * 2);
+  const slackX = Math.round(step * 0.6);
+  const softMaxL = Math.min(hardMaxL, bounds.lMax + slackX);
+  const softMaxT = Math.min(hardMaxT, bounds.tMax + slackY);
+  const nextL = Math.min(softMaxL, Math.max(bounds.lMin, Math.max(0, wrap.scrollLeft + dX)));
+  const nextT = Math.min(softMaxT, Math.max(bounds.tMin, Math.max(0, wrap.scrollTop + dY)));
   return { top: nextT, left: nextL };
 }
 /** 极宽地图时每格不低于此值，避免点选过难；手机横屏可略压以换可视格数 */
@@ -749,7 +754,10 @@ export type GameBattleHandle = {
    * 滚动战场使该单位所在格进入视野；可选在缩略格上短暂高亮（侧栏点将时为 true）。
    */
   focusUnitOnMap: (unitId: string, opts?: { rosterPulse?: boolean }) => boolean;
-  revealUnitOnMapBeforeAction: (unitId: string, opts?: { smoothIfNeeded?: boolean }) => Promise<boolean>;
+  revealUnitOnMapBeforeAction: (
+    unitId: string,
+    opts?: { smoothIfNeeded?: boolean; ensureFullyVisible?: boolean }
+  ) => Promise<boolean>;
   /**
    * 我军即将沿路走格前调用：若属性浮窗正展示该将，则先渐隐再 resolve，
    * 以便父组件在写入 pendingMove 前等待，避免浮窗与滑步重叠。
@@ -846,6 +854,10 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       }) as CSSProperties,
     [cellCssEffective, gridW, gridH]
   );
+  const enemyCameraBottomPadPx = useMemo(() => {
+    const cellPx = fitViewport ? (fitCellPx > 0 ? fitCellPx : cellClamp.fallback) : cellClamp.fallback;
+    return Math.max(0, Math.round((cellPx + BATTLE_GRID_GAP_PX) * 1.15));
+  }, [fitViewport, fitCellPx, cellClamp]);
   /** fit 顶缓冲随格长略缩，与 recomputeFitCellPx 内 head1 一致，避免横屏上占位过大 */
   const fitScrollHeadroomPx = useMemo(() => {
     if (!fitViewport) return BATTLE_GRID_SCROLL_HEADROOM_PX;
@@ -927,9 +939,13 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       });
       return true;
     },
-    revealUnitOnMapBeforeAction(unitId: string, opts?: { smoothIfNeeded?: boolean }) {
+    revealUnitOnMapBeforeAction(
+      unitId: string,
+      opts?: { smoothIfNeeded?: boolean; ensureFullyVisible?: boolean }
+    ) {
       return new Promise<boolean>((resolve) => {
         const smooth = opts?.smoothIfNeeded !== false;
+        const ensureFullyVisible = opts?.ensureFullyVisible !== false;
         requestAnimationFrame(() => {
           requestAnimationFrame(async () => {
             const wrap = battleWrapRef.current;
@@ -945,16 +961,32 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
               resolve(false);
               return;
             }
-            const target = computeBattleRevealScrollTarget(wrap, anchor);
-            if (!target) {
+            const runRevealOnce = async () => {
+              const t = computeEnemyKeepVisibleTarget(wrap, anchor);
+              if (!t) return false;
+              if (smooth) {
+                const ms = computeSmoothDurationMs(wrap.scrollTop, wrap.scrollLeft, t.top, t.left);
+                await animateBattleWrapScrollTo(wrap, t.top, t.left, ms);
+                clampBattleWrapScrollToGrid(wrap, {
+                  upperSlackPx: Math.round(getBattleGridRowStepPx(wrap) * 2),
+                });
+              } else {
+                wrap.scrollTo({ top: t.top, left: t.left, behavior: "auto" });
+                clampBattleWrapScrollToGrid(wrap, {
+                  upperSlackPx: Math.round(getBattleGridRowStepPx(wrap) * 2),
+                });
+              }
+              return true;
+            };
+            const moved = await runRevealOnce();
+            if (!moved || !ensureFullyVisible) {
               resolve(true);
               return;
             }
-            if (smooth) {
-              await animateBattleWrapScrollTo(wrap, target.top, target.left);
-            } else {
-              wrap.scrollTo({ top: target.top, left: target.left, behavior: "auto" });
-              clampBattleWrapScrollToGrid(wrap);
+            /* 走格动画收尾一帧内 rect 仍可能变化：再做少量追赶，确保完整入镜 */
+            for (let i = 0; i < 3; i++) {
+              const movedAgain = await runRevealOnce();
+              if (!movedAgain) break;
             }
             resolve(true);
           });
@@ -1265,23 +1297,32 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       ) as HTMLElement | null;
       const anchor = unitSlot ?? terrainSlot;
       if (anchor) {
-        clampBattleWrapScrollToGrid(wrap);
+        if (pm.kind === "enemy") {
+          clampBattleWrapScrollToGrid(wrap, {
+            upperSlackPx: Math.round(getBattleGridRowStepPx(wrap) * 2),
+          });
+        } else {
+          clampBattleWrapScrollToGrid(wrap);
+        }
         const target =
           pm.kind === "enemy"
-            ? computeBattleComfortScrollTarget(wrap, anchor)
+            ? computeEnemyKeepVisibleTarget(wrap, anchor)
             : computeBattleRevealScrollTarget(wrap, anchor, {
                 dynamicRect: true,
                 margin: BATTLE_SCROLL_REVEAL_MARGIN_PX + 18,
               });
         if (target) {
           if (pm.kind === "enemy") {
-            const nextTop = smoothStepToward(wrap.scrollTop, target.top, 18);
-            const nextLeft = smoothStepToward(wrap.scrollLeft, target.left, 18);
+            const nextTop = smoothStepToward(wrap.scrollTop, target.top, 16);
+            const nextLeft = smoothStepToward(wrap.scrollLeft, target.left, 16);
             wrap.scrollTo({ top: nextTop, left: nextLeft, behavior: "auto" });
+            clampBattleWrapScrollToGrid(wrap, {
+              upperSlackPx: Math.round(getBattleGridRowStepPx(wrap) * 2),
+            });
           } else {
             wrap.scrollTo({ top: target.top, left: target.left, behavior: "auto" });
+            clampBattleWrapScrollToGrid(wrap);
           }
-          clampBattleWrapScrollToGrid(wrap);
         }
       }
       rid = requestAnimationFrame(tick);
@@ -2246,6 +2287,13 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     <div
       ref={battleWrapRef}
       className={["battle-wrap", fitViewport ? "battle-wrap--fit" : ""].filter(Boolean).join(" ")}
+      style={
+        fitViewport
+          ? ({
+              ["--battle-camera-bottom-pad" as string]: `${enemyCameraBottomPadPx}px`,
+            } as CSSProperties)
+          : undefined
+      }
       role="application"
       aria-label="battlefield"
       onContextMenu={onContextMenu}

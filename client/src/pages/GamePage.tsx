@@ -548,6 +548,7 @@ export default function GamePage() {
   const gameBattleRef = useRef<GameBattleHandle>(null);
   const prevTurnRef = useRef<"player" | "enemy" | undefined>(undefined);
   const enemyTurnUnlockAtRef = useRef(0);
+  const lastEnemyMoverIdRef = useRef<string | null>(null);
 
   const outcomeScheduledRef = useRef(false);
   const tabWasHiddenRef = useRef(false);
@@ -635,6 +636,16 @@ export default function GamePage() {
   }, [battle.outcome, battle.turn]);
 
   useEffect(() => {
+    if (battle.pendingMove?.kind === "enemy") {
+      lastEnemyMoverIdRef.current = battle.pendingMove.unitId;
+      return;
+    }
+    if (battle.turn !== "enemy" || battle.phase !== "enemy") {
+      lastEnemyMoverIdRef.current = null;
+    }
+  }, [battle.pendingMove?.kind, battle.pendingMove?.unitId, battle.turn, battle.phase]);
+
+  useEffect(() => {
     if (battle.pendingVictory) return;
     if (battle.outcome !== "playing") return;
     if (turnIntroLocked) return;
@@ -661,14 +672,25 @@ export default function GamePage() {
     let cancelled = false;
     const tid = window.setTimeout(() => {
       void (async () => {
+        const prevMoverId = lastEnemyMoverIdRef.current;
+        if (prevMoverId) {
+          await gameBattleRef.current?.revealUnitOnMapBeforeAction(prevMoverId, {
+            smoothIfNeeded: true,
+            ensureFullyVisible: true,
+          });
+        }
         const b0 = battleRef.current;
         const q0 = b0.enemyTurnQueue;
         const c0 = b0.enemyTurnCursor;
         const currentId = q0 && c0 < q0.length ? q0[c0] : null;
         if (currentId) {
-          await gameBattleRef.current?.revealUnitOnMapBeforeAction(currentId, { smoothIfNeeded: true });
+          await gameBattleRef.current?.revealUnitOnMapBeforeAction(currentId, {
+            smoothIfNeeded: true,
+            ensureFullyVisible: true,
+          });
         }
         if (cancelled) return;
+        lastEnemyMoverIdRef.current = null;
         setBattle((s) => processSingleEnemyStep(s));
       })();
     }, delay);
@@ -691,42 +713,6 @@ export default function GamePage() {
     turnActionReadyTurn,
     enemyTurnGateSeq,
   ]);
-
-  /** 敌军走格中：跟随当前移动单位（不触发侧栏点格脉冲） */
-  const enemyCameraSig = useMemo(() => {
-    if (battle.outcome !== "playing" || battle.pendingVictory) return "";
-    if (battle.turn !== "enemy" || battle.phase !== "enemy") return "";
-    if (battle.pendingMove?.kind !== "enemy") return "idle";
-    const p = battle.pendingMove;
-    const u = battle.units.find((x) => x.id === p.unitId);
-    return `m:${p.unitId}:${p.path.map((s) => `${s.x},${s.y}`).join("|")}:${u?.x ?? -1},${u?.y ?? -1}`;
-  }, [
-    battle.outcome,
-    battle.pendingVictory,
-    battle.turn,
-    battle.phase,
-    battle.pendingMove,
-    battle.units,
-  ]);
-
-  useEffect(() => {
-    if (!enemyCameraSig || enemyCameraSig === "idle") return;
-    if (turnActionReadyTurn !== "enemy") return;
-    const b = battleRef.current;
-    if (b.outcome !== "playing" || b.pendingVictory) return;
-    if (b.turn !== "enemy" || b.phase !== "enemy") return;
-
-    let unitId: string | null = null;
-    if (b.pendingMove?.kind === "enemy") unitId = b.pendingMove.unitId;
-    if (!unitId) return;
-    const u = b.units.find((x) => x.id === unitId && x.hp > 0);
-    if (!u) return;
-
-    const raf = requestAnimationFrame(() => {
-      gameBattleRef.current?.focusUnitOnMap(unitId, { rosterPulse: false });
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [enemyCameraSig, turnActionReadyTurn]);
 
   /** 敌军行动中不保留检视/浮窗，避免 pendingMove 结束后属性浮窗再次弹出 */
   useEffect(() => {

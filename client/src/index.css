@@ -2150,6 +2150,7 @@ a:hover {
   width: 100%;
   scrollbar-gutter: stable;
   -webkit-overflow-scrolling: touch;
+  padding-bottom: calc(0.75rem + var(--battle-camera-bottom-pad, 0px));
 }
 
 /* 选中单位后的半透明属性浮窗：fixed 贴格子旁（须低于行动菜单 z-index:200） */
