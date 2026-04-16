@@ -5,6 +5,8 @@ export type Terrain =
   | "plain"
   | "forest"
   | "water"
+  | "bridge_horizontal"
+  | "bridge_vertical"
   | "mountain"
   | "desert"
   | "wall"
@@ -15,6 +17,8 @@ const ALL_TERRAINS: readonly Terrain[] = [
   "plain",
   "forest",
   "water",
+  "bridge_horizontal",
+  "bridge_vertical",
   "mountain",
   "desert",
   "wall",
@@ -216,7 +220,7 @@ export const TACTIC_DEF: Record<
   fire: {
     name: "火计",
     cost: 3,
-    terrains: ["plain", "forest", "desert"],
+    terrains: ["plain", "forest", "desert", "bridge_horizontal", "bridge_vertical"],
     dmgMul: 1.0,
   },
   water: {
@@ -313,7 +317,8 @@ export function expToNextLevel(level: number): number {
 /** 兵种是否在优势地形（攻防加成） */
 export function isArmyPreferredTerrain(army: ArmyType, t: Terrain): boolean {
   if (t === "wall" || t === "gate") return false;
-  if (army === "ping") return t === "plain" || t === "forest" || t === "desert";
+  if (army === "ping")
+    return t === "plain" || t === "forest" || t === "desert" || t === "bridge_horizontal" || t === "bridge_vertical";
   if (army === "shan") return t === "mountain";
   return army === "shui" && t === "water";
 }
@@ -409,6 +414,8 @@ export const TERRAIN_LABEL: Record<Terrain, string> = {
   plain: "陆地",
   forest: "林地",
   water: "水",
+  bridge_horizontal: "木桥（东西）",
+  bridge_vertical: "木桥（南北）",
   mountain: "山地",
   desert: "沙漠",
   wall: "城墙",

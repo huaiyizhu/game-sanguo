@@ -119,6 +119,7 @@ function terrainAt(state: BattleState, x: number, y: number): Terrain {
 export function stepCostForUnit(u: Unit, t: Terrain): number {
   if (t === "wall") return Infinity;
   if (t === "gate") return 1;
+  if (t === "bridge_horizontal" || t === "bridge_vertical") return 1;
   if (t === "water") return u.armyType === "shui" ? 1 : Infinity;
   if (t === "mountain") return u.armyType === "shan" ? 1 : 2;
   return 1;

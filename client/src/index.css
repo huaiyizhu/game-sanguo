@@ -1189,6 +1189,11 @@ a:hover {
   background: linear-gradient(180deg, #0e7490 0%, #0c4a6e 100%);
 }
 
+.battle-overview__cell--bridge_horizontal,
+.battle-overview__cell--bridge_vertical {
+  background: linear-gradient(180deg, #92400e 0%, #5c2e0e 100%);
+}
+
 .battle-overview__cell--mountain {
   background: linear-gradient(180deg, #78716c 0%, #44403c 100%);
 }

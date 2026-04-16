@@ -116,6 +116,37 @@ function addCityWallRow(
   }
 }
 
+/**
+ * 东西向木桥：铺在一条横线上，便于跨过「纵向水道」（水占窄列、沿南北延伸）。
+ */
+function paintBridgeHorizontalRow(rows: Terrain[][], y: number, x0: number, x1: number): void {
+  const h = rows.length;
+  const w = rows[0]?.length ?? 0;
+  if (!w || y < 0 || y >= h) return;
+  const lo = Math.max(0, Math.min(x0, x1));
+  const hi = Math.min(w - 1, Math.max(x0, x1));
+  const row = rows[y];
+  if (!row) return;
+  for (let x = lo; x <= hi; x++) {
+    if (row[x] === "water") row[x] = "bridge_horizontal";
+  }
+}
+
+/**
+ * 南北向木桥：铺在一条竖线上，便于跨过「横向水道」（水占窄行、沿东西延伸）——与常见「过河」一致。
+ */
+function paintBridgeVerticalCol(rows: Terrain[][], x: number, y0: number, y1: number): void {
+  const h = rows.length;
+  const w = rows[0]?.length ?? 0;
+  if (!w || x < 0 || x >= w) return;
+  const lo = Math.max(0, Math.min(y0, y1));
+  const hi = Math.min(h - 1, Math.max(y0, y1));
+  for (let y = lo; y <= hi; y++) {
+    const row = rows[y];
+    if (row?.[x] === "water") row[x] = "bridge_vertical";
+  }
+}
+
 /** 与旧 12×8 序章兼容的默认地形；其余尺寸为算法生成 */
 export function createDefaultTerrain(gridW: number, gridH: number): Terrain[][] {
   if (gridW === 12 && gridH === 8) return terrainClassic(12, 8);
@@ -148,6 +179,12 @@ function terrainClassic(w: number, h: number): Terrain[][] {
     }
     rows.push(row);
   }
+  const wy = Math.floor(h * 0.62);
+  paintBridgeVerticalCol(rows, Math.floor(w * 0.4), wy, wy);
+  paintBridgeVerticalCol(rows, Math.floor(w * 0.55), wy, wy);
+  const wy2 = Math.floor(h * 0.36);
+  paintBridgeVerticalCol(rows, Math.floor(w * 0.68), wy2, wy2 + 1);
+  paintBridgeVerticalCol(rows, Math.floor(w * 0.78), wy2, wy2 + 1);
   return rows;
 }
 
@@ -184,6 +221,8 @@ function terrainForestCore(w: number, h: number): Terrain[][] {
     }
     rows.push(row);
   }
+  paintBridgeVerticalCol(rows, Math.floor(w * 0.45), h - 2, h - 1);
+  paintBridgeVerticalCol(rows, Math.floor(w * 0.52), h - 2, h - 1);
   return rows;
 }
 
@@ -209,6 +248,8 @@ function terrainRiverRetreat(w: number, h: number): Terrain[][] {
     }
     rows.push(row);
   }
+  paintBridgeVerticalCol(rows, Math.floor(w * 0.5), 1, h - 2);
+  paintBridgeVerticalCol(rows, Math.floor(w * 0.33), 1, h - 2);
   return rows;
 }
 
@@ -229,6 +270,8 @@ function terrainChibiMarsh(w: number, h: number): Terrain[][] {
     }
     rows.push(row);
   }
+  paintBridgeVerticalCol(rows, Math.floor(w * 0.5), h - 2, h - 1);
+  paintBridgeHorizontalRow(rows, Math.floor(h * 0.45), Math.floor(w * 0.32), Math.floor(w * 0.68));
   return rows;
 }
 
@@ -253,6 +296,7 @@ function terrainMountainPass(w: number, h: number): Terrain[][] {
     }
     rows.push(row);
   }
+  paintBridgeHorizontalRow(rows, Math.floor(h * 0.58), Math.floor(w * 0.27), Math.floor(w * 0.36));
   return rows;
 }
 
@@ -274,6 +318,9 @@ function terrainHanzhong(w: number, h: number): Terrain[][] {
     }
     rows.push(row);
   }
+  paintBridgeVerticalCol(rows, Math.floor(w * 0.5), Math.floor(h * 0.28), Math.floor(h * 0.28));
+  paintBridgeVerticalCol(rows, Math.floor(w * 0.22), Math.floor(h * 0.38), Math.floor(h * 0.42));
+  paintBridgeVerticalCol(rows, Math.floor(w * 0.32), Math.floor(h * 0.38), Math.floor(h * 0.42));
   return rows;
 }
 
@@ -296,6 +343,12 @@ function terrainFanRiver(w: number, h: number): Terrain[][] {
     }
     rows.push(row);
   }
+  const yyB = Math.floor(h * 0.5);
+  const widenB = yyB % 5 === 0 ? 1 : 0;
+  paintBridgeHorizontalRow(rows, yyB, riverL - widenB, riverR + widenB);
+  const yyB2 = Math.floor(h * 0.72);
+  const widenB2 = yyB2 % 5 === 0 ? 1 : 0;
+  paintBridgeHorizontalRow(rows, yyB2, riverL - widenB2, riverR + widenB2);
   return rows;
 }
 
@@ -317,6 +370,8 @@ function terrainYilingShore(w: number, h: number): Terrain[][] {
     }
     rows.push(row);
   }
+  paintBridgeVerticalCol(rows, Math.floor(w * 0.38), h - 3, h - 1);
+  paintBridgeVerticalCol(rows, Math.floor(w * 0.74), h - 4, h - 2);
   return rows;
 }
 
@@ -337,6 +392,9 @@ function terrainQishan(w: number, h: number): Terrain[][] {
     }
     rows.push(row);
   }
+  paintBridgeVerticalCol(rows, Math.floor(w * 0.45), Math.floor(h * 0.32), Math.floor(h * 0.32));
+  paintBridgeVerticalCol(rows, Math.floor(w * 0.55), Math.floor(h * 0.32), Math.floor(h * 0.32));
+  paintBridgeVerticalCol(rows, Math.floor(w * 0.72), Math.floor(h * 0.48), Math.floor(h * 0.48));
   return rows;
 }
 
@@ -358,6 +416,9 @@ function terrainXuzhouSiege(w: number, h: number): Terrain[][] {
     rows.push(row);
   }
   addCityWallRow(rows, Math.floor(h * 0.42), Math.floor(w / 2));
+  paintBridgeVerticalCol(rows, Math.floor(w * 0.48), Math.floor(h * 0.55), Math.floor(h * 0.55));
+  paintBridgeVerticalCol(rows, Math.floor(w * 0.58), Math.floor(h * 0.55), Math.floor(h * 0.55));
+  paintBridgeVerticalCol(rows, Math.floor(w * 0.76), Math.floor(h * 0.48), Math.floor(h * 0.48));
   return rows;
 }
 

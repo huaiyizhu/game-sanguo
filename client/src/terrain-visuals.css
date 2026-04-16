@@ -9,6 +9,8 @@
 .cell.terrain-plain::before,
 .cell.terrain-forest::before,
 .cell.terrain-water::before,
+.cell.terrain-bridge_horizontal::before,
+.cell.terrain-bridge_vertical::before,
 .cell.terrain-mountain::before,
 .cell.terrain-desert::before,
 .cell.terrain-wall::before,
@@ -74,6 +76,69 @@
 
 @media (prefers-reduced-motion: reduce) {
   .cell.terrain-water::before {
+    animation: none;
+  }
+}
+
+/* 木桥：底层仍为水面（避免桥 PNG 透明处露出格底色发黑），上层为桥贴图 */
+.cell.terrain-bridge_horizontal {
+  box-shadow: none;
+}
+
+.cell.terrain-bridge_horizontal::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  z-index: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover, cover;
+  image-rendering: pixelated;
+  background-image:
+    linear-gradient(to bottom, rgba(8, 47, 73, 0.15), rgba(0, 24, 48, 0.35)),
+    url("/sprites/terrain/water.png");
+  animation: terrain-water-pulse 3.2s ease-in-out infinite;
+}
+
+.cell.terrain-bridge_horizontal::before {
+  z-index: 1;
+  background-image: url("/sprites/terrain/bridge_horizontal.png");
+  background-size: cover;
+}
+
+/* 木桥：可走南北（同上：先水、后桥） */
+.cell.terrain-bridge_vertical {
+  box-shadow: none;
+}
+
+.cell.terrain-bridge_vertical::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  z-index: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover, cover;
+  image-rendering: pixelated;
+  background-image:
+    linear-gradient(to bottom, rgba(8, 47, 73, 0.15), rgba(0, 24, 48, 0.35)),
+    url("/sprites/terrain/water.png");
+  animation: terrain-water-pulse 3.2s ease-in-out infinite;
+}
+
+.cell.terrain-bridge_vertical::before {
+  z-index: 1;
+  background-image: url("/sprites/terrain/bridge_vertical.png");
+  background-size: cover;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cell.terrain-bridge_horizontal::after,
+  .cell.terrain-bridge_vertical::after {
     animation: none;
   }
 }
@@ -215,6 +280,20 @@
 .terrain-legend-swatch.gate {
   border-color: #d6d3d1;
   background-image: url("/sprites/terrain/gate.png");
+  background-size: cover;
+  image-rendering: pixelated;
+}
+
+.terrain-legend-swatch.bridge_horizontal {
+  border-color: #a16207;
+  background-image: url("/sprites/terrain/bridge_horizontal.png");
+  background-size: cover;
+  image-rendering: pixelated;
+}
+
+.terrain-legend-swatch.bridge_vertical {
+  border-color: #a16207;
+  background-image: url("/sprites/terrain/bridge_vertical.png");
   background-size: cover;
   image-rendering: pixelated;
 }

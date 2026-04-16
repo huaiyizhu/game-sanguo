@@ -63,6 +63,8 @@ const TERRAIN_LEGEND: { id: Terrain; ch: string }[] = [
   { id: "plain", ch: "陆" },
   { id: "forest", ch: "林" },
   { id: "water", ch: "水" },
+  { id: "bridge_horizontal", ch: "橫" },
+  { id: "bridge_vertical", ch: "纵" },
   { id: "mountain", ch: "山" },
   { id: "desert", ch: "沙" },
   { id: "wall", ch: "墙" },
