@@ -1602,6 +1602,11 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       : false;
   const tacticOk =
     phase === "menu" && selectedUnit ? canUseTactic(selectedUnit, battle) : false;
+  const undoOk =
+    phase === "menu" && selectedUnit
+      ? !(selectedUnit.moved && selectedUnit.acted) &&
+        Boolean(battle.playerTurnStart[selectedUnit.id])
+      : false;
 
   const tacticEnabled =
     phase === "tactic-menu" && selectedUnit
@@ -2842,6 +2847,20 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                         onClick={() => tryActivateMenu(2)}
                       >
                         待机
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={[
+                          "action-menu-item",
+                          undoOk ? "enabled" : "disabled",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        disabled={!undoOk}
+                        onClick={onEscapeOrRevert}
+                      >
+                        撤销
                       </button>
                     </div>
                   )}
