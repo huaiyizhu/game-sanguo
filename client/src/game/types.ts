@@ -32,11 +32,11 @@ export function normalizeTerrainCell(v: unknown): Terrain {
   return "plain";
 }
 
-/** 兵种：平军 / 山军 / 水军，影响涉水与山地移耗 */
+/** 兵种：平军 / 山军 / 水军，影响山地移耗等；水面不可通行，过河须走木桥 */
 export type ArmyType = "ping" | "shan" | "shui";
 
 /** 将领种类：骑 / 步 / 弓（移动力与普攻射程、兵种相克） */
-export type TroopKind = "cavalry" | "infantry" | "archer";
+export type TroopKind = "cavalry" | "infantry" | "archer" | "sorcerer";
 
 export type BattlePhase =
   | "select"
@@ -47,7 +47,7 @@ export type BattlePhase =
   | "enemy";
 
 /** 计策种类 */
-export type TacticKind = "fire" | "water" | "trap";
+export type TacticKind = "fire" | "water" | "trap" | "heal" | "confuse" | "jiehuo";
 
 export interface Unit {
   id: string;
@@ -84,6 +84,8 @@ export interface Unit {
   acted: boolean;
   /** 对应 `generals` 图鉴 id，用于战场头像；无则仅按姓名生成配色 */
   portraitCatalogId?: string;
+  /** 混乱剩余回合：>0 时该单位在本方回合无法行动 */
+  confusedTurns?: number;
 }
 
 /** 我军回合开始时各将的状态，用于 Esc/右键撤销 */
@@ -101,6 +103,7 @@ export type PlayerTurnStartMap = Record<
     defense: number;
     tacticPoints: number;
     tacticMax: number;
+    confusedTurns?: number;
   }
 >;
 
@@ -188,8 +191,12 @@ export interface BattleState {
     amount: number;
     key: number;
     hpBefore: number;
-    /** UI 受击光色：普攻 / 计策 */
-    kind: "melee" | "tactic";
+    /** UI 受击/飘字样式：普攻、计策伤、治疗回复、混乱结果 */
+    kind: "melee" | "tactic" | "heal" | "confuse";
+    /** kind 为 confuse 时：是否成功挂上混乱 */
+    confuseSuccess?: boolean;
+    /** kind 为 confuse 且成功时：混乱回合数 */
+    confuseTurns?: number;
   } | null;
   /** 本关背景提要（侧栏与图鉴式说明） */
   scenarioBrief?: string;
@@ -235,7 +242,32 @@ export const TACTIC_DEF: Record<
     terrains: ["mountain"],
     dmgMul: 1.1,
   },
+  heal: {
+    name: "治疗",
+    cost: 5,
+    terrains: ALL_TERRAINS,
+    dmgMul: 0,
+  },
+  confuse: {
+    name: "混乱",
+    cost: 6,
+    terrains: ALL_TERRAINS,
+    dmgMul: 0,
+  },
+  /** 妖术师专属：相邻、且站立格非「水」面的敌军各受一次火系计策伤害（见 battle.ts 目标筛选） */
+  jiehuo: {
+    name: "劫火",
+    cost: 7,
+    terrains: ALL_TERRAINS,
+    dmgMul: 0.9,
+  },
 };
+
+/** 计策子菜单中各兵种出现的计策（治疗/混乱/劫火仅妖术师） */
+export function tacticMenuKindsForTroop(troopKind: TroopKind): TacticKind[] {
+  if (troopKind === "sorcerer") return ["fire", "water", "trap", "heal", "confuse", "jiehuo"];
+  return ["fire", "water", "trap"];
+}
 
 /** 武力合法区间 */
 export const MIGHT_MIN = 10;
@@ -288,7 +320,13 @@ export function attackPowerForUnit(might: number, level: number, troopKind: Troo
   const m = clampMight(might);
   const L = clampUnitLevel(level);
   const troopMul =
-    troopKind === "cavalry" ? 1.15 : troopKind === "infantry" ? 1 : 0.84;
+    troopKind === "cavalry"
+      ? 1.15
+      : troopKind === "infantry"
+        ? 1
+        : troopKind === "archer"
+          ? 0.84
+          : 0.66;
   const core = m * 0.32 + L * L * 0.18 + L * 1.15;
   return Math.max(1, Math.floor(core * troopMul));
 }
@@ -301,7 +339,13 @@ export function defensePowerForUnit(might: number, level: number, troopKind: Tro
   const m = clampMight(might);
   const L = clampUnitLevel(level);
   const troopMul =
-    troopKind === "infantry" ? 1.12 : troopKind === "cavalry" ? 1 : 0.86;
+    troopKind === "infantry"
+      ? 1.12
+      : troopKind === "cavalry"
+        ? 1
+        : troopKind === "archer"
+          ? 0.86
+          : 0.7;
   const core = m * 0.22 + L * L * 0.16 + L * 0.9;
   return Math.max(1, Math.floor(core * troopMul));
 }
@@ -364,6 +408,7 @@ export const TROOP_KIND_LABEL: Record<TroopKind, string> = {
   cavalry: "骑兵",
   infantry: "步兵",
   archer: "弓兵",
+  sorcerer: "妖术师",
 };
 
 /** 格子上兵种徽记（与图腾配合，扫一眼可辨） */
@@ -371,12 +416,14 @@ export const TROOP_KIND_BADGE: Record<TroopKind, string> = {
   cavalry: "骑",
   infantry: "步",
   archer: "弓",
+  sorcerer: "妖",
 };
 
 /** 各将领种类每回合移动力（可走格消耗仍受地形影响） */
 export function movePointsForTroop(t: TroopKind): number {
   if (t === "cavalry") return 8;
   if (t === "archer") return 5;
+  if (t === "sorcerer") return 5;
   return 6;
 }
 
@@ -387,6 +434,7 @@ export const TROOP_ATTACK_COUNTERS: Record<TroopKind, TroopKind> = {
   cavalry: "infantry",
   infantry: "archer",
   archer: "cavalry",
+  sorcerer: "infantry",
 };
 
 /**
@@ -396,6 +444,7 @@ export const TROOP_DEFENSE_COUNTERS: Record<TroopKind, TroopKind> = {
   archer: "infantry",
   infantry: "cavalry",
   cavalry: "archer",
+  sorcerer: "archer",
 };
 
 /** 普攻克制：攻方武力等效倍率 */
@@ -404,7 +453,7 @@ export const TROOP_ATK_ADVANTAGE_MUL = 1.22;
 export const TROOP_DEF_ADVANTAGE_BONUS = 8;
 
 export function isTroopKind(x: unknown): x is TroopKind {
-  return x === "cavalry" || x === "infantry" || x === "archer";
+  return x === "cavalry" || x === "infantry" || x === "archer" || x === "sorcerer";
 }
 
 /** 弓兵普攻最远距离（曼哈顿）；步骑仅相邻 1 */

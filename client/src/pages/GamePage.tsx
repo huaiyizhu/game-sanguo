@@ -1573,7 +1573,9 @@ export default function GamePage() {
                     <dt>将领种类</dt>
                     <dd>
                       {TROOP_KIND_LABEL[inspectedUnit.troopKind]}
-                      {inspectedUnit.troopKind === "archer" && `（普攻射程 ${ARCHER_ATTACK_RANGE} 格）`}
+                      {(inspectedUnit.troopKind === "archer" ||
+                        inspectedUnit.troopKind === "sorcerer") &&
+                        `（普攻射程 ${ARCHER_ATTACK_RANGE} 格）`}
                     </dd>
                     <dt>移动力</dt>
                     <dd>{inspectedUnit.move}</dd>

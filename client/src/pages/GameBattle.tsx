@@ -35,13 +35,12 @@ import {
   expToNextLevel,
   isArmyPreferredTerrain,
   TACTIC_DEF,
+  tacticMenuKindsForTroop,
   TERRAIN_LABEL,
   TROOP_KIND_LABEL,
 } from "../game/types";
 
 export type MenuAction = "attack" | "tactic" | "wait";
-
-const TACTIC_ORDER: TacticKind[] = ["fire", "water", "trap"];
 
 /** 移动结束进入菜单后，先留白这段时间再显示菜单，便于看清落点再选行动 */
 const ACTION_MENU_REVEAL_DELAY_MS = 480;
@@ -662,11 +661,63 @@ function nextEnabledFocus(
 }
 
 function nextTacticFocus(from: number, delta: 1 | -1, enabled: boolean[]): number {
-  for (let step = 1; step <= 4; step++) {
-    const i = (((from + delta * step) % 3) + 3) % 3;
+  const n = enabled.length;
+  if (n === 0) return 0;
+  for (let step = 1; step <= n; step++) {
+    const i = (((from + delta * step) % n) + n) % n;
     if (enabled[i]) return i;
   }
   return from;
+}
+
+/** 与 `BattleState.damagePulse.kind` 对应，用于受击闪动与飘字样式 */
+type UnitHitFx =
+  | { kind: "melee" }
+  | { kind: "tactic" }
+  | { kind: "heal" }
+  | { kind: "confuse"; success: boolean };
+
+function unitHitFxFromPulse(p: NonNullable<BattleState["damagePulse"]>): UnitHitFx {
+  if (p.kind === "confuse") return { kind: "confuse", success: Boolean(p.confuseSuccess) };
+  return { kind: p.kind };
+}
+
+function unitHitClass(h: UnitHitFx | undefined): string {
+  if (!h) return "";
+  if (h.kind === "melee") return "unit-hit";
+  if (h.kind === "tactic") return "unit-hit unit-hit--tactic";
+  if (h.kind === "heal") return "unit-hit unit-hit--heal";
+  return h.success ? "unit-hit unit-hit--confuse-hit" : "unit-hit unit-hit--confuse-miss";
+}
+
+type DmgFxSnapshot = Pick<
+  NonNullable<BattleState["damagePulse"]>,
+  "unitId" | "amount" | "key" | "kind" | "confuseSuccess" | "confuseTurns"
+>;
+
+function dmgFloatClasses(d: Pick<DmgFxSnapshot, "kind" | "confuseSuccess">): string {
+  return [
+    "dmg-float",
+    "unit-standee__dmg-float",
+    d.kind === "tactic" ? "dmg-float--tactic" : "",
+    d.kind === "heal" ? "dmg-float--heal" : "",
+    d.kind === "confuse"
+      ? d.confuseSuccess
+        ? "dmg-float--confuse-hit dmg-float--long"
+        : "dmg-float--confuse-miss dmg-float--long"
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function dmgFloatText(d: DmgFxSnapshot): string {
+  if (d.kind === "heal") return `+${d.amount}`;
+  if (d.kind === "confuse") {
+    if (d.confuseSuccess && (d.confuseTurns ?? 0) > 0) return `混乱${d.confuseTurns}回合`;
+    return "未中";
+  }
+  return `-${d.amount}`;
 }
 
 type UnitSnap = { x: number; y: number; hp: number; level: number };
@@ -1344,15 +1395,11 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   const moveSet = new Set(moveTargets.map((t) => `${t.x},${t.y}`));
   const [menuFocus, setMenuFocus] = useState(0);
   const [tacticFocus, setTacticFocus] = useState(0);
-  const [dmgFx, setDmgFx] = useState<{
-    unitId: string;
-    amount: number;
-    key: number;
-  } | null>(null);
+  const [dmgFx, setDmgFx] = useState<DmgFxSnapshot | null>(null);
   /** 扣血飘字结束前，血条仍显示受伤前血量 */
   const [hpBarLag, setHpBarLag] = useState<Record<string, number>>({});
-  /** 与 hpBarLag 同步：受击光效配色（普攻红 / 计策青） */
-  const [hitFxKind, setHitFxKind] = useState<Record<string, "melee" | "tactic">>({});
+  /** 与 hpBarLag 同步：受击闪动类型（普攻 / 计策 / 治疗 / 混乱） */
+  const [unitHitFxById, setUnitHitFxById] = useState<Record<string, UnitHitFx>>({});
   const dmgFloatTimersRef = useRef<{
     delay?: ReturnType<typeof window.setTimeout>;
     end?: ReturnType<typeof window.setTimeout>;
@@ -1415,7 +1462,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     setLevelUpVisuals([]);
     setDmgFx(null);
     setHpBarLag({});
-    setHitFxKind({});
+    setUnitHitFxById({});
     const ft = dmgFloatTimersRef.current;
     if (ft.delay) window.clearTimeout(ft.delay);
     if (ft.end) window.clearTimeout(ft.end);
@@ -1596,6 +1643,10 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
   }, [turnBanner, turnIntroLocked, keyboardBlocked, outcome, battleScriptBlocked]);
 
   const selectedUnit = selectedId ? units.find((u) => u.id === selectedId) : undefined;
+  const tacticMenuRow = useMemo(() => {
+    if (phase !== "tactic-menu" || !selectedUnit) return [];
+    return tacticMenuKindsForTroop(selectedUnit.troopKind);
+  }, [phase, selectedUnit]);
   const attackOk =
     phase === "menu" && selectedUnit
       ? canMeleeAttack(selectedUnit, units)
@@ -1610,8 +1661,8 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
 
   const tacticEnabled =
     phase === "tactic-menu" && selectedUnit
-      ? TACTIC_ORDER.map((k) => canAffordTactic(selectedUnit, k, battle))
-      : [false, false, false];
+      ? tacticMenuRow.map((k) => canAffordTactic(selectedUnit, k, battle))
+      : [];
 
   const focusedEnemyId =
     phase === "pick-target" && pickTarget && pickTarget.targetIds.length > 0
@@ -1820,10 +1871,9 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     const enteredMenu = phase === "menu" && prev !== "menu";
     const enteredTactic = phase === "tactic-menu" && prev !== "tactic-menu";
     prevPhaseRef.current = phase;
-    if (enteredTactic) {
-      const en = TACTIC_ORDER.map((k) =>
-        selectedUnit ? canAffordTactic(selectedUnit, k, battle) : false
-      );
+    if (enteredTactic && selectedUnit) {
+      const row = tacticMenuKindsForTroop(selectedUnit.troopKind);
+      const en = row.map((k) => canAffordTactic(selectedUnit, k, battle));
       const first = en.findIndex(Boolean);
       setTacticFocus(first >= 0 ? first : 0);
     }
@@ -1967,12 +2017,19 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     if (ft.end) window.clearTimeout(ft.end);
 
     setHpBarLag((prev) => ({ ...prev, [p.unitId]: p.hpBefore }));
-    setHitFxKind((prev) => ({ ...prev, [p.unitId]: p.kind }));
+    setUnitHitFxById((prev) => ({ ...prev, [p.unitId]: unitHitFxFromPulse(p) }));
     setDmgFx(null);
     queueMicrotask(() => onDamagePulseConsumed());
 
     ft.delay = window.setTimeout(() => {
-      setDmgFx({ unitId: p.unitId, amount: p.amount, key: p.key });
+      setDmgFx({
+        unitId: p.unitId,
+        amount: p.amount,
+        key: p.key,
+        kind: p.kind,
+        confuseSuccess: p.confuseSuccess,
+        confuseTurns: p.confuseTurns,
+      });
     }, delayMs);
 
     ft.end = window.setTimeout(() => {
@@ -1982,7 +2039,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
         delete next[p.unitId];
         return next;
       });
-      setHitFxKind((prev) => {
+      setUnitHitFxById((prev) => {
         const next = { ...prev };
         delete next[p.unitId];
         return next;
@@ -2058,8 +2115,8 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
         setTacticFocus((f) => nextTacticFocus(f, -1, tacticEnabled));
       } else if (e.key === "Enter") {
         e.preventDefault();
-        const k = TACTIC_ORDER[tacticFocus];
-        if (tacticEnabled[tacticFocus]) onTacticPick(k);
+        const k = tacticMenuRow[tacticFocus];
+        if (k && tacticEnabled[tacticFocus]) onTacticPick(k);
       }
     },
     [
@@ -2068,6 +2125,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       turn,
       tacticFocus,
       tacticEnabled,
+      tacticMenuRow,
       actionMenuRevealReady,
       onTacticPick,
       onEscapeOrRevert,
@@ -2245,7 +2303,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
     const hitActive = Boolean(
       u && (Object.prototype.hasOwnProperty.call(hpBarLag, u.id) || dmgFx?.unitId === u.id)
     );
-    const hitKind: "melee" | "tactic" | undefined = u ? hitFxKind[u.id] : undefined;
+    const unitHitFx: UnitHitFx | undefined = u ? unitHitFxById[u.id] : undefined;
     const pickCand = Boolean(u && u.side === "enemy" && isPickCandidate(u.id));
     const pickFocus = Boolean(u && u.id === focusedEnemyId);
     const primed = u && preMoveSlide[u.id];
@@ -2278,7 +2336,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
       showMenu,
       showTacticMenu,
       hitActive,
-      hitKind,
+      unitHitFx,
       pickCand,
       pickFocus,
       slide,
@@ -2357,7 +2415,8 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                 <div className="unit-attr-float__meta">
                   {floatUnit.side === "player" ? "我军" : "敌军"} · Lv.{floatUnit.level} ·{" "}
                   {TROOP_KIND_LABEL[floatUnit.troopKind]}
-                  {floatUnit.troopKind === "archer" && ` · 射程${ARCHER_ATTACK_RANGE}`}
+                  {(floatUnit.troopKind === "archer" || floatUnit.troopKind === "sorcerer") &&
+                    ` · 射程${ARCHER_ATTACK_RANGE}`}
                 </div>
               </div>
             </div>
@@ -2523,20 +2582,9 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                     (uu) => uu.id === dmgFx.unitId && uu.x === x && uu.y === y && uu.hp <= 0
                   );
                   if (!victim || lingerDeadIds.has(victim.id)) return null;
-                  const hk = hitFxKind[victim.id];
                   return (
                     <div key={`terrain-dmg-${dmgFx.key}`} className="battle-cell-dmg-float-slot" aria-hidden>
-                      <span
-                        className={[
-                          "dmg-float",
-                          "unit-standee__dmg-float",
-                          hk === "tactic" ? "dmg-float--tactic" : "",
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}
-                      >
-                        -{dmgFx.amount}
-                      </span>
+                      <span className={dmgFloatClasses(dmgFx)}>{dmgFloatText(dmgFx)}</span>
                     </div>
                   );
                 })()}
@@ -2590,7 +2638,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
             showMenu,
             showTacticMenu,
             hitActive,
-            hitKind,
+            unitHitFx,
             pickCand,
             pickFocus,
             slide,
@@ -2679,14 +2727,11 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                       "unit-standee__body",
                       u.side,
                       `troop-${u.troopKind}`,
+                      u.hp > 0 && (u.confusedTurns ?? 0) > 0 ? "unit-standee__body--confused" : "",
                       isSelected ? "selected" : "",
                       turnDone ? "unit-turn-done" : "",
                       pendingSelectionGlow ? "unit-pending-highlight" : "",
-                      hitActive
-                        ? hitKind === "tactic"
-                          ? "unit-hit unit-hit--tactic"
-                          : "unit-hit"
-                        : "",
+                      hitActive ? unitHitClass(unitHitFx) : "",
                       pickCand ? "pick-target-candidate" : "",
                       pickFocus ? "pick-target-focus" : "",
                       outcome === "playing" &&
@@ -2707,7 +2752,11 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                     aria-label={
                       u.hp <= 0
                         ? `${u.name}，${TROOP_KIND_LABEL[u.troopKind]}，已阵亡`
-                        : `${u.name}，${TROOP_KIND_LABEL[u.troopKind]}，等级 ${u.level}，生命 ${u.hp}/${u.maxHp}`
+                        : `${u.name}，${TROOP_KIND_LABEL[u.troopKind]}，等级 ${u.level}，生命 ${u.hp}/${u.maxHp}${
+                            (u.confusedTurns ?? 0) > 0
+                              ? `，混乱中剩余 ${u.confusedTurns} 回合无法行动`
+                              : ""
+                          }`
                     }
                     onMouseEnter={() => {
                       if (u.hp <= 0) return;
@@ -2733,6 +2782,12 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                       }
                     }}
                   >
+                    {u.hp > 0 && (u.confusedTurns ?? 0) > 0 ? (
+                      <>
+                        <span className="unit-confuse-veil" aria-hidden />
+                        <span className="unit-confuse-orbit" aria-hidden />
+                      </>
+                    ) : null}
                     <TroopEmblem
                       kind={u.troopKind}
                       side={u.side}
@@ -2740,19 +2795,19 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                       showTroopBadge={false}
                       motion={slide ? "walk" : "idle"}
                     />
+                    {u.hp > 0 && (u.confusedTurns ?? 0) > 0 ? (
+                      <span
+                        className="unit-confuse-badge"
+                        title={`剩余 ${u.confusedTurns} 回合无法行动`}
+                        aria-hidden
+                      >
+                        乱<span className="unit-confuse-badge__n">{u.confusedTurns}</span>
+                      </span>
+                    ) : null}
                   </div>
                   {dmgFx?.unitId === u.id && (
-                    <span
-                      className={[
-                        "dmg-float",
-                        "unit-standee__dmg-float",
-                        hitKind === "tactic" ? "dmg-float--tactic" : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                      key={dmgFx.key}
-                    >
-                      -{dmgFx.amount}
+                    <span className={dmgFloatClasses(dmgFx)} key={dmgFx.key}>
+                      {dmgFloatText(dmgFx)}
                     </span>
                   )}
                   <div className="unit-standee__hud unit-standee__hud--hp-only" aria-hidden>
@@ -2891,7 +2946,7 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                       onClick={(e: MouseEvent) => e.stopPropagation()}
                       onKeyDown={(e: KeyboardEvent) => e.stopPropagation()}
                     >
-                      {TACTIC_ORDER.map((kind, i) => {
+                      {tacticMenuRow.map((kind, i) => {
                         const def = TACTIC_DEF[kind];
                         const ok = tacticEnabled[i];
                         return (

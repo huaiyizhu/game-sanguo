@@ -24,9 +24,11 @@ const RASTER_SRC: Record<TroopKind, string> = {
   cavalry: `${base}sprites/units/cavalry.png`,
   infantry: `${base}sprites/units/infantry.png`,
   archer: `${base}sprites/units/archer.png`,
+  sorcerer: `${base}sprites/units/archer.png`,
 };
 
 function directionalSrc(kind: TroopKind, facing: TroopFacing): string {
+  if (kind === "sorcerer") return `${base}sprites/units/archer_${facing}.png`;
   return `${base}sprites/units/${kind}_${facing}.png`;
 }
 

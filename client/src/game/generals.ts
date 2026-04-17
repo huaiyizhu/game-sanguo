@@ -108,6 +108,7 @@ const FAMOUS: GeneralCatalogEntry[] = [
   G("liu_zhang", "刘璋", "蜀", "shan", "infantry", 5, 38, 56, 95, "暗弱，益州终属刘备。"),
   G("liu_shan", "刘禅", "蜀", "shan", "infantry", 1, 10, 42, 95, "安乐公，蜀汉后主。"),
   G("zhang_jiao", "张角", "黄巾", "ping", "archer", 8, 34, 92, 108, "太平道，黄巾起事。"),
+  G("zuo_ci", "左慈", "群", "ping", "sorcerer", 9, 36, 98, 102, "方士高人，擅幻术与医道，战阵以奇策扰敌。"),
   G("zhang_bao", "张宝", "黄巾", "shan", "infantry", 6, 58, 76, 102, "张角弟，地公将军。"),
   G("zhang_liang", "张梁", "黄巾", "ping", "cavalry", 6, 62, 58, 100, "张角弟，人公将军。"),
   G("hua_xiong", "华雄", "董", "ping", "cavalry", 7, 78, 42, 110, "汜水关前挑战诸侯。"),

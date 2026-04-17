@@ -3,7 +3,7 @@
  * 关卡顺序与每关 meta / 敌军布置见 `liuBeiCampaign.ts`，本文件负责地形生成与战场拼装。
  */
 import { playerJoinerFromCatalog, unitFromCatalog } from "./generals";
-import type { ArmyType, BattleState, Terrain, TroopKind, Unit, WinCondition } from "./types";
+import type { ArmyType, BattleState, Side, Terrain, TroopKind, Unit, WinCondition } from "./types";
 import {
   clampMight,
   clampUnitLevel,
@@ -94,6 +94,102 @@ export function sanitizeUnitSpawnPositions(terrain: Terrain[][], units: readonly
     }
     taken.add(spawnOccupancyKey(found.x, found.y));
     return { ...u, x: found.x, y: found.y };
+  });
+}
+
+function manhattanSpawn(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+/**
+ * 开局布阵：将同一阵营单位向本阵营当前质心聚拢，避免出生点横跨地图过散。
+ * 每名单位相对原格最多移动 `maxMovePerUnit` 格（曼哈顿），且不与异阵营重叠、不踩非法地格。
+ */
+export function compactSideSpawns(
+  terrain: Terrain[][],
+  units: readonly Unit[],
+  side: Side,
+  options?: { maxMovePerUnit?: number; searchRadius?: number }
+): Unit[] {
+  const h = terrain.length;
+  const w = terrain[0]?.length ?? 0;
+  if (w <= 0 || h <= 0) return [...units];
+
+  const maxMove =
+    options?.maxMovePerUnit ?? Math.max(10, Math.min(16, Math.floor(Math.max(w, h) * 0.28)));
+  const searchR =
+    options?.searchRadius ?? Math.max(maxMove + 2, Math.min(22, Math.floor(Math.max(w, h) * 0.42)));
+
+  const group = units.filter((u) => u.side === side);
+  if (group.length <= 1) return [...units];
+
+  let cx = Math.round(group.reduce((s, u) => s + u.x, 0) / group.length);
+  let cy = Math.round(group.reduce((s, u) => s + u.y, 0) / group.length);
+  cx = Math.max(0, Math.min(w - 1, cx));
+  cy = Math.max(0, Math.min(h - 1, cy));
+  const cCell = terrain[cy]?.[cx] ?? "plain";
+  if (isBlockedSpawnTerrain(cCell)) {
+    const taken = new Set<string>();
+    for (const u of units) {
+      if (u.side !== side) taken.add(spawnOccupancyKey(u.x, u.y));
+    }
+    const found = bfsNearestValidSpawn(terrain, w, h, cx, cy, taken);
+    if (found) {
+      cx = found.x;
+      cy = found.y;
+    }
+  }
+
+  const candidates: { x: number; y: number; dc: number }[] = [];
+  for (let dy = -searchR; dy <= searchR; dy++) {
+    for (let dx = -searchR; dx <= searchR; dx++) {
+      if (Math.abs(dx) + Math.abs(dy) > searchR) continue;
+      const x = cx + dx;
+      const y = cy + dy;
+      if (x < 0 || y < 0 || x >= w || y >= h) continue;
+      const cell = terrain[y]?.[x] ?? "plain";
+      if (isBlockedSpawnTerrain(cell)) continue;
+      candidates.push({ x, y, dc: Math.abs(dx) + Math.abs(dy) });
+    }
+  }
+  candidates.sort((a, b) => a.dc - b.dc || a.y - b.y || a.x - b.x);
+
+  const used = new Set<string>();
+  for (const u of units) {
+    used.add(spawnOccupancyKey(u.x, u.y));
+  }
+
+  const assigned = new Map<string, { x: number; y: number }>();
+  const sortedGroup = [...group].sort(
+    (a, b) =>
+      manhattanSpawn(b, { x: cx, y: cy }) - manhattanSpawn(a, { x: cx, y: cy }) ||
+      a.id.localeCompare(b.id)
+  );
+
+  for (const u of sortedGroup) {
+    used.delete(spawnOccupancyKey(u.x, u.y));
+    let best: { x: number; y: number; score: number } | null = null;
+    for (const c of candidates) {
+      const k = spawnOccupancyKey(c.x, c.y);
+      if (used.has(k)) continue;
+      const move = manhattanSpawn(u, c);
+      if (move > maxMove) continue;
+      const score = c.dc * 1000 + move;
+      if (!best || score < best.score) {
+        best = { x: c.x, y: c.y, score };
+      }
+    }
+    if (best) {
+      assigned.set(u.id, { x: best.x, y: best.y });
+      used.add(spawnOccupancyKey(best.x, best.y));
+    } else {
+      used.add(spawnOccupancyKey(u.x, u.y));
+    }
+  }
+
+  return units.map((u) => {
+    const n = assigned.get(u.id);
+    return n ? { ...u, x: n.x, y: n.y } : u;
   });
 }
 
@@ -422,7 +518,12 @@ function terrainXuzhouSiege(w: number, h: number): Terrain[][] {
   return rows;
 }
 
-function playerRoster(p1: { x: number; y: number }, p2: { x: number; y: number }, p3: { x: number; y: number }): Unit[] {
+function playerRoster(
+  p1: { x: number; y: number },
+  p2: { x: number; y: number },
+  p3: { x: number; y: number },
+  p4: { x: number; y: number }
+): Unit[] {
   const p1M = clampMight(72);
   const p2M = clampMight(98);
   const p3M = clampMight(99);
@@ -494,36 +595,58 @@ function playerRoster(p1: { x: number; y: number }, p2: { x: number; y: number }
       acted: false,
       portraitCatalogId: "zhang_fei",
     },
+    {
+      id: "p4",
+      name: "左慈",
+      side: "player",
+      x: p4.x,
+      y: p4.y,
+      hp: h1,
+      maxHp: h1,
+      level: 1,
+      exp: 0,
+      might: clampMight(36),
+      intel: 96,
+      defense: defensePowerForUnit(clampMight(36), 1, "sorcerer"),
+      armyType: "ping",
+      troopKind: "sorcerer",
+      tacticMax: tacticMaxForUnit(96, 1),
+      tacticPoints: tacticMaxForUnit(96, 1),
+      move: movePointsForTroop("sorcerer"),
+      moved: false,
+      acted: false,
+      portraitCatalogId: "zuo_ci",
+    },
   ];
 }
 
-/** 我军底部出生点，3–6 将横向排开（宽图自动夹紧在可行走列内） */
+/** 我军底部出生点，3–6 将横向排开（间距较紧，便于与「聚拢」逻辑一致） */
 function playerSlotsBottom(w: number, h: number, count: 3 | 4 | 5 | 6): { x: number; y: number }[] {
   const y = Math.max(2, h - 2);
   const mid = Math.floor(w / 2);
   const cx = (x: number) => Math.max(2, Math.min(w - 3, x));
   if (count === 3) {
-    return [{ x: cx(mid - 5), y }, { x: cx(mid), y }, { x: cx(mid + 5), y }];
+    return [{ x: cx(mid - 2), y }, { x: cx(mid), y }, { x: cx(mid + 2), y }];
   }
   if (count === 4) {
-    return [{ x: cx(mid - 6), y }, { x: cx(mid - 2), y }, { x: cx(mid + 2), y }, { x: cx(mid + 6), y }];
+    return [{ x: cx(mid - 3), y }, { x: cx(mid - 1), y }, { x: cx(mid + 1), y }, { x: cx(mid + 3), y }];
   }
   if (count === 5) {
     return [
-      { x: cx(mid - 8), y },
       { x: cx(mid - 4), y },
+      { x: cx(mid - 2), y },
       { x: cx(mid), y },
+      { x: cx(mid + 2), y },
       { x: cx(mid + 4), y },
-      { x: cx(mid + 8), y },
     ];
   }
   return [
-    { x: cx(mid - 9), y },
     { x: cx(mid - 5), y },
-    { x: cx(mid - 2), y },
-    { x: cx(mid + 2), y },
+    { x: cx(mid - 3), y },
+    { x: cx(mid - 1), y },
+    { x: cx(mid + 1), y },
+    { x: cx(mid + 3), y },
     { x: cx(mid + 5), y },
-    { x: cx(mid + 9), y },
   ];
 }
 
@@ -588,11 +711,13 @@ function layoutCampaignTerrain(
 }
 
 function playersFromExtras(w: number, h: number, tier: number, extras: readonly string[]): Unit[] {
-  const n = 3 + Math.min(3, extras.length);
-  const slots = playerSlotsBottom(w, h, n as 3 | 4 | 5 | 6);
-  const core = playerRoster(slots[0]!, slots[1]!, slots[2]!);
+  const n = 4 + Math.min(2, extras.length);
+  const slots = playerSlotsBottom(w, h, n as 4 | 5 | 6);
+  const core = playerRoster(slots[0]!, slots[1]!, slots[2]!, slots[3]!);
   const lv = allyJoinLevel(tier);
-  const tail = extras.slice(0, 3).map((cat, i) => joinerOrThrow(cat, `p${4 + i}`, slots[3 + i]!, lv));
+  const tail = extras
+    .slice(0, 2)
+    .map((cat, i) => joinerOrThrow(cat, `p${5 + i}`, slots[4 + i]!, lv));
   return [...core, ...tail];
 }
 
@@ -706,7 +831,10 @@ export function buildBattleStateForScenario(scenarioId: string): BattleState {
     ? playersNorthernTeam(w, h, tier, body.northernTeam)
     : playersFromExtras(w, h, tier, body.allyExtras);
   const enemies = compileCampaignEnemies(body.enemies, tier);
-  const placed = sanitizeUnitSpawnPositions(terrainGrid, [...players, ...enemies]);
+  let placed = sanitizeUnitSpawnPositions(terrainGrid, [...players, ...enemies]);
+  placed = compactSideSpawns(terrainGrid, placed, "player");
+  placed = compactSideSpawns(terrainGrid, placed, "enemy");
+  placed = sanitizeUnitSpawnPositions(terrainGrid, placed);
   const base = baseState(
     scenarioId,
     title,

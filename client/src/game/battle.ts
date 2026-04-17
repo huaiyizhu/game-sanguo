@@ -27,6 +27,7 @@ import {
   normalizeTerrainCell,
   PREFERRED_TERRAIN_ATK_MUL,
   TACTIC_DEF,
+  tacticMenuKindsForTroop,
   tacticMaxForUnit,
   TROOP_ATK_ADVANTAGE_MUL,
   TROOP_ATTACK_COUNTERS,
@@ -38,6 +39,8 @@ import {
   buildBattleStateForScenario,
   createDefaultTerrain,
   getNextScenarioId,
+  isBlockedSpawnTerrain,
+  sanitizeUnitSpawnPositions,
 } from "./scenarios";
 
 export { advanceBattleScript } from "./battleScript";
@@ -51,12 +54,21 @@ function attachDamagePulse(
   unitId: string,
   amount: number,
   hpBefore: number,
-  kind: "melee" | "tactic"
+  kind: "melee" | "tactic" | "heal" | "confuse",
+  confuse?: { success: boolean; turns: number }
 ): BattleState {
-  return {
-    ...state,
-    damagePulse: { unitId, amount, key: nextDamagePulseKey++, hpBefore, kind },
+  const pulse: NonNullable<BattleState["damagePulse"]> = {
+    unitId,
+    amount,
+    key: nextDamagePulseKey++,
+    hpBefore,
+    kind,
   };
+  if (kind === "confuse" && confuse) {
+    pulse.confuseSuccess = confuse.success;
+    pulse.confuseTurns = confuse.turns;
+  }
+  return { ...state, damagePulse: pulse };
 }
 
 /** 扣血飘字：进攻后先等这段时间再出现数字（须与 GameBattle 一致） */
@@ -120,7 +132,8 @@ export function stepCostForUnit(u: Unit, t: Terrain): number {
   if (t === "wall") return Infinity;
   if (t === "gate") return 1;
   if (t === "bridge_horizontal" || t === "bridge_vertical") return 1;
-  if (t === "water") return u.armyType === "shui" ? 1 : Infinity;
+  /** 水面不可行走，仅可通过木桥格过河（与 armyType 水军无关） */
+  if (t === "water") return Infinity;
   if (t === "mountain") return u.armyType === "shan" ? 1 : 2;
   return 1;
 }
@@ -358,6 +371,7 @@ function buildPlayerTurnStart(units: Unit[]): PlayerTurnStartMap {
         defense: u.defense,
         tacticPoints: u.tacticPoints,
         tacticMax: u.tacticMax,
+        confusedTurns: u.confusedTurns ?? 0,
       };
     }
   }
@@ -679,6 +693,7 @@ export function selectPlayerUnit(state: BattleState, unitId: string): BattleStat
   if (state.pendingMove) return state;
   const u = state.units.find((x) => x.id === unitId);
   if (!u || u.side !== "player" || u.hp <= 0) return state;
+  if ((u.confusedTurns ?? 0) > 0) return state;
   if (u.moved && u.acted) return state;
   if (state.phase === "move" && state.selectedId === unitId) {
     return openMenuInPlace(state);
@@ -712,6 +727,17 @@ export function selectPlayerUnit(state: BattleState, unitId: string): BattleStat
         ? state.log
         : [...state.log, `选择 ${u.name}。`],
   };
+}
+
+function withConfusionTick(units: Unit[], side: Side): Unit[] {
+  return units.map((u) => {
+    if (u.side !== side || u.hp <= 0) return u;
+    const c = u.confusedTurns ?? 0;
+    if (c <= 0) return u;
+    const next = Math.max(0, c - 1);
+    if (next > 0) return { ...u, confusedTurns: next, moved: true, acted: true };
+    return { ...u, confusedTurns: 0 };
+  });
 }
 
 export function moveSelected(state: BattleState, tx: number, ty: number): BattleState {
@@ -800,12 +826,16 @@ function manhattan(a: Unit, b: Unit) {
 export function inPhysicalAttackRange(attacker: Unit, target: Unit): boolean {
   const d = manhattan(attacker, target);
   if (d < 1) return false;
-  if (attacker.troopKind === "archer") return d <= ARCHER_ATTACK_RANGE;
+  if (attacker.troopKind === "archer" || attacker.troopKind === "sorcerer") {
+    return d <= ARCHER_ATTACK_RANGE;
+  }
   return d === 1;
 }
 
 export function physicalAttackMenuLabel(unit: Unit): string {
-  return unit.troopKind === "archer" ? "远程射击" : "近战攻击";
+  if (unit.troopKind === "archer") return "远程射击";
+  if (unit.troopKind === "sorcerer") return "法术弹道";
+  return "近战攻击";
 }
 
 export function canMeleeAttack(attacker: Unit, units: Unit[]): boolean {
@@ -816,8 +846,34 @@ function foesInTacticRange(attacker: Unit, units: Unit[]): Unit[] {
   return units.filter((x) => x.side === "enemy" && x.hp > 0 && manhattan(attacker, x) <= 2);
 }
 
+function alliesInTacticRange(attacker: Unit, units: Unit[]): Unit[] {
+  return units.filter((x) => x.side === attacker.side && x.hp > 0 && manhattan(attacker, x) <= 2);
+}
+
+function tacticTargets(attacker: Unit, kind: TacticKind, units: Unit[]): Unit[] {
+  if (kind === "heal") return alliesInTacticRange(attacker, units).filter((u) => u.hp < u.maxHp);
+  if (kind === "jiehuo") return [];
+  return foesInTacticRange(attacker, units);
+}
+
+/** 劫火：与施法者四向相邻、且脚下非水面的存活敌军 */
+function jiehuoTargets(state: BattleState, attacker: Unit): Unit[] {
+  return state.units.filter(
+    (x) =>
+      x.side === "enemy" &&
+      x.hp > 0 &&
+      adjacent(attacker, x) &&
+      tacticValidOnTarget(state, "jiehuo", x)
+  );
+}
+
 function tacticValidOnTarget(state: BattleState, kind: TacticKind, target: Unit): boolean {
   const t = terrainAt(state, target.x, target.y);
+  if (kind === "fire") {
+    if (t === "water") return false;
+    return (TACTIC_DEF.fire.terrains as readonly Terrain[]).includes(t);
+  }
+  if (kind === "jiehuo") return t !== "water";
   return (TACTIC_DEF[kind].terrains as readonly Terrain[]).includes(t);
 }
 
@@ -829,15 +885,13 @@ export function canAffordTactic(
 ): boolean {
   const def = TACTIC_DEF[kind];
   if (attacker.tacticPoints < def.cost) return false;
-  return foesInTacticRange(attacker, state.units).some((f) =>
-    tacticValidOnTarget(state, kind, f)
-  );
+  if (!tacticMenuKindsForTroop(attacker.troopKind).includes(kind)) return false;
+  if (kind === "jiehuo") return jiehuoTargets(state, attacker).length > 0;
+  return tacticTargets(attacker, kind, state.units).some((f) => tacticValidOnTarget(state, kind, f));
 }
 
 export function canUseTactic(attacker: Unit, state: BattleState): boolean {
-  return (
-    (["fire", "water", "trap"] as const).some((k) => canAffordTactic(attacker, k, state))
-  );
+  return tacticMenuKindsForTroop(attacker.troopKind).some((k) => canAffordTactic(attacker, k, state));
 }
 
 function sortMeleeTargets(foes: Unit[]): Unit[] {
@@ -899,7 +953,12 @@ export function menuMeleeAttack(state: BattleState): BattleState {
   if (sorted.length === 1) {
     return applyPlayerMeleeDamage(state, aid, sorted[0].id);
   }
-  const aimHint = attacker.troopKind === "archer" ? "弓箭" : "攻击";
+  const aimHint =
+    attacker.troopKind === "archer"
+      ? "弓箭"
+      : attacker.troopKind === "sorcerer"
+        ? "法术"
+        : "攻击";
   return {
     ...state,
     phase: "pick-target",
@@ -941,7 +1000,11 @@ export function tacticMenuChoose(state: BattleState, tacticKind: TacticKind): Ba
   if (!attacker || attacker.acted || !attacker.moved) return state;
   if (!canAffordTactic(attacker, tacticKind, state)) return state;
 
-  const foes = foesInTacticRange(attacker, state.units).filter((f) =>
+  if (tacticKind === "jiehuo") {
+    return applyPlayerJiehuo(state, aid, TACTIC_DEF.jiehuo.cost);
+  }
+
+  const foes = tacticTargets(attacker, tacticKind, state.units).filter((f) =>
     tacticValidOnTarget(state, tacticKind, f)
   );
   if (foes.length === 0) return state;
@@ -968,6 +1031,65 @@ export function tacticMenuChoose(state: BattleState, tacticKind: TacticKind): Ba
   };
 }
 
+function applyPlayerJiehuo(state: BattleState, attackerId: string, cost: number): BattleState {
+  const attacker = state.units.find((x) => x.id === attackerId);
+  if (!attacker || attacker.acted || !attacker.moved || attacker.troopKind !== "sorcerer") return state;
+  if (attacker.tacticPoints < cost) return state;
+  const targets = jiehuoTargets(state, attacker);
+  if (targets.length === 0) return state;
+
+  const hits = targets.map((t) => {
+    const dmg = tacticDamageDealt(state, attacker, t, "jiehuo");
+    const newHp = Math.max(0, t.hp - dmg);
+    return { target: t, dmg, hpBefore: t.hp, newHp, killed: newHp <= 0 };
+  });
+
+  const lines: string[] = [];
+  lines.push(`${attacker.name} 施展劫火（-${cost} 计策）。`);
+  let totalXp = 0;
+  for (const h of hits) {
+    totalXp += xpForDamage(h.dmg, h.killed, attacker.level, h.target.level, h.target.maxHp);
+    lines.push(`　→ ${h.target.name} ${h.dmg} 点伤害`);
+  }
+
+  const atkBase = {
+    ...attacker,
+    acted: true,
+    tacticPoints: attacker.tacticPoints - cost,
+  };
+  const attackerAfter = applyExpAndLevelUps(atkBase, totalXp, lines);
+
+  const hitById = new Map(hits.map((h) => [h.target.id, h]));
+  const units = state.units.map((u) => {
+    if (u.id === attackerId) return attackerAfter;
+    const h = hitById.get(u.id);
+    if (!h) return u;
+    return { ...u, hp: h.newHp };
+  });
+
+  let next: BattleState = {
+    ...state,
+    units,
+    selectedId: null,
+    phase: "select",
+    moveTargets: [],
+    pickTarget: null,
+    log: [...state.log, ...lines],
+  };
+
+  const firstPulse = hits.find((h) => h.dmg > 0);
+  if (firstPulse) {
+    next = attachDamagePulse(next, firstPulse.target.id, firstPulse.dmg, firstPulse.hpBefore, "tactic");
+  }
+  for (const h of hits) {
+    if (h.killed) next = tryQueueDeathReactionScript(next, { ...h.target, hp: h.newHp });
+  }
+  next = checkOutcome(next);
+  if (next.pendingVictory) return next;
+  if (next.outcome !== "playing") return next;
+  return maybeEndPlayerTurn(next);
+}
+
 function applyPlayerMeleeDamage(
   state: BattleState,
   attackerId: string,
@@ -982,7 +1104,12 @@ function applyPlayerMeleeDamage(
   const killed = newHp <= 0;
   const xp = xpForDamage(dmg, killed, attacker.level, target.level, target.maxHp);
   const hint = combatHints(state, attacker, target);
-  const verb = attacker.troopKind === "archer" ? "箭射" : "攻击";
+  const verb =
+    attacker.troopKind === "archer"
+      ? "箭射"
+      : attacker.troopKind === "sorcerer"
+        ? "法术命中"
+        : "攻击";
   const lines: string[] = [];
   lines.push(
     `${attacker.name} ${verb} ${target.name}，造成 ${dmg} 点伤害${hint ? ` ${hint}` : ""}。`
@@ -1014,29 +1141,67 @@ function applyPlayerMeleeDamage(
 function applyPlayerTacticDamage(
   state: BattleState,
   attackerId: string,
-  enemyId: string,
+  targetId: string,
   tacticKind: TacticKind,
   cost: number
 ): BattleState {
   const attacker = state.units.find((x) => x.id === attackerId);
-  const target = state.units.find((x) => x.id === enemyId);
-  if (!attacker || !target || target.side !== "enemy") return state;
+  const target = state.units.find((x) => x.id === targetId);
+  if (!attacker || !target) return state;
   if (attacker.tacticPoints < cost) return state;
   if (!tacticValidOnTarget(state, tacticKind, target)) return state;
   if (manhattan(attacker, target) > 2) return state;
+  if (tacticKind === "jiehuo") return state;
+  if (tacticKind === "heal" && target.side !== attacker.side) return state;
+  if (tacticKind !== "heal" && target.side === attacker.side) return state;
 
-  const dmg = tacticDamageDealt(state, attacker, target, tacticKind);
-  const hpBeforeTactic = target.hp;
-  const newHp = Math.max(0, target.hp - dmg);
-  const killed = newHp <= 0;
-  const xp = xpForDamage(dmg, killed, attacker.level, target.level, target.maxHp);
-  const hint = terrainCombatHint(state, attacker, target);
   const def = TACTIC_DEF[tacticKind];
   const lines: string[] = [];
-  lines.push(
-    `${attacker.name} 施展${def.name}打击 ${target.name}，造成 ${dmg} 点伤害（-${cost} 计策）${hint ? ` ${hint}` : ""}。`
-  );
-  if (killed) lines.push(`${target.name} 被击退！`);
+  let dmg = 0;
+  let healed = 0;
+  let hpBeforeTactic = target.hp;
+  let newHp = target.hp;
+  let killed = false;
+  let xp = 0;
+  let pulseKind: "melee" | "tactic" | null = null;
+  let confuseTurns = 0;
+  let confuseSuccess = false;
+  if (tacticKind === "heal") {
+    const base = Math.floor(target.maxHp * 0.2 + effectiveIntelOnTerrain(state, attacker) * 1.8);
+    healed = Math.max(1, Math.min(base, target.maxHp - target.hp));
+    if (healed <= 0) return state;
+    newHp = Math.min(target.maxHp, target.hp + healed);
+    lines.push(`${attacker.name} 对 ${target.name} 施展治疗，恢复 ${healed} 兵力（-${cost} 计策）。`);
+    xp = Math.max(1, Math.floor(healed * 0.08));
+  } else if (tacticKind === "confuse") {
+    /** 智力比决定能否挂上混乱；低智对高智可出现「未中」 */
+    const ratio = attacker.intel / Math.max(1, target.intel + 20);
+    const raw = Math.floor(ratio * 2.2);
+    confuseSuccess = raw >= 1;
+    confuseTurns = confuseSuccess ? Math.min(3, raw) : 0;
+    if (confuseSuccess) {
+      lines.push(
+        `${attacker.name} 对 ${target.name} 施展混乱，目标 ${confuseTurns} 回合内无法行动（-${cost} 计策）。`
+      );
+      xp = 10 + confuseTurns * 6;
+    } else {
+      lines.push(
+        `${attacker.name} 对 ${target.name} 施展混乱，对方心神稳固未受影响（-${cost} 计策）。`
+      );
+      xp = 4;
+    }
+  } else {
+    dmg = tacticDamageDealt(state, attacker, target, tacticKind);
+    newHp = Math.max(0, target.hp - dmg);
+    killed = newHp <= 0;
+    xp = xpForDamage(dmg, killed, attacker.level, target.level, target.maxHp);
+    const hint = terrainCombatHint(state, attacker, target);
+    lines.push(
+      `${attacker.name} 施展${def.name}打击 ${target.name}，造成 ${dmg} 点伤害（-${cost} 计策）${hint ? ` ${hint}` : ""}。`
+    );
+    if (killed) lines.push(`${target.name} 被击退！`);
+    pulseKind = "tactic";
+  }
   const atkBase = {
     ...attacker,
     acted: true,
@@ -1044,7 +1209,14 @@ function applyPlayerTacticDamage(
   };
   const attackerAfter = applyExpAndLevelUps(atkBase, xp, lines);
   const units = state.units.map((x) => {
-    if (x.id === enemyId) return { ...x, hp: newHp };
+    if (x.id === targetId) {
+      if (tacticKind === "confuse") {
+        if (!confuseSuccess) return x;
+        const c = x.confusedTurns ?? 0;
+        return { ...x, confusedTurns: Math.max(c, confuseTurns) };
+      }
+      return { ...x, hp: newHp };
+    }
     if (x.id === attackerId) return attackerAfter;
     return x;
   });
@@ -1057,7 +1229,16 @@ function applyPlayerTacticDamage(
     pickTarget: null,
     log: [...state.log, ...lines],
   };
-  if (dmg > 0) next = attachDamagePulse(next, enemyId, dmg, hpBeforeTactic, "tactic");
+  if (pulseKind && dmg > 0) next = attachDamagePulse(next, targetId, dmg, hpBeforeTactic, pulseKind);
+  if (tacticKind === "heal" && healed > 0) {
+    next = attachDamagePulse(next, targetId, healed, hpBeforeTactic, "heal");
+  }
+  if (tacticKind === "confuse") {
+    next = attachDamagePulse(next, targetId, 0, target.hp, "confuse", {
+      success: confuseSuccess,
+      turns: confuseTurns,
+    });
+  }
   if (killed) next = tryQueueDeathReactionScript(next, { ...target, hp: newHp });
   next = checkOutcome(next);
   if (next.pendingVictory) return next;
@@ -1071,7 +1252,7 @@ export function confirmPickTarget(state: BattleState, enemyId: string): BattleSt
   if (!p.targetIds.includes(enemyId)) return state;
   const attacker = state.units.find((u) => u.id === p.attackerId);
   const target = state.units.find((u) => u.id === enemyId);
-  if (!attacker || attacker.acted || !target || target.side !== "enemy" || target.hp <= 0) {
+  if (!attacker || attacker.acted || !target || target.hp <= 0) {
     return state;
   }
   if (p.kind === "melee" && !inPhysicalAttackRange(attacker, target)) return state;
@@ -1079,6 +1260,9 @@ export function confirmPickTarget(state: BattleState, enemyId: string): BattleSt
     if (manhattan(attacker, target) > 2) return state;
     const tk = p.tacticKind;
     if (!tk) return state;
+    if (tk === "jiehuo") return state;
+    if (tk === "heal" && target.side !== attacker.side) return state;
+    if (tk !== "heal" && target.side === attacker.side) return state;
     const cost = TACTIC_DEF[tk].cost;
     if (attacker.tacticPoints < cost) return state;
     if (!tacticValidOnTarget(state, tk, target)) return state;
@@ -1173,6 +1357,7 @@ export function escapeOrRevertUnit(state: BattleState): BattleState {
           tacticPoints:
             typeof snap.tacticPoints === "number" ? snap.tacticPoints : u.tacticPoints,
           tacticMax: snap.tacticMax ?? u.tacticMax,
+          confusedTurns: typeof snap.confusedTurns === "number" ? snap.confusedTurns : (u.confusedTurns ?? 0),
         }
       : u
   );
@@ -1213,10 +1398,13 @@ function startEnemyTurn(state: BattleState): BattleState {
   const refreshed = state.units.map((u) =>
     u.side === "enemy" && u.hp > 0 ? { ...u, moved: false, acted: false } : u
   );
-  const queue = refreshed.filter((u) => u.side === "enemy" && u.hp > 0).map((u) => u.id);
+  const afterConfuse = withConfusionTick(refreshed, "enemy");
+  const queue = afterConfuse
+    .filter((u) => u.side === "enemy" && u.hp > 0 && !(u.moved && u.acted))
+    .map((u) => u.id);
   const base = {
     ...state,
-    units: refreshed,
+    units: afterConfuse,
     enemyTurnQueue: queue,
     enemyTurnCursor: 0,
     pendingMove: null,
@@ -1254,10 +1442,11 @@ function finishEnemyTurnAndStartPlayer(s: BattleState): BattleState {
     };
   }
   const withPools = refreshPlayerTacticPools(s.units);
+  const withConfused = withConfusionTick(withPools, "player");
   const next: BattleState = {
     ...s,
     battleRound: nextRound,
-    units: withPools.map((u) =>
+    units: withConfused.map((u) =>
       u.side === "player" && u.hp > 0 ? { ...u, moved: false, acted: false } : u
     ),
     turn: "player",
@@ -1270,7 +1459,15 @@ function finishEnemyTurnAndStartPlayer(s: BattleState): BattleState {
     pendingMove: null,
     log: [...s.log, "—— 我军回合 ——"],
   };
-  return withTurnSnapshot(next);
+  const locked = {
+    ...next,
+    units: next.units.map((u) => {
+      if (u.side !== "player" || u.hp <= 0) return u;
+      if ((u.confusedTurns ?? 0) > 0) return { ...u, moved: true, acted: true };
+      return u;
+    }),
+  };
+  return withTurnSnapshot(locked);
 }
 
 function enemyAttackAfterAdvance(s: BattleState, eid: string): BattleState {
@@ -1289,7 +1486,7 @@ function enemyAttackAfterAdvance(s: BattleState, eid: string): BattleState {
     units: s.units.map((x) => (x.id === adj2.id ? { ...x, hp: newHp } : x)),
     log: [
       ...s.log,
-      `${eu.name} ${eu.troopKind === "archer" ? "箭射" : "攻击"} ${adj2.name}，造成 ${dmg} 点伤害${hint ? ` ${hint}` : ""}。`,
+      `${eu.name} ${eu.troopKind === "archer" ? "箭射" : eu.troopKind === "sorcerer" ? "法术命中" : "攻击"} ${adj2.name}，造成 ${dmg} 点伤害${hint ? ` ${hint}` : ""}。`,
     ],
   };
   if (dmg > 0) hit = attachDamagePulse(hit, adj2.id, dmg, hpBeforeEnemyHit, "melee");
@@ -1316,7 +1513,7 @@ function executeEnemyUnitAction(state: BattleState, eid: string): BattleState {
       units: s.units.map((x) => (x.id === adj.id ? { ...x, hp: newHp } : x)),
       log: [
         ...s.log,
-        `${eu.name} ${eu.troopKind === "archer" ? "箭射" : "攻击"} ${adj.name}，造成 ${dmg} 点伤害${hint ? ` ${hint}` : ""}。`,
+        `${eu.name} ${eu.troopKind === "archer" ? "箭射" : eu.troopKind === "sorcerer" ? "法术命中" : "攻击"} ${adj.name}，造成 ${dmg} 点伤害${hint ? ` ${hint}` : ""}。`,
       ],
     };
     if (dmg > 0) hit = attachDamagePulse(hit, adj.id, dmg, hpBeforeEnemyMelee, "melee");
@@ -1468,6 +1665,7 @@ function migrateV1Unit(raw: Record<string, unknown>): Unit {
     move: movePointsForTroop(troopKind),
     moved: Boolean(raw.moved),
     acted: Boolean(raw.acted),
+    confusedTurns: typeof raw.confusedTurns === "number" ? Math.max(0, Math.floor(raw.confusedTurns)) : 0,
   };
 }
 
@@ -1498,6 +1696,7 @@ function ensureUnitShape(u: Unit | Record<string, unknown>): Unit {
   if (typeof base.tacticMax !== "number") base.tacticMax = tm;
   base.tacticMax = Math.max(base.tacticMax, tm);
   base.tacticPoints = Math.min(base.tacticMax, base.tacticPoints ?? base.tacticMax);
+  base.confusedTurns = Math.max(0, Math.floor(base.confusedTurns ?? 0));
   base.move = movePointsForTroop(base.troopKind);
   const pc = (base as Unit).portraitCatalogId;
   if (pc !== undefined && typeof pc !== "string") {
@@ -1535,7 +1734,7 @@ export function ensureBattleFields(b: BattleState): BattleState {
       const dp = s.damagePulse;
       if (!dp || typeof (dp as { hpBefore?: unknown }).hpBefore !== "number") return null;
       const k = (dp as { kind?: unknown }).kind;
-      if (k !== "melee" && k !== "tactic") return null;
+      if (k !== "melee" && k !== "tactic" && k !== "heal" && k !== "confuse") return null;
       return dp as NonNullable<BattleState["damagePulse"]>;
     })(),
     scenarioBrief: typeof s.scenarioBrief === "string" ? s.scenarioBrief : "",
@@ -1594,6 +1793,10 @@ export function ensureBattleFields(b: BattleState): BattleState {
                   ? snap.tacticPoints
                   : (u?.tacticPoints ?? 0),
               tacticMax: snap.tacticMax ?? u?.tacticMax ?? 0,
+              confusedTurns:
+                typeof snap.confusedTurns === "number"
+                  ? Math.max(0, Math.floor(snap.confusedTurns))
+                  : (u?.confusedTurns ?? 0),
             },
           ];
         })
@@ -1611,6 +1814,7 @@ export function ensureBattleFields(b: BattleState): BattleState {
       const max = tacticMaxForUnit(u.intel, lv);
       const move = movePointsForTroop(u.troopKind);
       const tacticPoints = Math.min(max, u.tacticPoints);
+      const confusedTurns = Math.max(0, Math.floor(u.confusedTurns ?? 0));
       if (
         u.might !== m ||
         u.level !== lv ||
@@ -1619,12 +1823,39 @@ export function ensureBattleFields(b: BattleState): BattleState {
         u.defense !== def ||
         u.tacticMax !== max ||
         u.tacticPoints !== tacticPoints ||
-        u.move !== move
+        u.move !== move ||
+        (u.confusedTurns ?? 0) !== confusedTurns
       ) {
-        return { ...u, might: m, level: lv, maxHp, hp, defense: def, tacticMax: max, tacticPoints, move };
+        return {
+          ...u,
+          might: m,
+          level: lv,
+          maxHp,
+          hp,
+          defense: def,
+          tacticMax: max,
+          tacticPoints,
+          move,
+          confusedTurns,
+        };
       }
       return u;
     }),
   };
+  const terr = s.terrain;
+  if (
+    terr.length > 0 &&
+    s.units.some((u) => {
+      const cell = terr[u.y]?.[u.x] ?? "plain";
+      return isBlockedSpawnTerrain(cell);
+    })
+  ) {
+    const sanitized = sanitizeUnitSpawnPositions(terr, s.units);
+    s = {
+      ...s,
+      units: sanitized,
+      playerTurnStart: buildPlayerTurnStart(sanitized),
+    };
+  }
   return s;
 }
