@@ -839,11 +839,16 @@ export function physicalAttackMenuLabel(unit: Unit): string {
 }
 
 export function canMeleeAttack(attacker: Unit, units: Unit[]): boolean {
-  return units.some((x) => x.side === "enemy" && x.hp > 0 && inPhysicalAttackRange(attacker, x));
+  return units.some(
+    (x) => x.side !== attacker.side && x.hp > 0 && inPhysicalAttackRange(attacker, x)
+  );
 }
 
-function foesInTacticRange(attacker: Unit, units: Unit[]): Unit[] {
-  return units.filter((x) => x.side === "enemy" && x.hp > 0 && manhattan(attacker, x) <= 2);
+/** 计策射程内（曼哈顿 ≤2）的敌对存活单位 */
+function opponentsInTacticRange(attacker: Unit, units: Unit[]): Unit[] {
+  return units.filter(
+    (x) => x.side !== attacker.side && x.hp > 0 && manhattan(attacker, x) <= 2
+  );
 }
 
 function alliesInTacticRange(attacker: Unit, units: Unit[]): Unit[] {
@@ -853,14 +858,14 @@ function alliesInTacticRange(attacker: Unit, units: Unit[]): Unit[] {
 function tacticTargets(attacker: Unit, kind: TacticKind, units: Unit[]): Unit[] {
   if (kind === "heal") return alliesInTacticRange(attacker, units).filter((u) => u.hp < u.maxHp);
   if (kind === "jiehuo") return [];
-  return foesInTacticRange(attacker, units);
+  return opponentsInTacticRange(attacker, units);
 }
 
-/** 劫火：与施法者四向相邻、且脚下非水面的存活敌军 */
+/** 劫火：与施法者四向相邻、且脚下非水面的存活敌对单位 */
 function jiehuoTargets(state: BattleState, attacker: Unit): Unit[] {
   return state.units.filter(
     (x) =>
-      x.side === "enemy" &&
+      x.side !== attacker.side &&
       x.hp > 0 &&
       adjacent(attacker, x) &&
       tacticValidOnTarget(state, "jiehuo", x)
@@ -1033,7 +1038,8 @@ export function tacticMenuChoose(state: BattleState, tacticKind: TacticKind): Ba
 
 function applyPlayerJiehuo(state: BattleState, attackerId: string, cost: number): BattleState {
   const attacker = state.units.find((x) => x.id === attackerId);
-  if (!attacker || attacker.acted || !attacker.moved || attacker.troopKind !== "sorcerer") return state;
+  if (!attacker || attacker.acted || (attacker.side === "player" && !attacker.moved) || attacker.troopKind !== "sorcerer")
+    return state;
   if (attacker.tacticPoints < cost) return state;
   const targets = jiehuoTargets(state, attacker);
   if (targets.length === 0) return state;
@@ -1087,7 +1093,7 @@ function applyPlayerJiehuo(state: BattleState, attackerId: string, cost: number)
   next = checkOutcome(next);
   if (next.pendingVictory) return next;
   if (next.outcome !== "playing") return next;
-  return maybeEndPlayerTurn(next);
+  return finalizeActorTurnAfterTactic(next, attacker);
 }
 
 function applyPlayerMeleeDamage(
@@ -1220,11 +1226,12 @@ function applyPlayerTacticDamage(
     if (x.id === attackerId) return attackerAfter;
     return x;
   });
+  const phaseAfter: BattleState["phase"] = attacker.side === "enemy" ? "enemy" : "select";
   let next: BattleState = {
     ...state,
     units,
     selectedId: null,
-    phase: "select",
+    phase: phaseAfter,
     moveTargets: [],
     pickTarget: null,
     log: [...state.log, ...lines],
@@ -1243,7 +1250,7 @@ function applyPlayerTacticDamage(
   next = checkOutcome(next);
   if (next.pendingVictory) return next;
   if (next.outcome !== "playing") return next;
-  return maybeEndPlayerTurn(next);
+  return finalizeActorTurnAfterTactic(next, attacker);
 }
 
 export function confirmPickTarget(state: BattleState, enemyId: string): BattleState {
@@ -1394,10 +1401,18 @@ function maybeEndPlayerTurn(state: BattleState): BattleState {
   });
 }
 
+/** 计策结算后：我军则检查是否结束回合，敌军则保持当前敌军阶段（由 processSingleEnemyStep 推进队列） */
+function finalizeActorTurnAfterTactic(state: BattleState, attacker: Unit): BattleState {
+  if (attacker.side === "player") return maybeEndPlayerTurn(state);
+  return state;
+}
+
 function startEnemyTurn(state: BattleState): BattleState {
-  const refreshed = state.units.map((u) =>
-    u.side === "enemy" && u.hp > 0 ? { ...u, moved: false, acted: false } : u
-  );
+  const refreshed = state.units.map((u) => {
+    if (u.side !== "enemy" || u.hp <= 0) return u;
+    const max = tacticMaxForUnit(u.intel, u.level);
+    return { ...u, moved: false, acted: false, tacticMax: max, tacticPoints: max };
+  });
   const afterConfuse = withConfusionTick(refreshed, "enemy");
   const queue = afterConfuse
     .filter((u) => u.side === "enemy" && u.hp > 0 && !(u.moved && u.acted))
@@ -1470,6 +1485,32 @@ function finishEnemyTurnAndStartPlayer(s: BattleState): BattleState {
   return withTurnSnapshot(locked);
 }
 
+/** 敌军 AI：有策略值且存在合法目标时优先施计（顺序：劫火→混乱→火/水/陷→治疗低兵力友军） */
+function tryEnemyUseTactic(state: BattleState, eu: Unit): BattleState | null {
+  if (eu.hp <= 0 || eu.acted || eu.tacticPoints <= 0) return null;
+  if (!canUseTactic(eu, state)) return null;
+  const kinds = tacticMenuKindsForTroop(eu.troopKind);
+  const priority: TacticKind[] = ["jiehuo", "confuse", "fire", "water", "trap", "heal"];
+  for (const k of priority) {
+    if (!kinds.includes(k)) continue;
+    if (!canAffordTactic(eu, k, state)) continue;
+    if (k === "jiehuo") {
+      return applyPlayerJiehuo(state, eu.id, TACTIC_DEF.jiehuo.cost);
+    }
+    const candidates = tacticTargets(eu, k, state.units).filter((t) => tacticValidOnTarget(state, k, t));
+    if (candidates.length === 0) continue;
+    if (k === "heal") {
+      const sorted = [...candidates].sort((a, b) => a.hp / Math.max(1, a.maxHp) - b.hp / Math.max(1, b.maxHp));
+      const need = sorted[0]!;
+      if (need.hp >= need.maxHp * 0.55) continue;
+      return applyPlayerTacticDamage(state, eu.id, need.id, k, TACTIC_DEF.heal.cost);
+    }
+    const pick = sortTacticTargets(candidates)[0]!;
+    return applyPlayerTacticDamage(state, eu.id, pick.id, k, TACTIC_DEF[k].cost);
+  }
+  return null;
+}
+
 function enemyAttackAfterAdvance(s: BattleState, eid: string): BattleState {
   const eu = s.units.find((x) => x.id === eid);
   if (!eu || eu.side !== "enemy" || eu.hp <= 0) return s;
@@ -1501,6 +1542,9 @@ function executeEnemyUnitAction(state: BattleState, eid: string): BattleState {
   const euFound = s.units.find((x) => x.id === eid);
   if (!euFound || euFound.side !== "enemy" || euFound.hp <= 0) return s;
   const eu = euFound;
+
+  const tacticState = tryEnemyUseTactic(s, eu);
+  if (tacticState) return tacticState;
 
   const adj = sortMeleeTargets(players.filter((p) => inPhysicalAttackRange(eu, p)))[0];
   if (adj) {

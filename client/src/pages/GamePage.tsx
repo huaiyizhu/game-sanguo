@@ -1650,14 +1650,10 @@ export default function GamePage() {
                     </dd>
                     <dt>智力</dt>
                     <dd>{inspectedUnit.intel}</dd>
-                    {inspectedUnit.side === "player" && (
-                      <>
-                        <dt>计策值</dt>
-                        <dd>
-                          {inspectedUnit.tacticPoints} / {inspectedUnit.tacticMax}
-                        </dd>
-                      </>
-                    )}
+                    <dt>计策值</dt>
+                    <dd>
+                      {inspectedUnit.tacticPoints} / {inspectedUnit.tacticMax}
+                    </dd>
                   </div>
                   {inspectedTerrain && (
                     <div className="unit-inspect-row unit-inspect-row--terrain">

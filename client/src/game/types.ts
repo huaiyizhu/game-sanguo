@@ -77,7 +77,7 @@ export interface Unit {
   troopKind: TroopKind;
   /** 当前计策值 */
   tacticPoints: number;
-  /** 计策值上限（智力 + 等级，每回合我军开始时回满） */
+  /** 计策值上限（智力 + 等级）；进入各自阵营回合时回满 */
   tacticMax: number;
   move: number;
   moved: boolean;

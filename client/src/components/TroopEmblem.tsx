@@ -24,11 +24,10 @@ const RASTER_SRC: Record<TroopKind, string> = {
   cavalry: `${base}sprites/units/cavalry.png`,
   infantry: `${base}sprites/units/infantry.png`,
   archer: `${base}sprites/units/archer.png`,
-  sorcerer: `${base}sprites/units/archer.png`,
+  sorcerer: `${base}sprites/units/sorcerer.png`,
 };
 
 function directionalSrc(kind: TroopKind, facing: TroopFacing): string {
-  if (kind === "sorcerer") return `${base}sprites/units/archer_${facing}.png`;
   return `${base}sprites/units/${kind}_${facing}.png`;
 }
 
@@ -52,7 +51,7 @@ export default function TroopEmblem({
   const walkSequenceEnabled = motion === "walk" && frameCount > 1;
   /** 多帧 walk 图缺失时回退到单张朝向图，避免 onError 死循环 */
   const [walkFramesDisabled, setWalkFramesDisabled] = useState(false);
-  /** 单张默认立绘（如 archer.png）通常朝右；左向需镜像。四向图 *_left.png 已是朝左，不可再 scaleX(-1)。 */
+  /** 单张默认立绘（如 archer.png / sorcerer.png）通常朝右或朝前；四向图 *_left.png 已是朝左，不可再 scaleX(-1)。 */
   const [usingRasterFallback, setUsingRasterFallback] = useState(false);
   const [src, setSrc] = useState(() => directionalSrc(kind, facing));
 

@@ -2451,11 +2451,9 @@ const GameBattle = forwardRef<GameBattleHandle, Props>(function GameBattle(
                   : ""}
               </span>
               <span className="unit-attr-float__tag">智力 {floatUnit.intel}</span>
-              {floatUnit.side === "player" && (
-                <span className="unit-attr-float__tag">
-                  计策 {floatUnit.tacticPoints}/{floatUnit.tacticMax}
-                </span>
-              )}
+              <span className="unit-attr-float__tag">
+                计策 {floatUnit.tacticPoints}/{floatUnit.tacticMax}
+              </span>
             </div>
             <div className="unit-attr-float__hp">
               <span className="unit-attr-float__hp-label">

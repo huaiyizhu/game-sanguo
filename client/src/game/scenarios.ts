@@ -742,6 +742,7 @@ function grunt(
 ): Unit {
   const m = clampMight(might);
   const maxHp = maxHpForLevel(level);
+  const tm = tacticMaxForUnit(intel, level);
   return {
     id,
     name,
@@ -757,8 +758,8 @@ function grunt(
     defense: defensePowerForUnit(m, level, troopKind),
     armyType,
     troopKind,
-    tacticMax: 0,
-    tacticPoints: 0,
+    tacticMax: tm,
+    tacticPoints: tm,
     move: movePointsForTroop(troopKind),
     moved: false,
     acted: false,
